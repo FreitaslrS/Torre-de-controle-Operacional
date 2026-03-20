@@ -219,17 +219,19 @@ def render():
     # =========================
     st.subheader("🗺️ Backlog por Estado")
 
-    estado_sel = st.multiselect(
-        "Filtrar por estado",
-        options=df["estado"].dropna().unique(),
-        default=df["estado"].dropna().unique(),
-        key="estado_multi"
-    )
+    with st.expander("🔎 Filtrar estados"):
+
+        estados = df["estado"].dropna().unique()
+
+        estado_sel = []
+        for e in estados:
+            if st.checkbox(e, value=True, key=f"estado_{e}"):
+                estado_sel.append(e)
 
     df_estado = df[df["estado"].isin(estado_sel)]
 
     estado = (
-        df.groupby("estado")
+        df_estado.groupby("estado")
         .size()
         .sort_values(ascending=False)
         .reset_index(name="qtd")
@@ -250,17 +252,19 @@ def render():
     # =========================
     st.subheader("🏙️ Backlog por Cidade")
 
-    cidade_sel = st.multiselect(
-        "Filtrar cidades",
-        options=df["cidade"].dropna().unique(),
-        default=df["cidade"].dropna().unique(),
-        key="cidade_multi"
-    )
+    with st.expander("🔎 Filtrar cidades"):
+
+        cidades = df["cidade"].dropna().unique()
+
+        cidade_sel = []
+        for c in cidades:
+            if st.checkbox(c, value=True, key=f"cidade_{c}"):
+                cidade_sel.append(c)
 
     df_cidade = df[df["cidade"].isin(cidade_sel)]
 
     cidade = (
-        df.groupby("cidade")
+        df_cidade.groupby("cidade")
         .size()
         .sort_values(ascending=False)
         .head(10)
@@ -282,20 +286,21 @@ def render():
     # =========================
     st.subheader("👤 Clientes com Maior Backlog")
 
-    cliente_sel = st.multiselect(
-        "Filtrar clientes",
-        options=df["cliente"].dropna().unique(),
-        default=df["cliente"].dropna().unique(),
-        key="cliente_multi"
-    )
+    with st.expander("🔎 Filtrar clientes"):
+
+        clientes = df["cliente"].dropna().unique()
+
+        cliente_sel = []
+        for c in clientes:
+            if st.checkbox(c, value=True, key=f"cliente_{c}"):
+                cliente_sel.append(c)
 
     df_cliente = df[df["cliente"].isin(cliente_sel)]
 
     cliente = (
-        df.groupby("cliente")
+        df_cliente.groupby("cliente")
         .size()
         .sort_values(ascending=False)
-        .head(10)
         .reset_index(name="qtd")
     )
 
