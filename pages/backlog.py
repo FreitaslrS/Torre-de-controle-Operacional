@@ -100,6 +100,23 @@ def render():
 
     st.divider()
 
+    st.subheader("⏱️ Filtro de Aging")
+
+    filtro_aging = st.selectbox(
+        "Selecione o nível de backlog",
+        ["Todos", ">24h", ">48h", ">72h"]
+    )
+
+    # aplicar filtro
+    if filtro_aging == ">24h":
+        df_filtrado = df[df["horas_backlog_snapshot"] > 24]
+    elif filtro_aging == ">48h":
+        df_filtrado = df[df["horas_backlog_snapshot"] > 48]
+    elif filtro_aging == ">72h":
+        df_filtrado = df[df["horas_backlog_snapshot"] > 72]
+    else:
+        df_filtrado = df.copy()
+
     # =========================
     # 🚨 ALERTA AUTOMÁTICO
     # =========================
@@ -228,7 +245,7 @@ def render():
             if st.checkbox(e, value=True, key=f"estado_{e}"):
                 estado_sel.append(e)
 
-    df_estado = df[df["estado"].isin(estado_sel)]
+    df_estado = df_filtrado[df_filtrado["estado"].isin(estado_sel)]
 
     estado = (
         df_estado.groupby("estado")
@@ -261,7 +278,7 @@ def render():
             if st.checkbox(c, value=True, key=f"cidade_{c}"):
                 cidade_sel.append(c)
 
-    df_cidade = df[df["cidade"].isin(cidade_sel)]
+    df_cidade = df_filtrado[df_filtrado["cidade"].isin(cidade_sel)]
 
     cidade = (
         df_cidade.groupby("cidade")
@@ -295,7 +312,7 @@ def render():
             if st.checkbox(c, value=True, key=f"cliente_{c}"):
                 cliente_sel.append(c)
 
-    df_cliente = df[df["cliente"].isin(cliente_sel)]
+    df_cliente = df_filtrado[df_filtrado["cliente"].isin(cliente_sel)]
 
     cliente = (
         df_cliente.groupby("cliente")
