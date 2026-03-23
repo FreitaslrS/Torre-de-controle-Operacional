@@ -1,9 +1,6 @@
 from core.database import consultar, executar, conectar_duckdb
 
 
-# =========================
-# 📦 INSERÇÃO VIA PARQUET (FUTURO)
-# =========================
 def inserir_pedidos_parquet(caminho_parquet):
     executar(f"""
         INSERT INTO pedidos
@@ -17,9 +14,6 @@ def inserir_pedidos_parquet(caminho_parquet):
     """)
 
 
-# =========================
-# 🗑️ DELETAR ARQUIVO
-# =========================
 def deletar_arquivo(nome_arquivo):
     executar(
         "DELETE FROM pedidos WHERE nome_arquivo = %s",
@@ -27,9 +21,6 @@ def deletar_arquivo(nome_arquivo):
     )
 
 
-# =========================
-# 📄 LISTAR ARQUIVOS
-# =========================
 def listar_arquivos():
     return consultar("""
         SELECT nome_arquivo, COUNT(*) as registros
@@ -39,45 +30,40 @@ def listar_arquivos():
     """)
 
 
-# =========================
-# 📊 BUSCAR TODOS PEDIDOS
-# =========================
 def buscar_pedidos():
     return consultar("""
-        SELECT *
+        SELECT 
+            waybill,
+            cliente,
+            estado,
+            cidade,
+            pre_entrega,
+            horas_backlog_snapshot,
+            data_referencia
         FROM pedidos
     """)
 
 
-# =========================
-# 🔥 BACKLOG ATUAL
-# =========================
-def buscar_backlog_atual():
-    return consultar("""
-        SELECT *
-        FROM backlog_atual
-    """)
-
-
-# =========================
-# 📈 BACKLOG POR PERÍODO
-# =========================
+# 🔥 FUNÇÃO QUE ESTAVA QUEBRANDO
 def buscar_backlog_periodo(data_inicio, data_fim):
     return consultar("""
-        SELECT *
+        SELECT 
+            waybill,
+            cliente,
+            estado,
+            cidade,
+            pre_entrega,
+            horas_backlog_snapshot,
+            data_referencia
         FROM pedidos
-        WHERE data_referencia BETWEEN %s AND %s
+        WHERE status = 'backlog'
+        AND data_referencia BETWEEN %s AND %s
         AND horas_backlog_snapshot IS NOT NULL
     """, [data_inicio, data_fim])
 
 
-# =========================
-# 🧾 LOG DE IMPORTAÇÃO
-# =========================
 def salvar_log_importacao(logs):
-    # 🔥 mantém DuckDB só pra esse caso (rápido e compatível)
     con = conectar_duckdb()
-
     con.register("logs_temp", logs)
 
     con.execute("""

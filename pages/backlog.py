@@ -1,82 +1,87 @@
 import streamlit as st
 import plotly.express as px
-import plotly.io as pio
-import pandas as pd
 
-from core.service import tratar_backlog_periodo, tratar_backlog_atual
+from core.repository import buscar_backlog_periodo
 
 # =========================
-# 🎨 CORES DA EMPRESA
+# 🎨 CORES EMPRESA
 # =========================
 COR_VERDE = "#16A34A"
 COR_VERMELHO = "#DC2626"
 COR_CINZA = "#6B7280"
+COR_AZUL = "#2563EB"
 
-# =========================
-# 🎨 TEMPLATE GLOBAL
-# =========================
-pio.templates["empresa"] = pio.templates["plotly"]
-pio.templates["empresa"].layout.colorway = [
-    COR_VERDE,
-    COR_VERMELHO,
-    COR_CINZA
-]
-pio.templates.default = "empresa"
-
-# =========================
-# ⚡ CACHE
-# =========================
-@st.cache_data(ttl=60)
-def carregar_atual():
-    return tratar_backlog_atual()
-
-@st.cache_data(ttl=60)
-def carregar_periodo(data_inicio, data_fim):
-    return tratar_backlog_periodo(data_inicio, data_fim)
+COLOR_MAP = {
+    "estado": COR_VERDE,
+    "cidade": COR_CINZA,
+    "cliente": COR_VERMELHO,
+    "tempo": COR_VERDE,
+    "pre_entrega": COR_AZUL
+}
 
 
-# =========================
-# 🚀 DASHBOARD
-# =========================
 def render():
 
     st.title("📦 Control Tower - Backlog")
 
     # =========================
-    # 🎛️ MODO
+    # 📅 FILTRO DATA
     # =========================
-    modo = st.radio("Modo de análise", ["Atual", "Período"])
+    col1, col2 = st.columns(2)
 
-    if modo == "Atual":
-        df = carregar_atual()
-    else:
-        col1, col2 = st.columns(2)
-        data_inicio = col1.date_input("Data inicial")
-        data_fim = col2.date_input("Data final")
-        df = carregar_periodo(data_inicio, data_fim)
+    data_inicio = col1.date_input("📅 Data inicial")
+    data_fim = col2.date_input("📅 Data final")
+
+    if not data_inicio or not data_fim:
+        st.warning("Selecione o período")
+        return
+
+    df = buscar_backlog_periodo(data_inicio, data_fim)
 
     if df.empty:
-        st.warning("Sem dados disponíveis")
+        st.warning("Sem dados")
         return
 
     # =========================
-    # 🔧 TRATAMENTO
+    # 🎛️ FILTROS DINÂMICOS
     # =========================
-    df = df.drop_duplicates(subset=["waybill"])
+    col3, col4 = st.columns(2)
 
-    df["horas_backlog_snapshot"] = pd.to_numeric(
-        df["horas_backlog_snapshot"], errors="coerce"
+    estados = col3.multiselect(
+        "🌎 Estado",
+        sorted(df["estado"].dropna().unique())
     )
 
-    df["cliente"] = df.get("cliente", "Não informado")
-    df["cidade"] = df.get("cidade", "Não informado")
-    df["pre_entrega"] = df.get("pre_entrega", "Não informado")
+    clientes = col4.multiselect(
+        "👤 Cliente",
+        sorted(df["cliente"].dropna().unique())
+    )
+
+    if estados:
+        df = df[df["estado"].isin(estados)]
+
+    if clientes:
+        df = df[df["cliente"].isin(clientes)]
 
     # =========================
-    # 📊 KPIs COMPLETOS
+    # ⏱️ FILTRO DE FAIXA
+    # =========================
+    faixa = st.radio(
+        "⏱️ Faixa de backlog",
+        ["Todos", "24h+", "48h+", "72h+"]
+    )
+
+    if faixa == "24h+":
+        df = df[df["horas_backlog_snapshot"] > 24]
+    elif faixa == "48h+":
+        df = df[df["horas_backlog_snapshot"] > 48]
+    elif faixa == "72h+":
+        df = df[df["horas_backlog_snapshot"] > 72]
+
+    # =========================
+    # 📊 KPIs
     # =========================
     total = len(df)
-
     backlog_24 = len(df[df["horas_backlog_snapshot"] > 24])
     backlog_48 = len(df[df["horas_backlog_snapshot"] > 48])
     backlog_72 = len(df[df["horas_backlog_snapshot"] > 72])
@@ -89,7 +94,7 @@ def render():
     col2.metric("⚠️ >24h", backlog_24)
     col3.metric("⏳ >48h", backlog_48)
     col4.metric("🚨 >72h", backlog_72)
-    col5.metric("📊 % Crítico", f"{perc:.1f}%")
+    col5.metric("📊 % crítico", f"{perc:.1f}%")
 
     if perc > 25:
         st.error("🚨 Operação crítica")
@@ -100,166 +105,36 @@ def render():
 
     st.divider()
 
-    st.subheader("⏱️ Filtro de Aging")
-
-    filtro_aging = st.selectbox(
-        "Selecione o nível de backlog",
-        ["Todos", ">24h", ">48h", ">72h"]
-    )
-
-    # aplicar filtro
-    if filtro_aging == ">24h":
-        df_filtrado = df[df["horas_backlog_snapshot"] > 24]
-    elif filtro_aging == ">48h":
-        df_filtrado = df[df["horas_backlog_snapshot"] > 48]
-    elif filtro_aging == ">72h":
-        df_filtrado = df[df["horas_backlog_snapshot"] > 72]
-    else:
-        df_filtrado = df.copy()
-
     # =========================
-    # 🚨 ALERTA AUTOMÁTICO
-    # =========================
-    st.subheader("🚨 Alerta Operacional")
-
-    top_critico = (
-        df[df["horas_backlog_snapshot"] > 72]
-        .groupby("pre_entrega")
-        .size()
-        .sort_values(ascending=False)
-        .head(1)
-    )
-
-    if not top_critico.empty:
-        cd_critico = top_critico.index[0]
-        qtd = top_critico.iloc[0]
-
-        st.error(f"🚨 CD crítico: {cd_critico} com {qtd} pedidos >72h")
-    else:
-        st.success("✅ Nenhum CD crítico no momento")
-
-    # =========================
-    # 📈 TENDÊNCIA
+    # 📈 EVOLUÇÃO
     # =========================
     st.subheader("📈 Evolução do Backlog")
 
-    if "data_referencia" in df.columns:
-        tendencia = df.groupby("data_referencia").size().reset_index(name="qtd")
+    df_tempo = df.groupby("data_referencia").size().reset_index(name="qtd")
 
-        fig_trend = px.line(
-            tendencia,
-            x="data_referencia",
-            y="qtd",
-            markers=True
-        )
+    fig_trend = px.line(
+        df_tempo,
+        x="data_referencia",
+        y="qtd",
+        markers=True,
+        color_discrete_sequence=[COLOR_MAP["tempo"]]
+    )
 
-        st.plotly_chart(fig_trend, use_container_width=True)
-
-    # =========================
-    # 🔮 PREVISÃO DE BACKLOG
-    # =========================
-    st.subheader("🔮 Previsão de Backlog (Próximos Dias)")
-
-    if "data_referencia" in df.columns:
-
-        tendencia = (
-            df.groupby("data_referencia")
-            .size()
-            .reset_index(name="qtd")
-            .sort_values("data_referencia")
-        )
-
-        # média dos últimos 3 dias
-        tendencia["media_movel"] = tendencia["qtd"].rolling(3).mean()
-
-        # previsão = último valor da média
-        if not tendencia["media_movel"].dropna().empty:
-            previsao = tendencia["media_movel"].iloc[-1]
-
-            st.metric("📊 Previsão Próximo Dia", int(previsao))
-
-            if previsao > tendencia["qtd"].iloc[-1]:
-                st.warning("📈 Tendência de aumento do backlog")
-            else:
-                st.success("📉 Tendência de queda do backlog")
+    st.plotly_chart(fig_trend, use_container_width=True)
 
     # =========================
-    # ⏱️ AGING + CD
-    # =========================
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("⏱️ Distribuição de Aging")
-
-        df["faixa"] = pd.cut(
-            df["horas_backlog_snapshot"],
-            bins=[0, 24, 48, 72, 9999],
-            labels=["0-24h", "24-48h", "48-72h", "72h+"]
-        )
-
-        faixa = df["faixa"].value_counts().reset_index()
-        faixa.columns = ["faixa", "qtd"]
-
-        fig_aging = px.bar(
-            faixa,
-            x="faixa",
-            y="qtd",
-            text="qtd",
-            color="faixa"
-        )
-
-        st.plotly_chart(fig_aging, use_container_width=True)
-
-    with col2:
-        st.subheader("📍 Pré-Entrega")
-
-        top_pre = (
-            df.groupby("pre_entrega")
-            .size()
-            .sort_values(ascending=False)
-            .head(10)
-            .reset_index(name="qtd")
-        )
-
-        fig_cd = px.bar(
-            top_pre,
-            x="pre_entrega",
-            y="qtd",
-            text="qtd",
-            color_discrete_sequence=[COR_VERMELHO]
-        )
-
-        st.plotly_chart(fig_cd, use_container_width=True)
-
-    # =========================
-    # 🗺️ ESTADO (COM FILTRO)
+    # 🗺️ ESTADO
     # =========================
     st.subheader("🗺️ Backlog por Estado")
 
-    with st.expander("🔎 Filtrar estados"):
-
-        estados = df["estado"].dropna().unique()
-
-        estado_sel = []
-        for e in estados:
-            if st.checkbox(e, value=True, key=f"estado_{e}"):
-                estado_sel.append(e)
-
-    df_estado = df_filtrado[df_filtrado["estado"].isin(estado_sel)]
-
-    estado = (
-        df_estado.groupby("estado")
-        .size()
-        .sort_values(ascending=False)
-        .reset_index(name="qtd")
-    )
+    df_estado = df.groupby("estado").size().reset_index(name="qtd")
 
     fig_estado = px.bar(
-        estado,
+        df_estado.sort_values("qtd", ascending=False),
         x="estado",
         y="qtd",
         text="qtd",
-        color_discrete_sequence=[COR_VERDE]
+        color_discrete_sequence=[COLOR_MAP["estado"]]
     )
 
     st.plotly_chart(fig_estado, use_container_width=True)
@@ -267,149 +142,72 @@ def render():
     # =========================
     # 🏙️ CIDADE
     # =========================
-    st.subheader("🏙️ Backlog por Cidade")
+    st.subheader("🏙️ Backlog por Cidades")
 
-    with st.expander("🔎 Filtrar cidades"):
-
-        cidades = df["cidade"].dropna().unique()
-
-        cidade_sel = []
-        for c in cidades:
-            if st.checkbox(c, value=True, key=f"cidade_{c}"):
-                cidade_sel.append(c)
-
-    df_cidade = df_filtrado[df_filtrado["cidade"].isin(cidade_sel)]
-
-    cidade = (
-        df_cidade.groupby("cidade")
-        .size()
-        .sort_values(ascending=False)
-        .head(10)
-        .reset_index(name="qtd")
-    )
+    df_cidade = df.groupby("cidade").size().reset_index(name="qtd")
 
     fig_cidade = px.bar(
-        cidade,
+        df_cidade.sort_values("qtd", ascending=False).head(10),
         x="cidade",
         y="qtd",
         text="qtd",
-        color_discrete_sequence=[COR_CINZA]
+        color_discrete_sequence=[COLOR_MAP["cidade"]]
     )
 
     st.plotly_chart(fig_cidade, use_container_width=True)
 
     # =========================
-    # 👤 CLIENTE (COM FILTRO)
+    # 👤 CLIENTE
     # =========================
-    st.subheader("👤 Clientes com Maior Backlog")
+    st.subheader("👤 Backlog porClientes")
 
-    with st.expander("🔎 Filtrar clientes"):
-
-        clientes = df["cliente"].dropna().unique()
-
-        cliente_sel = []
-        for c in clientes:
-            if st.checkbox(c, value=True, key=f"cliente_{c}"):
-                cliente_sel.append(c)
-
-    df_cliente = df_filtrado[df_filtrado["cliente"].isin(cliente_sel)]
-
-    cliente = (
-        df_cliente.groupby("cliente")
-        .size()
-        .sort_values(ascending=False)
-        .reset_index(name="qtd")
-    )
+    df_cliente = df.groupby("cliente").size().reset_index(name="qtd")
 
     fig_cliente = px.bar(
-        cliente,
+        df_cliente.sort_values("qtd", ascending=False).head(10),
         x="cliente",
         y="qtd",
         text="qtd",
-        color_discrete_sequence=[COR_VERMELHO]
+        color_discrete_sequence=[COLOR_MAP["cliente"]]
     )
 
     st.plotly_chart(fig_cliente, use_container_width=True)
 
     # =========================
-    # 🚨 SCORE DE RISCO
+    # 🚚 PRÉ-ENTREGA
     # =========================
-    st.subheader("🚨 Score de Risco")
+    st.subheader("🚚 Backlog por ponto de Pré-Entrega")
 
-    risco = (
-        df.groupby(["cliente", "pre_entrega"])
-        .agg(
-            qtd=("waybill", "count"),
-            critico=("horas_backlog_snapshot", lambda x: (x > 72).sum())
-        )
-        .reset_index()
+    df_pre = (
+        df.groupby("pre_entrega")
+        .size()
+        .reset_index(name="qtd")
+        .sort_values("qtd", ascending=False)
+        .head(10)
     )
 
-    risco["perc"] = (risco["critico"] / risco["qtd"]) * 100
-
-    st.dataframe(
-        risco.sort_values("perc", ascending=False).head(10),
-        use_container_width=True
+    fig_pre = px.bar(
+        df_pre,
+        x="pre_entrega",
+        y="qtd",
+        text="qtd",
+        color_discrete_sequence=[COLOR_MAP["pre_entrega"]]
     )
 
-    # =========================
-    # 🔥 HEATMAP CRÍTICO + TOP
-    # =========================
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("🔥 Heatmap - Backlog Crítico (>72h)")
-
-        df_critico = df[df["horas_backlog_snapshot"] > 72]
-
-        if not df_critico.empty:
-            matriz = (
-                df_critico.groupby(["cliente", "pre_entrega"])
-                .size()
-                .reset_index(name="qtd")
-            )
-
-            pivot = matriz.pivot(
-                index="cliente",
-                columns="pre_entrega",
-                values="qtd"
-            ).fillna(0)
-
-            fig_heat = px.imshow(
-                pivot,
-                text_auto=True,
-                color_continuous_scale="Reds"
-            )
-
-            st.plotly_chart(fig_heat, use_container_width=True)
-        else:
-            st.info("Sem backlog crítico")
-
-    with col2:
-        st.subheader("🚨 Top Problemas (Cliente x CD)")
-
-        matriz = (
-            df.groupby(["cliente", "pre_entrega"])
-            .size()
-            .reset_index(name="qtd")
-            .sort_values("qtd", ascending=False)
-        )
-
-        st.dataframe(matriz.head(10), use_container_width=True)
+    st.plotly_chart(fig_pre, use_container_width=True)
 
     # =========================
-    # 🔎 DETALHAMENTO FINAL
+    # 📋 TABELA FINAL
     # =========================
-    st.subheader("🔎 Detalhamento Operacional")
+    st.subheader("📋 Waybills em Backlog")
 
-    st.dataframe(
-        df[[
-            "waybill",
-            "cliente",
-            "estado",
-            "cidade",
-            "pre_entrega",
-            "horas_backlog_snapshot"
-        ]],
-        use_container_width=True
+    st.dataframe(df, use_container_width=True)
+
+    csv = df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        "⬇️ Baixar CSV",
+        csv,
+        "backlog_filtrado.csv",
+        "text/csv"
     )

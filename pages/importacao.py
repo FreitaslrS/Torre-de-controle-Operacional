@@ -1,19 +1,21 @@
 import streamlit as st
-import os
 import time
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from core.database import conectar
+from core.database import conectar, executar
+from core.repository import salvar_log_importacao
+from core.processar_arquivo import importar_excel
+
 
 @st.cache_resource
 def get_conexao():
     return conectar()
 
-from core.repository import salvar_log_importacao
-from core.processar_arquivo import importar_excel
 
-
+# =========================
+# 🔐 LOGIN
+# =========================
 def obter_senha():
     return "Ss.sist@05060711*"
 
@@ -39,7 +41,9 @@ def verificar_senha():
     return False
 
 
-# 🔥 função paralela
+# =========================
+# 🚀 PROCESSAMENTO PARALELO
+# =========================
 def processar_arquivo_individual(arquivo, data_ref):
     inicio = time.time()
 
@@ -60,11 +64,13 @@ def processar_arquivo_individual(arquivo, data_ref):
     }
 
 
+# =========================
+# 🎯 TELA
+# =========================
 def render():
+
     if not verificar_senha():
         return
-
-
 
     st.title("📥 Importar Planilhas")
 
@@ -76,13 +82,12 @@ def render():
         accept_multiple_files=True
     )
 
-    # estado inicial
     if "resultado_importacao" not in st.session_state:
         st.session_state.resultado_importacao = None
         st.session_state.total_importado = 0
 
     # ========================
-    # 🚀 IMPORTAÇÃO PARALELA
+    # 🚀 IMPORTAR
     # ========================
     if st.button("Importar"):
 
@@ -93,6 +98,9 @@ def render():
         if not arquivos:
             st.warning("Selecione arquivos")
             return
+
+        # 🔥 LIMPA BACKLOG ANTIGO (AQUI ESTÁ O OURO)
+        executar("DELETE FROM pedidos WHERE status = 'backlog'")
 
         progress = st.progress(0)
         status_text = st.empty()
@@ -130,11 +138,25 @@ def render():
                 progress.progress((i + 1) / len(arquivos))
                 status_text.text(f"Finalizado: {r['arquivo']}")
 
-        # salvar logs
+        # ========================
+        # 💾 SALVAR LOG
+        # ========================
         df_logs = pd.DataFrame(logs)
         salvar_log_importacao(df_logs)
 
-        # salvar resultado
+        # ========================
+        # 🔥 REFRESH DAS VIEWS
+        # ========================
+        executar("REFRESH MATERIALIZED VIEW mv_backlog")
+        executar("REFRESH MATERIALIZED VIEW mv_backlog_kpis")
+        executar("REFRESH MATERIALIZED VIEW mv_backlog_estado")
+        executar("REFRESH MATERIALIZED VIEW mv_backlog_cidade")
+        executar("REFRESH MATERIALIZED VIEW mv_backlog_cliente")
+        executar("REFRESH MATERIALIZED VIEW mv_backlog_tempo")
+
+        # ========================
+        # 🔄 CACHE
+        # ========================
         st.session_state.resultado_importacao = resultados
         st.session_state.total_importado = total_registros
 
@@ -142,7 +164,7 @@ def render():
         st.rerun()
 
     # ========================
-    # 📊 RESULTADOS
+    # 📊 RESULTADO
     # ========================
     if st.session_state.resultado_importacao is not None:
 
@@ -156,12 +178,14 @@ def render():
 
     st.divider()
 
-    st.divider()
+    # ========================
+    # 📜 HISTÓRICO
+    # ========================
     st.subheader("📊 Histórico de Importações")
 
-    con = get_conexao()
+    from core.database import consultar
 
-    df_hist = con.execute("""
+    df_hist = consultar("""
         SELECT 
             nome_arquivo,
             COUNT(*) as registros,
@@ -169,7 +193,7 @@ def render():
         FROM pedidos
         GROUP BY nome_arquivo
         ORDER BY data_importacao DESC
-    """).df()
+    """)
 
     if df_hist.empty:
         st.info("Nenhum arquivo importado ainda")
@@ -186,36 +210,15 @@ def render():
                 st.success(f"{row['nome_arquivo']} excluído")
                 st.rerun()
 
-    # ========================
-    # 🧨 RESET
-    # ========================
+
+# ========================
+# 🗑️ DELETE
+# ========================
 def excluir_arquivo(nome_arquivo):
-    con = get_conexao()
 
-    con.execute("DELETE FROM pedidos WHERE nome_arquivo = ?", [nome_arquivo])
-
-    con.execute("""
-        CREATE OR REPLACE TABLE backlog_atual AS
-        SELECT *
-        FROM (
-            SELECT
-                waybill,
-                cliente,
-                estado,
-                cidade,
-                pre_entrega,
-                entrada_hub1,
-                horas_backlog_snapshot,
-                faixa_backlog_snapshot,
-                CURRENT_TIMESTAMP as data_atualizacao,
-                ROW_NUMBER() OVER (
-                    PARTITION BY waybill
-                    ORDER BY data_referencia DESC
-                ) as rn
-            FROM pedidos
-            WHERE status = 'backlog'
-        )
-        WHERE rn = 1
-    """)
+    executar(
+        "DELETE FROM pedidos WHERE nome_arquivo = %s",
+        [nome_arquivo]
+    )
 
     st.cache_data.clear()
