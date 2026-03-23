@@ -1,12 +1,6 @@
 import streamlit as st
 import plotly.express as px
-
-from core.repository import buscar_backlog_periodo
-
-@st.cache_data(ttl=120)
-def carregar_backlog(data_inicio, data_fim):
-    from core.repository import buscar_backlog_periodo
-    return buscar_backlog_periodo(data_inicio, data_fim)
+from core.repository import buscar_backlog_fast
 
 # =========================
 # 🎨 CORES EMPRESA
@@ -41,8 +35,9 @@ def render():
         st.warning("Selecione o período")
         return
 
-    from core.repository import buscar_backlog_fast
-
+    # =========================
+    # 🚀 DADOS (MATERIALIZED VIEW)
+    # =========================
     df = buscar_backlog_fast(data_inicio, data_fim)
 
     if df.empty:
@@ -50,7 +45,7 @@ def render():
         return
 
     # =========================
-    # 🎛️ FILTROS DINÂMICOS
+    # 🎛️ FILTROS
     # =========================
     col3, col4 = st.columns(2)
 
@@ -71,36 +66,21 @@ def render():
         df = df[df["cliente"].isin(clientes)]
 
     # =========================
-    # ⏱️ FILTRO DE FAIXA
+    # 📊 KPIs (AGREGADOS DA MV)
     # =========================
-    faixa = st.radio(
-        "⏱️ Faixa de backlog",
-        ["Todos", "24h+", "48h+", "72h+"]
-    )
-
-    if faixa == "24h+":
-        df = df[df["horas_backlog_snapshot"] > 24]
-    elif faixa == "48h+":
-        df = df[df["horas_backlog_snapshot"] > 48]
-    elif faixa == "72h+":
-        df = df[df["horas_backlog_snapshot"] > 72]
-
-    # =========================
-    # 📊 KPIs
-    # =========================
-    total = len(df)
-    backlog_24 = len(df[df["horas_backlog_snapshot"] > 24])
-    backlog_48 = len(df[df["horas_backlog_snapshot"] > 48])
-    backlog_72 = len(df[df["horas_backlog_snapshot"] > 72])
+    total = df["qtd"].sum()
+    backlog_24 = df["backlog_24"].sum()
+    backlog_48 = df["backlog_48"].sum()
+    backlog_72 = df["backlog_72"].sum()
 
     perc = (backlog_72 / total * 100) if total else 0
 
     col1, col2, col3, col4, col5 = st.columns(5)
 
-    col1.metric("📦 Total", total)
-    col2.metric("⚠️ >24h", backlog_24)
-    col3.metric("⏳ >48h", backlog_48)
-    col4.metric("🚨 >72h", backlog_72)
+    col1.metric("📦 Total", int(total))
+    col2.metric("⚠️ >24h", int(backlog_24))
+    col3.metric("⏳ >48h", int(backlog_48))
+    col4.metric("🚨 >72h", int(backlog_72))
     col5.metric("📊 % crítico", f"{perc:.1f}%")
 
     if perc > 25:
@@ -117,7 +97,7 @@ def render():
     # =========================
     st.subheader("📈 Evolução do Backlog")
 
-    df_tempo = df.groupby("data_referencia").size().reset_index(name="qtd")
+    df_tempo = df.groupby("data_referencia")["qtd"].sum().reset_index()
 
     fig_trend = px.line(
         df_tempo,
@@ -134,7 +114,7 @@ def render():
     # =========================
     st.subheader("🗺️ Backlog por Estado")
 
-    df_estado = df.groupby("estado").size().reset_index(name="qtd")
+    df_estado = df.groupby("estado")["qtd"].sum().reset_index()
 
     fig_estado = px.bar(
         df_estado.sort_values("qtd", ascending=False),
@@ -151,7 +131,7 @@ def render():
     # =========================
     st.subheader("🏙️ Backlog por Cidades")
 
-    df_cidade = df.groupby("cidade").size().reset_index(name="qtd")
+    df_cidade = df.groupby("cidade")["qtd"].sum().reset_index()
 
     fig_cidade = px.bar(
         df_cidade.sort_values("qtd", ascending=False).head(10),
@@ -166,9 +146,9 @@ def render():
     # =========================
     # 👤 CLIENTE
     # =========================
-    st.subheader("👤 Backlog porClientes")
+    st.subheader("👤 Backlog por Clientes")
 
-    df_cliente = df.groupby("cliente").size().reset_index(name="qtd")
+    df_cliente = df.groupby("cliente")["qtd"].sum().reset_index()
 
     fig_cliente = px.bar(
         df_cliente.sort_values("qtd", ascending=False).head(10),
@@ -183,12 +163,12 @@ def render():
     # =========================
     # 🚚 PRÉ-ENTREGA
     # =========================
-    st.subheader("🚚 Backlog por ponto de Pré-Entrega")
+    st.subheader("🚚 Backlog por Pré-Entrega")
 
     df_pre = (
-        df.groupby("pre_entrega")
-        .size()
-        .reset_index(name="qtd")
+        df.groupby("pre_entrega")["qtd"]
+        .sum()
+        .reset_index()
         .sort_values("qtd", ascending=False)
         .head(10)
     )
@@ -206,7 +186,7 @@ def render():
     # =========================
     # 📋 TABELA FINAL
     # =========================
-    st.subheader("📋 Waybills em Backlog")
+    st.subheader("📋 Dados consolidados")
 
     st.dataframe(df, use_container_width=True)
 
@@ -215,6 +195,6 @@ def render():
     st.download_button(
         "⬇️ Baixar CSV",
         csv,
-        "backlog_filtrado.csv",
+        "backlog_mv.csv",
         "text/csv"
     )
