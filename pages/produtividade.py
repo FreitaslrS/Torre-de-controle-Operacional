@@ -1,17 +1,47 @@
 import streamlit as st
-from core.repository import buscar_pedidos
+from core.repository import buscar_produtividade
 
 def render():
     st.title("⚡ Produtividade")
 
-    df = buscar_pedidos()
+    df = buscar_produtividade()
 
     if df.empty:
         st.warning("Sem dados")
         return
 
-    total = len(df)
+    total = df["volumes"].sum()
 
-    st.metric("Total processado", total)
+    st.metric("📦 Total processado", total)
+
+    # PRODUTIVIDADE POR OPERADOR
+    st.subheader("👤 Produtividade por Operador")
+
+    df_op = df.groupby("operador")["volumes"].sum().reset_index()
+
+    import plotly.express as px
+
+    fig = px.bar(
+        df_op.sort_values("volumes", ascending=False),
+        x="operador",
+        y="volumes",
+        text="volumes"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # POR HUB
+    st.subheader("🏭 Produtividade por HUB")
+
+    df_hub = df.groupby("hub")["volumes"].sum().reset_index()
+
+    fig2 = px.bar(
+        df_hub.sort_values("volumes", ascending=False),
+        x="hub",
+        y="volumes",
+        text="volumes"
+    )
+
+    st.plotly_chart(fig2, use_container_width=True)
 
     st.dataframe(df)

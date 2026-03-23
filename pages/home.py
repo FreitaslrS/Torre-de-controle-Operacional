@@ -1,10 +1,12 @@
 import streamlit as st
-from core.repository import buscar_pedidos
+from core.database import consultar
 
-
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def carregar():
-    return buscar_pedidos()
+    return consultar("""
+        SELECT COUNT(*) as total
+        FROM backlog_atual
+    """)
 
 
 def render():
@@ -16,7 +18,7 @@ def render():
         st.warning("Sem dados carregados.")
         return
 
-    total = len(df)
+    total = int(df["total"].iloc[0]) if not df.empty else 0
 
     col1 = st.columns(1)[0]
     col1.metric("📦 Total Pedidos", total)

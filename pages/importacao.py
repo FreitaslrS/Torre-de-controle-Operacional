@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.database import conectar, executar
 from core.repository import salvar_log_importacao
-from core.processar_arquivo import importar_excel
+from core.processar_arquivo import importar_excel, importar_produtividade
 
 
 @st.cache_resource
@@ -44,12 +44,21 @@ def verificar_senha():
 # =========================
 # 🚀 PROCESSAMENTO PARALELO
 # =========================
-def processar_arquivo_individual(arquivo, data_ref):
+def processar_arquivo_individual(arquivo, data_ref, tipo_importacao):
     inicio = time.time()
 
     try:
-        qtd = importar_excel(arquivo, data_ref)
+        if tipo_importacao == "Backlog":
+            qtd = importar_excel(arquivo, data_ref)
+
+        elif tipo_importacao == "Produtividade":
+            qtd = importar_produtividade(arquivo)
+
+        else:
+            raise Exception("Tipo de importação inválido")
+
         status = "Sucesso"
+
     except Exception as e:
         qtd = 0
         status = str(e)
@@ -86,12 +95,20 @@ def render():
         st.session_state.resultado_importacao = None
         st.session_state.total_importado = 0
 
+    # ================================
+    # 🚀 ESCOLHA DO TIPO DE ARQUIVO
+    # ================================
+    tipo_importacao = st.selectbox(
+        "Tipo de Importação",
+        ["Backlog", "Produtividade"]
+    )
+
     # ========================
     # 🚀 IMPORTAR
     # ========================
     if st.button("Importar"):
 
-        if not data_ref:
+        if tipo_importacao == "Backlog" and not data_ref:
             st.warning("Selecione a data de referência")
             return
 
@@ -108,19 +125,20 @@ def render():
 
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = [
-                executor.submit(processar_arquivo_individual, arq, data_ref)
+                executor.submit(processar_arquivo_individual, arq, data_ref, tipo_importacao)
                 for arq in arquivos
             ]
 
             for i, future in enumerate(as_completed(futures)):
                 r = future.result()
 
-                total_registros += r["registros"]
+                registros = r["registros"] or 0
+                total_registros += registros
 
                 resultados.append({
                     "arquivo": r["arquivo"],
                     "status": r["status"],
-                    "registros": r["registros"]
+                    "registros": registros
                 })
 
                 logs.append({

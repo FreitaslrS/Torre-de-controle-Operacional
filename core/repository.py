@@ -1,55 +1,5 @@
-from core.database import consultar, executar, conectar_duckdb
-
-
-# =========================
-# 📥 INSERÇÃO (PARQUET) - CORRIGIDO
-# =========================
-def inserir_pedidos_parquet(caminho_parquet):
-    executar(f"""
-        INSERT INTO pedidos (
-            waybill,
-            cliente,
-            estado,
-            cidade,
-            pre_entrega,
-            entrada_hub1,
-            saida_hub1,
-            entrada_hub2,
-            saida_hub2,
-            entrada_hub3,
-            saida_hub3,
-            nome_arquivo,
-            data_referencia,
-            data_importacao,
-            horas_backlog_snapshot,
-            faixa_backlog_snapshot,
-            status
-        )
-        SELECT
-            waybill,
-            cliente,
-            estado,
-            cidade,
-            pre_entrega,
-            entrada_hub1,
-            saida_hub1,
-            entrada_hub2,
-            saida_hub2,
-            entrada_hub3,
-            saida_hub3,
-            nome_arquivo,
-            data_referencia,
-            data_importacao,
-            horas_backlog_snapshot,
-            faixa_backlog_snapshot,
-            status
-        FROM read_parquet('{caminho_parquet}') t
-        WHERE NOT EXISTS (
-            SELECT 1 FROM pedidos p
-            WHERE p.waybill = t.waybill
-            AND p.data_referencia = t.data_referencia
-        )
-    """)
+from core.database import consultar, executar
+from psycopg2.extras import execute_values
 
 
 # =========================
@@ -77,10 +27,10 @@ def listar_arquivos():
 
 
 # =========================
-# 📊 PEDIDOS GERAIS
+# 📊 PEDIDOS
 # =========================
-def buscar_pedidos():
-    return consultar("""
+def buscar_pedidos(limit=2000):
+    return consultar(f"""
         SELECT 
             waybill,
             cliente,
@@ -90,25 +40,25 @@ def buscar_pedidos():
             horas_backlog_snapshot,
             data_referencia
         FROM pedidos
+        ORDER BY data_referencia DESC
+        LIMIT {limit}
     """)
 
 
 # =========================
-# 🔥 BACKLOG POR PERÍODO
+# 📊 BACKLOG HISTÓRICO
 # =========================
-def buscar_backlog_periodo(data_inicio, data_fim):
+def buscar_backlog_historico(data_inicio, data_fim):
     return consultar("""
         SELECT 
-            waybill,
-            cliente,
+            data_referencia,
             estado,
-            cidade,
             pre_entrega,
-            horas_backlog_snapshot,
-            data_referencia
+            COUNT(*) as qtd
         FROM pedidos
-        WHERE data_referencia BETWEEN %s AND %s
-        AND horas_backlog_snapshot IS NOT NULL
+        WHERE status = 'backlog'
+        AND data_referencia BETWEEN %s AND %s
+        GROUP BY data_referencia, estado, pre_entrega
     """, [data_inicio, data_fim])
 
 
@@ -131,24 +81,60 @@ def buscar_backlog_atual():
 
 
 # =========================
-# 📊 BACKLOG OTIMIZADO
+# ⚡ PRODUTIVIDADE
 # =========================
-def buscar_backlog_fast(data_inicio, data_fim):
+def buscar_produtividade():
     return consultar("""
-        SELECT *
-        FROM mv_backlog
-        WHERE data_referencia BETWEEN %s AND %s
-    """, [data_inicio, data_fim])
-
-
-# =========================
-# 💾 LOG IMPORTAÇÃO
-# =========================
-def salvar_log_importacao(logs):
-    con = conectar_duckdb()
-    con.register("logs_temp", logs)
-
-    con.execute("""
-        INSERT INTO log_importacoes
-        SELECT * FROM logs_temp
+        SELECT 
+            operador,
+            hub,
+            data,
+            volumes,
+            tempo_medio
+        FROM produtividade
     """)
+
+
+# =========================
+# 💾 LOG IMPORTAÇÃO (OTIMIZADO)
+# =========================
+def salvar_log_importacao(logs_df):
+    if logs_df.empty:
+        return
+
+    from core.database import conectar
+    conn = conectar()
+    cur = conn.cursor()
+
+    logs_df = logs_df.fillna(0)
+
+    values = [
+    (
+        int(row["id"] or 0),
+        row["nome_arquivo"],
+        row["status"],
+        int(row["registros"] or 0),
+        float(row["tempo_segundos"] or 0),
+        row["data_importacao"]
+    )
+    for _, row in logs_df.iterrows()
+]
+
+    execute_values(
+        cur,
+        """
+        INSERT INTO log_importacoes (
+            id,
+            nome_arquivo,
+            status,
+            registros,
+            tempo_segundos,
+            data_importacao
+        ) VALUES %s
+        """,
+        values
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()

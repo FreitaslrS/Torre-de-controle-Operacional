@@ -1,4 +1,3 @@
-import duckdb
 import psycopg2
 import os
 import pandas as pd
@@ -7,75 +6,49 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # =========================
-# 🧱 DUCKDB (LOCAL)
-# =========================
-BASE_DIR = os.path.abspath(os.getcwd())
-DB_DIR = os.path.join(BASE_DIR, "data")
-DB_PATH = os.path.join(DB_DIR, "logistica.db")
-
-
-def conectar_duckdb():
-    os.makedirs(DB_DIR, exist_ok=True)
-
-    con = duckdb.connect(DB_PATH)
-    con.execute("PRAGMA threads=4")
-    con.execute("PRAGMA memory_limit='1GB'")
-
-    return con
-
-
-# =========================
-# ☁️ POSTGRES (NEON)
+# 🔗 CONEXÃO NEON
 # =========================
 def conectar_postgres():
-    return psycopg2.connect(os.getenv("DATABASE_URL"))
-
-# =========================
-# 🔄 CONEXÃO INTELIGENTE
-# =========================
-def conectar():
     DATABASE_URL = os.getenv("DATABASE_URL")
 
     if not DATABASE_URL:
         raise Exception("DATABASE_URL não configurada!")
 
+    return psycopg2.connect(
+        DATABASE_URL,
+        connect_timeout=10,
+        sslmode="require"
+    )
+
+
+def conectar():
     return conectar_postgres()
 
 
 # =========================
-# 🚀 EXECUTAR (INSERT/DELETE/UPDATE)
+# 🚀 EXECUTAR
 # =========================
 def executar(query, params=None):
     conn = conectar()
+    cur = conn.cursor()
 
-    # Postgres
-    if hasattr(conn, "cursor"):
-        cur = conn.cursor()
-        cur.execute(query, params or ())
-        conn.commit()
-        cur.close()
-        conn.close()
+    cur.execute(query, params or ())
+    conn.commit()
 
-    # DuckDB
-    else:
-        conn.execute(query, params or ())
+    cur.close()
+    conn.close()
 
 
 # =========================
-# 📊 CONSULTAR (SELECT)
+# 📊 CONSULTAR (OTIMIZADO)
 # =========================
 def consultar(query, params=None):
     conn = conectar()
 
-    # Postgres
-    if hasattr(conn, "cursor"):
-        df = pd.read_sql(query, conn, params=params)
-        conn.close()
-        return df
+    df = pd.read_sql(query, conn, params=params)
 
-    # DuckDB
-    else:
-        return conn.execute(query, params or ()).df()
+    conn.close()
+    return df
 
 
 # =========================
@@ -118,6 +91,19 @@ def inicializar_banco():
         )
     """)
 
+    executar("""
+        CREATE TABLE IF NOT EXISTS produtividade (
+            operador TEXT,
+            hub TEXT,
+            data DATE,
+            volumes INTEGER,
+            tempo_medio DOUBLE PRECISION,
+            nome_arquivo TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
+    # LOG
     executar("""
         CREATE TABLE IF NOT EXISTS log_importacoes (
             id INTEGER,

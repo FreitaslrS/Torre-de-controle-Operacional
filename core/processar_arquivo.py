@@ -1,7 +1,7 @@
 import pandas as pd
 from datetime import datetime
 from psycopg2.extras import execute_values
-from core.database import conectar_postgres
+from core.database import conectar_postgres, executar
 
 
 COLUNAS_MAPEAMENTO = {
@@ -40,31 +40,24 @@ def classificar_faixa(h):
         return "72h+"
 
 
-def tratar_valor(v):
-    if pd.isna(v):
-        return None
-    return v
+def limpar_base():
+    executar("""
+        DELETE FROM pedidos
+        WHERE data_referencia < CURRENT_DATE - INTERVAL '30 days'
+    """)
 
 
 def preparar_dados(arquivo, data_referencia):
     df = pd.read_excel(arquivo, engine="openpyxl")
     df.columns = df.columns.str.strip()
 
-    if df.empty:
-        raise ValueError("Arquivo vazio")
-
     dados = pd.DataFrame()
 
-    # =========================
-    # 🔄 MAPEAMENTO
-    # =========================
     for coluna_padrao, aliases in COLUNAS_MAPEAMENTO.items():
         col = encontrar_coluna_mapeada(df, aliases)
         dados[coluna_padrao] = df[col] if col else None
 
-    # =========================
-    # 🕒 DATETIME
-    # =========================
+    # datas
     for col in [
         "entrada_hub1","saida_hub1",
         "entrada_hub2","saida_hub2",
@@ -72,35 +65,26 @@ def preparar_dados(arquivo, data_referencia):
     ]:
         dados[col] = pd.to_datetime(dados[col], errors="coerce")
 
-    # =========================
-    # 🧹 LIMPEZA WAYBILL
-    # =========================
+    # waybill
     dados["waybill"] = dados["waybill"].astype(str).str.strip()
     dados = dados[(dados["waybill"] != "") & (dados["waybill"].str.lower() != "nan")]
 
     agora = pd.to_datetime(data_referencia)
 
-    mask = (dados["entrada_hub1"].notna() & dados["saida_hub1"].isna())
+    # 🔥 REGRA DE BACKLOG (AJUSTADA)
+    mask = dados["entrada_hub1"].notna()
 
-    dados["horas_backlog_snapshot"] = None
-
-    # =========================
-    # 🔥 CALCULO BACKLOG
-    # =========================
-    dados.loc[mask, "horas_backlog_snapshot"] = (
-        (agora - dados.loc[mask, "entrada_hub1"]).dt.total_seconds() / 3600
+    dados["horas_backlog_snapshot"] = (
+        (agora - dados["entrada_hub1"]).dt.total_seconds() / 3600
     )
 
-    # 🔥 CORREÇÃO CRÍTICA (EVITA ERRO NO NEON)
-    dados["horas_backlog_snapshot"] = dados["horas_backlog_snapshot"].fillna(0)
-
-    # =========================
-    # 📊 CLASSIFICAÇÃO
-    # =========================
     dados["faixa_backlog_snapshot"] = dados["horas_backlog_snapshot"].apply(classificar_faixa)
 
     dados["status"] = "finalizado"
     dados.loc[mask, "status"] = "backlog"
+
+    # ❌ NÃO filtrar tudo (mantém dados)
+    # dados = dados[dados["status"] == "backlog"]
 
     dados["data_referencia"] = agora.date()
     dados["data_importacao"] = datetime.now()
@@ -113,28 +97,44 @@ def inserir_em_massa(df):
     conn = conectar_postgres()
     cur = conn.cursor()
 
-    cols = [
-        "waybill","cliente","estado","cidade","pre_entrega",
-        "entrada_hub1","saida_hub1",
-        "entrada_hub2","saida_hub2",
-        "entrada_hub3","saida_hub3",
-        "nome_arquivo","data_referencia","data_importacao",
-        "horas_backlog_snapshot","faixa_backlog_snapshot","status"
+    colunas = [
+        "waybill",
+        "cliente",
+        "estado",
+        "cidade",
+        "pre_entrega",
+        "entrada_hub1",
+        "saida_hub1",
+        "entrada_hub2",
+        "saida_hub2",
+        "entrada_hub3",
+        "saida_hub3",
+        "nome_arquivo",
+        "data_referencia",
+        "data_importacao",
+        "horas_backlog_snapshot",
+        "faixa_backlog_snapshot",
+        "status"
     ]
 
-    df = df[cols]
+    df = df[colunas]
 
-    values = [
-        tuple(tratar_valor(v) for v in row)
-        for row in df.to_numpy()
-    ]
+    # 🔥 FUNÇÃO QUE MATA QUALQUER NaT / NaN
+    def tratar_valor(v):
+        if pd.isna(v):
+            return None
+        return v
 
-    query = f"""
-        INSERT INTO pedidos ({','.join(cols)})
-        VALUES %s
-    """
+    values = []
+    for row in df.itertuples(index=False, name=None):
+        linha = tuple(tratar_valor(v) for v in row)
+        values.append(linha)
 
-    execute_values(cur, query, values)
+    execute_values(
+        cur,
+        f"INSERT INTO pedidos ({','.join(colunas)}) VALUES %s",
+        values
+    )
 
     conn.commit()
     cur.close()
@@ -147,25 +147,12 @@ def importar_excel(arquivo, data_referencia):
     if dados.empty:
         return 0
 
-    conn = conectar_postgres()
-    cur = conn.cursor()
-
-    # remove arquivo antigo
-    cur.execute("DELETE FROM pedidos WHERE nome_arquivo = %s", [arquivo.name])
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    dados = dados.drop_duplicates(subset=["waybill", "data_referencia"])
+    dados = dados.drop_duplicates(subset=["waybill"])
 
     inserir_em_massa(dados)
 
-    from core.database import executar
+    executar("TRUNCATE backlog_atual")
 
-    # =========================
-    # 🔥 ATUALIZA BACKLOG_ATUAL (UPSERT)
-    # =========================
     executar("""
         INSERT INTO backlog_atual (
             waybill,
@@ -178,7 +165,7 @@ def importar_excel(arquivo, data_referencia):
             faixa_backlog_snapshot,
             data_atualizacao
         )
-        SELECT
+        SELECT DISTINCT ON (waybill)
             waybill,
             cliente,
             estado,
@@ -187,27 +174,49 @@ def importar_excel(arquivo, data_referencia):
             entrada_hub1,
             horas_backlog_snapshot,
             faixa_backlog_snapshot,
-            CURRENT_TIMESTAMP
-        FROM (
-            SELECT *,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY waybill
-                       ORDER BY data_referencia DESC
-                   ) as rn
-            FROM pedidos
-            WHERE status = 'backlog'
-        ) t
-        WHERE rn = 1
-        ON CONFLICT (waybill)
-        DO UPDATE SET
-            horas_backlog_snapshot = EXCLUDED.horas_backlog_snapshot,
-            faixa_backlog_snapshot = EXCLUDED.faixa_backlog_snapshot,
-            data_atualizacao = CURRENT_TIMESTAMP;
+            NOW()
+        FROM pedidos
+        WHERE status = 'backlog'
+        ORDER BY waybill, data_referencia DESC
     """)
 
-    # =========================
-    # 🔥 ATUALIZA MV
-    # =========================
-    executar("REFRESH MATERIALIZED VIEW mv_backlog")
+    # 🔥 AGORA FORA DO SQL (CORRETO)
+    limpar_base()
 
     return len(dados)
+
+
+def importar_produtividade(arquivo):
+    df = pd.read_excel(arquivo)
+
+    if df.empty:
+        return 0
+
+    df.columns = df.columns.str.lower().str.strip()
+
+    df["data_importacao"] = datetime.now()
+    df["nome_arquivo"] = arquivo.name
+
+    conn = conectar_postgres()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])
+
+    cols = df.columns.tolist()
+
+    values = [
+        tuple(None if pd.isna(v) else v for v in row)
+        for row in df.itertuples(index=False, name=None)
+    ]
+
+    execute_values(
+        cur,
+        f"INSERT INTO produtividade ({','.join(cols)}) VALUES %s",
+        values
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return len(df)
