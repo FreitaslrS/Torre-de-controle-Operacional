@@ -1,6 +1,6 @@
 import pandas as pd
 from datetime import datetime
-from core.database import conectar_duckdb as conectar
+from core.database import conectar
 
 COLUNAS_MAPEAMENTO = {
     "waybill": ["waybill", "awb", "pedido"],

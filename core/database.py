@@ -37,14 +37,10 @@ def conectar_postgres():
 def conectar():
     DATABASE_URL = os.getenv("DATABASE_URL")
 
-    if DATABASE_URL:
-        try:
-            return conectar_postgres()
-        except Exception as e:
-            print("⚠️ Erro no PostgreSQL, usando DuckDB:", e)
-            return conectar_duckdb()
-    else:
-        return conectar_duckdb()
+    if not DATABASE_URL:
+        raise Exception("DATABASE_URL não configurada!")
+
+    return conectar_postgres()
 
 
 # =========================

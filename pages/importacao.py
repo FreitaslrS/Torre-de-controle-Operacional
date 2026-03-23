@@ -100,7 +100,7 @@ def render():
             return
 
         # 🔥 LIMPA BACKLOG ANTIGO (AQUI ESTÁ O OURO)
-        executar("DELETE FROM pedidos WHERE status = 'backlog'")
+        executar("DELETE FROM pedidos WHERE nome_arquivo = %s")
 
         progress = st.progress(0)
         status_text = st.empty()
