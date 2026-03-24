@@ -1,32 +1,68 @@
-/* ===== FUNDO GLOBAL ===== */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap");
+
+/* ===== FONTE ===== */
+html,
+body,
+[class*="css"] {
+    font-family: "Inter", sans-serif;
+}
+
+/* ===== FUNDO ===== */
 html,
 body,
 .stApp {
-    background-color: #0b0f19;
+    background: #f9fafb;
 }
 
-/* ===== CONTAINER PRINCIPAL ===== */
-div[data-testid="stAppViewContainer"] {
-    background-color: #0b0f19;
+/* ===== TEXTO ===== */
+h1,
+h2,
+h3 {
+    color: #111827;
+    font-weight: 600;
 }
 
-/* ===== AREA CENTRAL ===== */
-div[data-testid="stMain"] {
-    background-color: #0b0f19;
+p,
+span,
+label {
+    color: #374151;
 }
 
-/* ===== SIDEBAR ===== */
-section[data-testid="stSidebar"] {
-    background-color: #05070d;
-    border-right: 1px solid #1f2937;
+/* ===== TEXTO SECUNDÁRIO ===== */
+small {
+    color: #6b7280;
 }
 
-/* ===== REMOVE FUNDO BRANCO BUGADO ===== */
-.block-container {
-    background-color: transparent;
+/* ===== KPI ===== */
+[data-testid="metric-container"] {
+    background: white;
+    padding: 18px;
+    border-radius: 14px;
+    border: 1px solid #e5e7eb;
 }
 
-/* remove fundo branco de containers internos */
-div[data-testid="stVerticalBlock"] {
-    background-color: transparent;
+/* ===== BOTÕES ===== */
+.stButton button {
+    background: #16a34a;
+    color: white;
+    border-radius: 10px;
+    border: none;
+}
+
+/* ===== INPUT ===== */
+.stTextInput input,
+.stSelectbox div {
+    background-color: white;
+    color: #111827;
+    border-radius: 10px;
+}
+
+/* ===== SCROLL ===== */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 10px;
 }

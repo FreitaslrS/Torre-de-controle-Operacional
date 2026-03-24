@@ -194,7 +194,8 @@ def render():
         SELECT 
             nome_arquivo,
             COUNT(*) as registros,
-            MAX(data_importacao) as data_importacao
+            MAX(data_importacao) as data_importacao,
+            MAX (data_referencia) as data_referencia
         FROM pedidos
         GROUP BY nome_arquivo
         ORDER BY data_importacao DESC
@@ -204,11 +205,16 @@ def render():
         st.info("Nenhum arquivo importado ainda")
     else:
         for _, row in df_hist.iterrows():
-            col1, col2, col3, col4 = st.columns([4,2,3,1])
+            col1, col2, col3, col4, col5 = st.columns([4,2,3,3,1])
 
             col1.write(row["nome_arquivo"])
             col2.write(row["registros"])
-            col3.write(str(row["data_importacao"]))
+
+            # 📅 DATA REFERÊNCIA (NOVA)
+            col3.write(f"📅: {row['data_referencia']}")
+
+            # ⏱️ DATA IMPORTAÇÃO
+            col4.write(f"⏱️ {row['data_importacao']}")
 
             if col4.button("🗑️", key=row["nome_arquivo"]):
                 excluir_arquivo(row["nome_arquivo"])

@@ -1,19 +1,25 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap");
 
+/* ===== FONTE ===== */
 html,
 body,
 [class*="css"] {
     font-family: "Inter", sans-serif;
 }
 
-body {
+/* ===== FUNDO ===== */
+html,
+body,
+.stApp {
     background: #f9fafb;
 }
 
+/* ===== TEXTO ===== */
 h1,
 h2,
 h3 {
     color: #111827;
+    font-weight: 600;
 }
 
 p,
@@ -22,9 +28,41 @@ label {
     color: #374151;
 }
 
-.card {
-    padding: 20px;
-    border-radius: 16px;
+/* ===== TEXTO SECUNDÁRIO ===== */
+small {
+    color: #6b7280;
+}
+
+/* ===== KPI ===== */
+[data-testid="metric-container"] {
     background: white;
+    padding: 18px;
+    border-radius: 14px;
     border: 1px solid #e5e7eb;
+}
+
+/* ===== BOTÕES ===== */
+.stButton button {
+    background: #16a34a;
+    color: white;
+    border-radius: 10px;
+    border: none;
+}
+
+/* ===== INPUT ===== */
+.stTextInput input,
+.stSelectbox div {
+    background-color: white;
+    color: #111827;
+    border-radius: 10px;
+}
+
+/* ===== SCROLL ===== */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 10px;
 }
