@@ -29,7 +29,7 @@ def listar_arquivos():
 
 
 # =========================
-# 📊 BACKLOG RESUMO (KPI)
+# 📊 BACKLOG RESUMO
 # =========================
 @st.cache_data(ttl=300)
 def buscar_backlog_resumo():
@@ -51,7 +51,7 @@ def buscar_backlog_resumo():
 # 📊 GRÁFICO POR ESTADO
 # =========================
 @st.cache_data(ttl=120)
-def buscar_backlog_por_estado(remover_estados=None, clientes=None):
+def buscar_backlog_por_estado(remover_estados=None, remover_clientes=None, faixa=None):
 
     query = """
         SELECT estado, COUNT(*) as qtd
@@ -65,9 +65,16 @@ def buscar_backlog_por_estado(remover_estados=None, clientes=None):
         query += " AND estado != ALL(%s)"
         params.append(remover_estados)
 
-    if clientes:
-        query += " AND cliente = ANY(%s)"
-        params.append(clientes)
+    if remover_clientes:
+        query += " AND cliente != ALL(%s)"
+        params.append(remover_clientes)
+
+    if faixa == "24h+":
+        query += " AND horas_backlog_snapshot > 24"
+    elif faixa == "48h+":
+        query += " AND horas_backlog_snapshot > 48"
+    elif faixa == "72h+":
+        query += " AND horas_backlog_snapshot > 72"
 
     query += " GROUP BY estado ORDER BY qtd DESC"
 
@@ -78,7 +85,7 @@ def buscar_backlog_por_estado(remover_estados=None, clientes=None):
 # 📊 GRÁFICO POR CLIENTE
 # =========================
 @st.cache_data(ttl=120)
-def buscar_backlog_por_cliente(remover_clientes=None, estados=None):
+def buscar_backlog_por_cliente(remover_clientes=None, remover_estados=None, faixa=None):
 
     query = """
         SELECT cliente, COUNT(*) as qtd
@@ -92,9 +99,16 @@ def buscar_backlog_por_cliente(remover_clientes=None, estados=None):
         query += " AND cliente != ALL(%s)"
         params.append(remover_clientes)
 
-    if estados:
-        query += " AND estado = ANY(%s)"
-        params.append(estados)
+    if remover_estados:
+        query += " AND estado != ALL(%s)"
+        params.append(remover_estados)
+
+    if faixa == "24h+":
+        query += " AND horas_backlog_snapshot > 24"
+    elif faixa == "48h+":
+        query += " AND horas_backlog_snapshot > 48"
+    elif faixa == "72h+":
+        query += " AND horas_backlog_snapshot > 72"
 
     query += " GROUP BY cliente ORDER BY qtd DESC"
 
@@ -105,14 +119,26 @@ def buscar_backlog_por_cliente(remover_clientes=None, estados=None):
 # 🏆 TOP 10 PRÉ-ENTREGA
 # =========================
 @st.cache_data(ttl=120)
-def buscar_top10_pre_entrega():
-    return consultar("""
+def buscar_top10_pre_entrega(faixa=None):
+
+    query = """
         SELECT pre_entrega, COUNT(*) as qtd
         FROM backlog_atual
-        GROUP BY pre_entrega
-        ORDER BY qtd DESC
-        LIMIT 10
-    """)
+        WHERE 1=1
+    """
+
+    params = []
+
+    if faixa == "24h+":
+        query += " AND horas_backlog_snapshot > 24"
+    elif faixa == "48h+":
+        query += " AND horas_backlog_snapshot > 48"
+    elif faixa == "72h+":
+        query += " AND horas_backlog_snapshot > 72"
+
+    query += " GROUP BY pre_entrega ORDER BY qtd DESC LIMIT 10"
+
+    return consultar(query, params)
 
 
 # =========================
@@ -200,6 +226,7 @@ def buscar_backlog_historico(data_inicio, data_fim):
         WHERE status = 'backlog'
         AND data_referencia BETWEEN %s AND %s
     """, [data_inicio, data_fim])
+
 
 # =========================
 # 📊 PRODUTIVIDADE

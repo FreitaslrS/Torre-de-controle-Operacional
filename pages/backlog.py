@@ -71,22 +71,36 @@ def render():
 
     col_f1, col_f2 = st.columns(2)
 
-    estados = col_f1.multiselect(
-        "Estados",
+    remover_estados = col_f1.multiselect(
+        "Remover Estados",
         options=sorted(df_resumo["estado"].unique())
     )
 
-    clientes = col_f2.multiselect(
-        "Clientes",
+    remover_clientes = col_f2.multiselect(
+        "Remover Clientes",
         options=sorted(df_resumo["cliente"].unique())
+    )
+
+    faixa = st.selectbox(
+        "Filtro de Backlog",
+        ["Todos", "24h+", "48h+", "72h+"]
     )
 
     # =========================
     # 📊 DADOS
     # =========================
-    df_estado = buscar_backlog_por_estado(clientes=clientes)
-    df_cliente = buscar_backlog_por_cliente(estados=estados)
-    df_pre = buscar_top10_pre_entrega()
+    df_estado = buscar_backlog_por_estado(
+        remover_estados=remover_estados,
+        remover_clientes=remover_clientes,
+        faixa=faixa
+    )
+
+    df_cliente = buscar_backlog_por_cliente(
+        remover_clientes=remover_clientes,
+        remover_estados=remover_estados,
+        faixa=faixa
+    )
+    df_pre = buscar_top10_pre_entrega(faixa=faixa)
 
     # =========================
     # 📊 CRIA OS GRÁFICOS PRIMEIRO
@@ -132,7 +146,10 @@ def render():
 
     st.subheader(f"📦 Detalhamento / 详细数据 - {estado_select}")
 
-    df_detalhe = buscar_backlog_paginado(estados=[estado_select])
+    df_detalhe = buscar_backlog_paginado(
+        estados=[estado_select],
+        faixa=faixa if faixa != "Todos" else None
+    )
 
     st.dataframe(df_detalhe, use_container_width=True)
 

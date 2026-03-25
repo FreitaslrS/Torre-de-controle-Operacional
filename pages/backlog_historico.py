@@ -45,16 +45,16 @@ def render():
         options=sorted(df["estado"].unique())
     )
 
-    clientes = col_f2.multiselect(
-        "Clientes / 客户",
+    remover_clientes = col_f2.multiselect(
+        "Remover Clientes / 移除客户",
         options=sorted(df["cliente"].unique())
     )
 
     if estados:
         df = df[df["estado"].isin(estados)]
 
-    if clientes:
-        df = df[df["cliente"].isin(clientes)]
+    if remover_clientes:
+        df = df[~df["cliente"].isin(remover_clientes)]
 
     # =========================
     # 🧠 KPI POR FAIXA DE DIAS
