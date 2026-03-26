@@ -7,9 +7,10 @@ from core.database import conectar_postgres, executar, consultar
 COLUNAS_MAPEAMENTO = {
     "waybill": ["waybill", "awb", "pedido"],
     "cliente": ["cliente"],
-    "estado": ["estado"],
+    "estado": ["estado", "uf", "estado destino", "destino uf", "州"],
     "cidade": ["cidade", "city", "城市", "destino"],
     "pre_entrega": ["预派送网点", "ponto de pré-entrega", "pre entrega"],
+    "proximo_ponto": ["下一站", "proximo ponto", "próximo ponto", "next hub"],
     "entrada_hub1": ["entrada no centro nível 01"],
     "saida_hub1": ["saída do centro nível 01"],
     "entrada_hub2": ["entrada no centro nível 02"],
@@ -102,6 +103,9 @@ def preparar_dados(arquivo, data_referencia):
     dados["data_importacao"] = datetime.now()
     dados["nome_arquivo"] = arquivo.name
 
+    # 🔥 tratar próximo ponto
+    dados["proximo_ponto"] = dados["proximo_ponto"].fillna("Sem informação / 无信息")
+
     return dados
 
 
@@ -115,6 +119,7 @@ def inserir_em_massa(df):
         "estado",
         "cidade",
         "pre_entrega",
+        "proximo_ponto",
         "entrada_hub1",
         "saida_hub1",
         "entrada_hub2",
@@ -205,6 +210,7 @@ def importar_excel(arquivo, data_referencia):
             row["estado"],
             row["cidade"],
             row["pre_entrega"],
+            row["proximo_ponto"],
             row["entrada_hub1"],
             row["horas_backlog_snapshot"],
             row["faixa_backlog_snapshot"]
@@ -221,6 +227,7 @@ def importar_excel(arquivo, data_referencia):
             estado,
             cidade,
             pre_entrega,
+            proximo_ponto,
             entrada_hub1,
             horas_backlog_snapshot,
             faixa_backlog_snapshot
@@ -229,6 +236,7 @@ def importar_excel(arquivo, data_referencia):
         DO UPDATE SET
             horas_backlog_snapshot = EXCLUDED.horas_backlog_snapshot,
             faixa_backlog_snapshot = EXCLUDED.faixa_backlog_snapshot,
+            proximo_ponto = EXCLUDED.proximo_ponto,
             data_atualizacao = NOW()
         """,
         values

@@ -43,6 +43,7 @@ else:
     load_css_light()
 
 # ===== SIDEBAR =====
+st.sidebar.markdown("## 📊 Control Tower")
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(

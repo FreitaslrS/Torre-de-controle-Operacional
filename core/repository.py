@@ -114,6 +114,42 @@ def buscar_backlog_por_cliente(remover_clientes=None, remover_estados=None, faix
 
     return consultar(query, params)
 
+# ==========================
+#  Acumulo por proximo ponto
+# ==========================
+@st.cache_data(ttl=120)
+def buscar_backlog_por_proximo_ponto(faixa=None):
+
+    query = """
+        SELECT 
+            CASE 
+                WHEN proximo_ponto IS NULL OR proximo_ponto = '' 
+                THEN 'Sem informação / 无信息'
+                ELSE proximo_ponto
+            END as proximo_ponto,
+            COUNT(*) as qtd
+        FROM backlog_atual
+        WHERE 1=1
+    """
+
+    if faixa == "24h+":
+        query += " AND horas_backlog_snapshot > 24"
+    elif faixa == "48h+":
+        query += " AND horas_backlog_snapshot > 48"
+    elif faixa == "72h+":
+        query += " AND horas_backlog_snapshot > 72"
+
+    query += """
+        GROUP BY 
+            CASE 
+                WHEN proximo_ponto IS NULL OR proximo_ponto = '' 
+                THEN 'Sem informação / 无信息'
+                ELSE proximo_ponto
+            END
+        ORDER BY qtd DESC
+    """
+
+    return consultar(query)
 
 # =========================
 # 🏆 TOP 10 PRÉ-ENTREGA
@@ -154,6 +190,7 @@ def buscar_backlog_paginado(limit=100, offset=0, estados=None, clientes=None, fa
             estado,
             cidade,
             pre_entrega,
+            proximo_ponto,
             horas_backlog_snapshot,
             faixa_backlog_snapshot,
             data_atualizacao
@@ -306,6 +343,27 @@ def salvar_log_importacao(logs_df):
         values
     )
 
-    conn.commit()
-    cur.close()
-    conn.close()
+def buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa):
+
+    query = """
+        SELECT waybill, estado, cliente, pre_entrega, horas_backlog_snapshot
+        FROM pedidos
+        WHERE status = 'backlog'
+        AND data_referencia BETWEEN %s AND %s
+    """
+
+    params = [data_inicio, data_fim]
+
+    if faixa == "1 dia":
+        query += " AND horas_backlog_snapshot <= 24"
+    elif faixa == "1-5 dias":
+        query += " AND horas_backlog_snapshot > 24 AND horas_backlog_snapshot <= 120"
+    elif faixa == "5-10 dias":
+        query += " AND horas_backlog_snapshot > 120 AND horas_backlog_snapshot <= 240"
+    elif faixa == "10-20 dias":
+        query += " AND horas_backlog_snapshot > 240 AND horas_backlog_snapshot <= 480"
+    elif faixa == "30+ dias":
+        query += " AND horas_backlog_snapshot > 720"
+
+    return consultar(query, params)
+

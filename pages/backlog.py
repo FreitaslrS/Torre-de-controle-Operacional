@@ -6,7 +6,8 @@ from core.repository import (
     contar_backlog,
     buscar_backlog_por_estado,
     buscar_backlog_por_cliente,
-    buscar_top10_pre_entrega
+    buscar_top10_pre_entrega,
+    buscar_backlog_por_proximo_ponto
 )
 
 COR_VERDE = "#16A34A"
@@ -102,6 +103,8 @@ def render():
     )
     df_pre = buscar_top10_pre_entrega(faixa=faixa)
 
+    df_proximo = buscar_backlog_por_proximo_ponto(faixa=faixa)
+
     # =========================
     # 📊 CRIA OS GRÁFICOS PRIMEIRO
     # =========================
@@ -121,6 +124,14 @@ def render():
         color_discrete_sequence=[COR_VERDE]
     )
 
+    fig_proximo = px.bar(
+        df_proximo.sort_values("qtd", ascending=False),
+        x="proximo_ponto",
+        y="qtd",
+        text="qtd",
+        color_discrete_sequence=[COR_VERDE]
+)
+
     # =========================
     # 📊 EXIBE
     # =========================
@@ -132,12 +143,15 @@ def render():
 
         estado_select = st.selectbox(
             "Ver detalhe por estado",
-            options=df_estado["estado"]
+            options=df_estado["estado"].tolist()
         )
 
     with col_g2:
         st.subheader("📊 Cliente / 客户")
         st.plotly_chart(fig_cliente, use_container_width=True)
+
+    st.subheader("📊 Próximo Ponto / 下一站")
+    st.plotly_chart(fig_proximo, use_container_width=True)
 
     # =========================
     # 📦 DETALHE FULL WIDTH
