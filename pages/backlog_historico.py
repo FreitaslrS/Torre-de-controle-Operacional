@@ -12,20 +12,29 @@ COR_VERDE = "#16A34A"
 COR_CINZA = "#6B7280"
 
 
-def gerar_download(df):
+def gerar_download(df, key_prefix):
 
     col1, col2 = st.columns(2)
 
+    # CSV
     csv = df.to_csv(index=False).encode("utf-8")
-    col1.download_button("⬇️ CSV", csv, "backlog.csv", "text/csv")
+    col1.download_button(
+        "⬇️ CSV",
+        csv,
+        f"{key_prefix}.csv",
+        "text/csv",
+        key=f"{key_prefix}_csv"
+    )
 
+    # Excel
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     col2.download_button(
         "⬇️ Excel",
         buffer.getvalue(),
-        "backlog.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        f"{key_prefix}.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=f"{key_prefix}_excel"
     )
 
 
@@ -198,7 +207,7 @@ def render():
     df_drill = buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa_dias)
 
     st.dataframe(df_drill, use_container_width=True)
-    gerar_download(df_drill)
+    gerar_download(df_drill, "drill_dias")
 
     st.divider()
 
@@ -209,13 +218,20 @@ def render():
 
     faixa_tempo = st.selectbox("Tempo backlog", ["24h+", "48h+", "72h+"])
 
-    limite = 24 if faixa_tempo == "24h+" else 48 if faixa_tempo == "48h+" else 72
+    if faixa_tempo == "24h+":
+        condicao = "horas_backlog_snapshot > 24 AND horas_backlog_snapshot <= 48"
+
+    elif faixa_tempo == "48h+":
+        condicao = "horas_backlog_snapshot > 48 AND horas_backlog_snapshot <= 72"
+
+    elif faixa_tempo == "72h+":
+        condicao = "horas_backlog_snapshot > 72"
 
     df_sla = consultar(f"""
         SELECT *
         FROM backlog_atual
-        WHERE horas_backlog_snapshot > {limite}
+        WHERE {condicao}
     """)
 
     st.dataframe(df_sla, use_container_width=True)
-    gerar_download(df_sla)
+    gerar_download(df_sla, "drill_sla")
