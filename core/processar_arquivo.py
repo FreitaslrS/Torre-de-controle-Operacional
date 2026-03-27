@@ -285,31 +285,99 @@ def importar_excel(arquivo, data_referencia):
 
 
 def importar_produtividade(arquivo):
+    import pandas as pd
+    from datetime import datetime
+
     df = pd.read_excel(arquivo)
 
     if df.empty:
         return 0
 
-    df.columns = df.columns.str.lower().str.strip()
+    # =========================
+    # 🧠 RENOMEAR COLUNAS
+    # =========================
+    df = df.rename(columns={
+        "客户名称(Nome do Cliente)": "cliente",
+        "操作时间(tempo de operação)": "data_hora",
+        "收件人州(Estado do destinatário)": "estado",
+        "预派送网点(Ponto de Pré-entrega)": "hub",
+        "操作人(Operador)": "operador"
+    })
 
+    # =========================
+    # 🧹 LIMPEZA
+    # =========================
+    df["operador"] = df["operador"].str.strip()
+
+    excluir = ["devolucao01", "devolucao02", "devolucao03", "MG01"]
+    df = df[~df["operador"].isin(excluir)]
+
+    # =========================
+    # ⏱️ DATA / HORA
+    # =========================
+    df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce")
+    df["hora"] = df["data_hora"].dt.hour
+
+    def definir_turno(h):
+        if 6 <= h < 14:
+            return "Manhã"
+        elif 14 <= h < 22:
+            return "Tarde"
+        else:
+            return "Noite"
+
+    df["turno"] = df["hora"].apply(definir_turno)
+
+    # =========================
+    # ⚙️ DISPOSITIVO
+    # =========================
+    def classificar_dispositivo(op):
+        if op == "Perus01":
+            return "Sorter Oval"
+        elif op == "Perus02":
+            return "Sorter Linear"
+        else:
+            return "Cubometro"
+
+    df["dispositivo"] = df["operador"].apply(classificar_dispositivo)
+
+    # =========================
+    # 📦 VOLUME
+    # =========================
+    df["volumes"] = 1
+
+    # =========================
+    # 📅 CONTROLE
+    # =========================
+    df["data"] = df["data_hora"].dt.date
     df["data_importacao"] = datetime.now()
     df["nome_arquivo"] = arquivo.name
+
+    # =========================
+    # 💾 SALVAR NO BANCO
+    # =========================
+    from psycopg2.extras import execute_values
+    from core.database import conectar_postgres
 
     conn = conectar_postgres()
     cur = conn.cursor()
 
     cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])
 
-    cols = df.columns.tolist()
+    colunas = [
+        "cliente", "estado", "hub", "operador",
+        "data", "hora", "turno", "dispositivo",
+        "volumes", "nome_arquivo", "data_importacao"
+    ]
 
     values = [
         tuple(None if pd.isna(v) else v for v in row)
-        for row in df.itertuples(index=False, name=None)
+        for row in df[colunas].itertuples(index=False, name=None)
     ]
 
     execute_values(
         cur,
-        f"INSERT INTO produtividade ({','.join(cols)}) VALUES %s",
+        f"INSERT INTO produtividade ({','.join(colunas)}) VALUES %s",
         values
     )
 
@@ -318,19 +386,3 @@ def importar_produtividade(arquivo):
     conn.close()
 
     return len(df)
-
-def log(msg):
-    with open("log.txt", "a", encoding="utf-8") as f:
-        f.write(f"{datetime.now()} - {msg}\n")
-
-    log("Iniciando automação")
-    log(f"Arquivo lido: {arquivo_recente}")
-    log("Finalizado com sucesso")
-
-def pausar(msg="Finalizando..."):
-    print(msg)
-    try:
-        input("\nPressione ENTER para fechar...")
-    except:
-        import time
-        time.sleep(3)

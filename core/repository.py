@@ -272,14 +272,17 @@ def buscar_backlog_historico(data_inicio, data_fim):
 def buscar_produtividade():
     return consultar("""
         SELECT 
-            operador,
+            cliente,
+            estado,
             hub,
+            operador,
             data,
-            volumes,
-            tempo_medio
+            hora,
+            turno,
+            dispositivo,
+            volumes
         FROM produtividade
     """)
-
 
 # =========================
 # 📦 PEDIDOS
