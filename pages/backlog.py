@@ -67,9 +67,6 @@ def render():
     # =========================
     st.subheader("🎛️ Filtros Globais / 全局筛选")
 
-    "Estados / 州"
-    "Clientes / 客户"
-
     col_f1, col_f2 = st.columns(2)
 
     remover_estados = col_f1.multiselect(
@@ -101,12 +98,12 @@ def render():
         remover_estados=remover_estados,
         faixa=faixa
     )
-    df_pre = buscar_top10_pre_entrega(faixa=faixa)
 
+    df_pre = buscar_top10_pre_entrega(faixa=faixa)
     df_proximo = buscar_backlog_por_proximo_ponto(faixa=faixa)
 
     # =========================
-    # 📊 CRIA OS GRÁFICOS PRIMEIRO
+    # 📊 GRÁFICOS
     # =========================
     fig_estado = px.bar(
         df_estado.sort_values("qtd", ascending=False),
@@ -130,7 +127,7 @@ def render():
         y="qtd",
         text="qtd",
         color_discrete_sequence=[COR_VERDE]
-)
+    )
 
     # =========================
     # 📊 EXIBE
@@ -154,7 +151,7 @@ def render():
     st.plotly_chart(fig_proximo, use_container_width=True)
 
     # =========================
-    # 📦 DETALHE FULL WIDTH
+    # 📦 DETALHE
     # =========================
     st.divider()
 
@@ -182,7 +179,6 @@ def render():
     )
 
     fig_pre.update_layout(yaxis=dict(autorange="reversed"))
-
     st.plotly_chart(fig_pre, use_container_width=True)
 
     st.divider()
@@ -193,3 +189,151 @@ def render():
     if st.button("📦 Carregar pedidos / 加载订单 (modo pesado)"):
         df = buscar_backlog_paginado(limit=100)
         st.dataframe(df, use_container_width=True)
+
+    # ✅ BOTÃO CORRIGIDO
+    if st.button("🚀 Enviar relatório no Telegram"):
+        st.write("🚀 Enviando relatório...")
+        gerar_e_enviar_relatorio(
+            df_estado,
+            df_cliente,
+            fig_estado,
+            fig_cliente,
+            fig_proximo
+        )
+
+
+# =========================
+# 🔥 TELEGRAM
+# =========================
+
+import pandas as pd
+import requests
+import os
+
+TOKEN = "8632831814:AAHU8LIDCP2iI6ZZ03j_F3i7y21XVunbTIM"
+CHAT_ID = 8752000601
+
+
+def enviar_telegram(texto):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "text": texto
+    })
+
+    print(requests.get(url).json())
+
+
+def enviar_imagem(caminho):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+
+    with open(caminho, "rb") as img:
+        requests.post(url, files={"photo": img}, data={
+            "chat_id": CHAT_ID
+        })
+
+
+def calcular_resumo(df_estado, df_cliente):
+    total = df_cliente["qtd"].sum()
+
+    top_clientes = df_cliente.sort_values("qtd", ascending=False).head(2)
+
+    return {
+        "total": int(total),
+        "top1": f"{top_clientes.iloc[0]['cliente']}: {top_clientes.iloc[0]['qtd']}",
+        "top2": f"{top_clientes.iloc[1]['cliente']}: {top_clientes.iloc[1]['qtd']}",
+    }
+
+
+def gerar_texto(df_cliente):
+    from datetime import datetime
+
+    data = datetime.now().strftime("%d/%m/%Y")
+
+    total = df_cliente["qtd"].sum()
+
+    top = df_cliente.sort_values("qtd", ascending=False).head(4)
+
+    linhas = []
+    for i, row in top.iterrows():
+        perc = (row["qtd"] / total) * 100 if total else 0
+        emoji = "🔴" if perc > 30 else "🟡" if perc > 15 else "🟢"
+
+        linhas.append(f"{row['cliente']}: {int(row['qtd'])} (~{perc:.0f}%) {emoji}")
+
+    concentracao = ((top.iloc[0]["qtd"] + top.iloc[1]["qtd"]) / total * 100) if total else 0
+
+    analise = "🔴 MUITO concentrado" if concentracao > 70 else "🟡 moderado" if concentracao > 40 else "🟢 distribuído"
+
+    texto = f"""
+📊 BACKLOG AUTOMÁTICO
+📅 {data}
+
+📦 GERAL
+Total: ≈{int(total)}
+
+{chr(10).join(linhas)}
+
+➡️ Top 2 = ~{concentracao:.0f}% do backlog
+➡️ {analise}
+"""
+
+    return texto
+
+def gerar_b2c(df_cliente):
+
+    excluir = ["Kwai", "Shein", "Shein D2D", "Szanjun", "Temu D2D", "Temu W2D"]
+
+    df_b2c = df_cliente[~df_cliente["cliente"].isin(excluir)]
+
+    top_b2c = df_b2c.sort_values("qtd", ascending=False).head(5)
+
+    linhas = []
+    for _, row in top_b2c.iterrows():
+        linhas.append(f"{row['cliente']}: {int(row['qtd'])}")
+
+    return "\n".join(linhas)
+
+def gerar_texto_completo(df_cliente):
+    base = gerar_texto(df_cliente)
+    b2c = gerar_b2c(df_cliente)
+
+    return base + f"""
+
+📦 B2C
+{b2c}
+"""
+
+def enviar_excel(df):
+
+    caminho = "temp/waybills.xlsx"
+    df.to_excel(caminho, index=False)
+
+    url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+
+    with open(caminho, "rb") as file:
+        requests.post(url, files={"document": file}, data={
+            "chat_id": CHAT_ID
+        })
+
+def salvar_graficos(fig_estado, fig_cliente, fig_proximo):
+    os.makedirs("temp", exist_ok=True)
+
+    fig_estado.write_image("temp/estado.png")
+    fig_cliente.write_image("temp/cliente.png")
+    fig_proximo.write_image("temp/proximo.png")
+
+
+def gerar_e_enviar_relatorio(df_estado, df_cliente, fig_estado, fig_cliente, fig_proximo):
+
+    texto = gerar_texto_completo(df_cliente)
+
+    salvar_graficos(fig_estado, fig_cliente, fig_proximo)
+
+    enviar_telegram(texto)
+
+    enviar_imagem("temp/estado.png")
+    enviar_imagem("temp/cliente.png")
+    enviar_imagem("temp/proximo.png")
+
+    enviar_excel(df_cliente)
