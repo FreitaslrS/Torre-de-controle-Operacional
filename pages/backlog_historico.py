@@ -5,7 +5,7 @@ import io
 from core.repository import (
     buscar_backlog_historico,
     buscar_waybills_por_faixa_dias,
-    consultar
+    consultar_backlog as consultar
 )
 
 COR_VERDE = "#16A34A"

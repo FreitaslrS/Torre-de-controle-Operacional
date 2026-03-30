@@ -1,13 +1,20 @@
 import streamlit as st
-from core.database import consultar, executar
 from psycopg2.extras import execute_values
 
+from core.database import (
+    consultar_backlog,
+    consultar_operacional,
+    executar_backlog,
+    executar_operacional,
+    conectar_operacional,
+    consultar_historico
+)
 
 # =========================
 # 🗑️ DELETE
 # =========================
 def deletar_arquivo(nome_arquivo):
-    executar(
+    executar_backlog(
         "DELETE FROM pedidos WHERE nome_arquivo = %s",
         [nome_arquivo]
     )
@@ -18,7 +25,7 @@ def deletar_arquivo(nome_arquivo):
 # =========================
 @st.cache_data(ttl=300)
 def listar_arquivos():
-    return consultar("""
+    return consultar_backlog("""
         SELECT 
             nome_arquivo,
             COUNT(*) as registros
@@ -33,7 +40,7 @@ def listar_arquivos():
 # =========================
 @st.cache_data(ttl=300)
 def buscar_backlog_resumo():
-    return consultar("""
+    return consultar_backlog("""
         SELECT 
             estado,
             pre_entrega,
@@ -78,7 +85,7 @@ def buscar_backlog_por_estado(remover_estados=None, remover_clientes=None, faixa
 
     query += " GROUP BY estado ORDER BY qtd DESC"
 
-    return consultar(query, params)
+    return consultar_backlog(query, params)
 
 
 # =========================
@@ -112,11 +119,12 @@ def buscar_backlog_por_cliente(remover_clientes=None, remover_estados=None, faix
 
     query += " GROUP BY cliente ORDER BY qtd DESC"
 
-    return consultar(query, params)
+    return consultar_backlog(query, params)
 
-# ==========================
-#  Acumulo por proximo ponto
-# ==========================
+
+# =========================
+# 📊 PRÓXIMO PONTO
+# =========================
 @st.cache_data(ttl=120)
 def buscar_backlog_por_proximo_ponto(faixa=None):
 
@@ -149,7 +157,8 @@ def buscar_backlog_por_proximo_ponto(faixa=None):
         ORDER BY qtd DESC
     """
 
-    return consultar(query)
+    return consultar_historico(query)
+
 
 # =========================
 # 🏆 TOP 10 PRÉ-ENTREGA
@@ -163,8 +172,6 @@ def buscar_top10_pre_entrega(faixa=None):
         WHERE 1=1
     """
 
-    params = []
-
     if faixa == "24h+":
         query += " AND horas_backlog_snapshot > 24"
     elif faixa == "48h+":
@@ -174,7 +181,7 @@ def buscar_top10_pre_entrega(faixa=None):
 
     query += " GROUP BY pre_entrega ORDER BY qtd DESC LIMIT 10"
 
-    return consultar(query, params)
+    return consultar_historico(query)
 
 
 # =========================
@@ -218,7 +225,7 @@ def buscar_backlog_paginado(limit=100, offset=0, estados=None, clientes=None, fa
     query += " ORDER BY data_atualizacao DESC LIMIT %s OFFSET %s"
     params.extend([limit, offset])
 
-    return consultar(query, params)
+    return consultar_backlog(query, params)
 
 
 # =========================
@@ -245,14 +252,14 @@ def contar_backlog(estados=None, clientes=None, faixa=None):
     elif faixa == "72h+":
         query += " AND horas_backlog_snapshot > 72"
 
-    return consultar(query, params)
+    return consultar_backlog(query, params)
 
 
 # =========================
 # 📊 BACKLOG HISTÓRICO
 # =========================
 def buscar_backlog_historico(data_inicio, data_fim):
-    return consultar("""
+    return consultar_historico("""
         SELECT 
             data_referencia,
             estado,
@@ -266,11 +273,11 @@ def buscar_backlog_historico(data_inicio, data_fim):
 
 
 # =========================
-# 📊 PRODUTIVIDADE
+# 📊 PRODUTIVIDADE (AGORA NO RAILWAY)
 # =========================
 @st.cache_data(ttl=300)
 def buscar_produtividade():
-    return consultar("""
+    return consultar_operacional("""
         SELECT 
             cliente,
             estado,
@@ -284,12 +291,13 @@ def buscar_produtividade():
         FROM produtividade
     """)
 
+
 # =========================
 # 📦 PEDIDOS
 # =========================
 @st.cache_data(ttl=120)
 def buscar_pedidos(limit=1000):
-    return consultar("""
+    return consultar_historico("""
         SELECT 
             waybill,
             cliente,
@@ -305,16 +313,14 @@ def buscar_pedidos(limit=1000):
 
 
 # =========================
-# 💾 LOG IMPORTAÇÃO
+# 💾 LOG IMPORTAÇÃO (RAILWAY)
 # =========================
 def salvar_log_importacao(logs_df):
 
     if logs_df.empty:
         return
 
-    from core.database import conectar
-
-    conn = conectar()
+    conn = conectar_operacional()
     cur = conn.cursor()
 
     logs_df = logs_df.fillna(0)
@@ -346,6 +352,14 @@ def salvar_log_importacao(logs_df):
         values
     )
 
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+# =========================
+# 🔍 DRILL
+# =========================
 def buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa):
 
     query = """
@@ -368,5 +382,22 @@ def buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa):
     elif faixa == "30+ dias":
         query += " AND horas_backlog_snapshot > 720"
 
-    return consultar(query, params)
+    return consultar_historico(query, params)
 
+
+# =========================
+# ⏱️ TEMPO PROCESSAMENTO
+# =========================
+@st.cache_data(ttl=300)
+def buscar_tempo_processamento():
+
+    query = """
+        SELECT 
+            estado,
+            entrada_hub1,
+            saida_hub1
+        FROM pedidos
+        WHERE entrada_hub1 IS NOT NULL
+    """
+
+    return consultar_historico(query)   # 🔥 TEM QUE SER ISSO

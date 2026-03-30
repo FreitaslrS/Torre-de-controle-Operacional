@@ -1,5 +1,5 @@
 import streamlit as st
-from core.database import consultar
+from core.database import consultar_backlog as consultar
 
 @st.cache_data(ttl=600)
 def carregar():

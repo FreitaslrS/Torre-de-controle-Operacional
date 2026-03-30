@@ -1,7 +1,15 @@
 import pandas as pd
 from datetime import datetime
 from psycopg2.extras import execute_values
-from core.database import conectar_postgres, executar, consultar
+from core.database import (
+    conectar_backlog,
+    executar_backlog,
+    consultar_backlog,
+    conectar_operacional,
+    executar_operacional,
+    conectar_historico,
+    executar_historico
+)
 
 import requests
 
@@ -77,11 +85,10 @@ def classificar_faixa(h):
 
 
 def limpar_base():
-    executar("""
+    executar_historico("""
         DELETE FROM pedidos
         WHERE data_referencia < CURRENT_DATE - INTERVAL '30 days'
     """)
-
 
 def calcular_base_tempo(row):
     if pd.notna(row["entrada_hub3"]) and pd.isna(row["saida_hub3"]):
@@ -145,7 +152,7 @@ def preparar_dados(arquivo, data_referencia):
 
 
 def inserir_em_massa(df):
-    conn = conectar_postgres()
+    conn = conectar_historico()
     cur = conn.cursor()
 
     colunas = [
@@ -199,7 +206,7 @@ def importar_excel(arquivo, data_referencia):
         return 0
 
     # 🔥 só backlog
-    dados = dados[dados["status"] == "backlog"]
+    dados_backlog = dados[dados["status"] == "backlog"]
     dados = dados.drop_duplicates(subset=["waybill"])
 
     if dados.empty:
@@ -209,7 +216,7 @@ def importar_excel(arquivo, data_referencia):
     inserir_em_massa(dados)
 
     # 🔥 pega backlog atual do banco
-    existentes = consultar("SELECT waybill FROM backlog_atual")
+    existentes = consultar_backlog("SELECT waybill FROM backlog_atual")
 
     existentes_set = set(existentes["waybill"]) if not existentes.empty else set()
     novos_set = set(dados["waybill"])
@@ -220,7 +227,7 @@ def importar_excel(arquivo, data_referencia):
     removidos = existentes_set - novos_set
 
     if removidos:
-        conn = conectar_postgres()
+        conn = conectar_backlog()
         cur = conn.cursor()
 
         cur.execute(
@@ -235,7 +242,7 @@ def importar_excel(arquivo, data_referencia):
     # =========================
     # 🚀 2. UPSERT (NOVOS + ATUALIZA)
     # =========================
-    conn = conectar_postgres()
+    conn = conectar_backlog()
     cur = conn.cursor()
 
     values = [
@@ -357,9 +364,9 @@ def importar_produtividade(arquivo):
     # 💾 SALVAR NO BANCO
     # =========================
     from psycopg2.extras import execute_values
-    from core.database import conectar_postgres
+    from core.database import conectar_operacional
 
-    conn = conectar_postgres()
+    conn = conectar_operacional()
     cur = conn.cursor()
 
     cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])

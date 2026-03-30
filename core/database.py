@@ -6,56 +6,79 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # =========================
-# 🔗 CONEXÃO NEON
+# 🔗 CONEXÕES
 # =========================
-def conectar_postgres():
-    DATABASE_URL = os.getenv("DATABASE_URL")
-
-    if not DATABASE_URL:
-        raise Exception("DATABASE_URL não configurada!")
-
+def conectar_backlog():
     return psycopg2.connect(
-        DATABASE_URL,
-        connect_timeout=10,
+        os.getenv("DATABASE_URL_BACKLOG"),
         sslmode="require"
     )
 
+def conectar_operacional():
+    return psycopg2.connect(
+        os.getenv("DATABASE_URL_OPERACIONAL"),
+        sslmode="require"
+    )
 
-def conectar():
-    return conectar_postgres()
+def conectar_historico():
+    return psycopg2.connect(
+        os.getenv("DATABASE_URL_HISTORICO"),
+        sslmode="require"
+    )
 
+def executar_historico(query, params=None):
+    conn = conectar_historico()
+    cur = conn.cursor()
+    cur.execute(query, params or ())
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def consultar_historico(query, params=None):
+    conn = conectar_historico()
+    df = pd.read_sql(query, conn, params=params)
+    conn.close()
+    return df
 
 # =========================
 # 🚀 EXECUTAR
 # =========================
-def executar(query, params=None):
-    conn = conectar()
+def executar_backlog(query, params=None):
+    conn = conectar_backlog()
     cur = conn.cursor()
-
     cur.execute(query, params or ())
     conn.commit()
-
     cur.close()
     conn.close()
 
+def executar_operacional(query, params=None):
+    conn = conectar_operacional()
+    cur = conn.cursor()
+    cur.execute(query, params or ())
+    conn.commit()
+    cur.close()
+    conn.close()
 
 # =========================
-# 📊 CONSULTAR (OTIMIZADO)
+# 📊 CONSULTAR
 # =========================
-def consultar(query, params=None):
-    conn = conectar()
-
+def consultar_backlog(query, params=None):
+    conn = conectar_backlog()
     df = pd.read_sql(query, conn, params=params)
-
     conn.close()
     return df
 
+def consultar_operacional(query, params=None):
+    conn = conectar_operacional()
+    df = pd.read_sql(query, conn, params=params)
+    conn.close()
+    return df
 
 # =========================
 # 🧱 CRIAR TABELAS
 # =========================
 def inicializar_banco():
-    executar("""
+    executar_backlog("""
         CREATE TABLE IF NOT EXISTS pedidos (
             waybill TEXT,
             cliente TEXT,
@@ -77,7 +100,7 @@ def inicializar_banco():
         )
     """)
 
-    executar("""
+    executar_backlog("""
         CREATE TABLE IF NOT EXISTS backlog_atual (
             waybill TEXT PRIMARY KEY,
             cliente TEXT,
@@ -91,7 +114,7 @@ def inicializar_banco():
         )
     """)
 
-    executar("""
+    executar_operacional("""
         CREATE TABLE IF NOT EXISTS produtividade (
             operador TEXT,
             hub TEXT,
@@ -103,8 +126,7 @@ def inicializar_banco():
         )
     """)
 
-    # LOG
-    executar("""
+    executar_operacional("""
         CREATE TABLE IF NOT EXISTS log_importacoes (
             id INTEGER,
             nome_arquivo TEXT,

@@ -10,6 +10,7 @@ import pages.backlog_historico as backlog_historico
 import pages.produtividade as produtividade
 import pages.devolucoes as devolucoes
 import pages.importacao as importacao
+import pages.tempo_processamento as tempo_processamento
 
 # 🔥 BASE DIR (pra não dar erro de caminho)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -57,6 +58,7 @@ menu = st.sidebar.radio(
         "📦 Backlog Atual / 当前积压",
         "📊 Backlog Histórico / 历史积压",
         "⚡ Produtividade / 生产效率",
+        "⏱️ Tempo de Processamento / 处理时效",
         "🔁 Devoluções / 退货",
         "📥 Importação / 数据导入"
     ]
@@ -73,5 +75,7 @@ elif menu == "⚡ Produtividade / 生产效率":
     produtividade.render()
 elif menu == "🔁 Devoluções / 退货":
     devolucoes.render()
+elif menu == "⏱️ Tempo de Processamento / 处理时效":
+    tempo_processamento.render()
 elif menu == "📥 Importação / 数据导入":
     importacao.render()

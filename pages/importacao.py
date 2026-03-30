@@ -3,15 +3,21 @@ import time
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from core.database import conectar, executar
+from core.database import executar_backlog
 from core.repository import salvar_log_importacao
-from core.processar_arquivo import importar_excel, importar_produtividade
-
+from core.processar_arquivo import importar_excel, importar_produtividade, limpar_base
+from core.database import conectar_backlog
+from core.database import (
+    consultar_historico,
+    consultar_operacional,
+    executar_historico,
+    executar_operacional
+)
 
 @st.cache_resource
-def get_conexao():
-    return conectar()
 
+def get_conexao():
+    return conectar_backlog()
 
 # =========================
 # 🔐 LOGIN
@@ -95,9 +101,6 @@ def render():
         st.session_state.resultado_importacao = None
         st.session_state.total_importado = 0
 
-    # ================================
-    # 🚀 ESCOLHA DO TIPO DE ARQUIVO
-    # ================================
     tipo_importacao = st.selectbox(
         "Tipo de Importação / 导入类型",
         ["Backlog", "Produtividade"]
@@ -153,15 +156,9 @@ def render():
                 progress.progress((i + 1) / len(arquivos))
                 status_text.text(f"Finalizado: {r['arquivo']}")
 
-        # ========================
-        # 💾 SALVAR LOG
-        # ========================
         df_logs = pd.DataFrame(logs)
         salvar_log_importacao(df_logs)
 
-        # ========================
-        # 🔄 CACHE
-        # ========================
         st.session_state.resultado_importacao = resultados
         st.session_state.total_importado = total_registros
 
@@ -188,18 +185,32 @@ def render():
     # ========================
     st.subheader("📊 Histórico de Importações / 导入历史")
 
-    from core.database import consultar
+    from core.database import consultar_backlog as consultar
 
-    df_hist = consultar("""
+    df_hist_backlog = consultar_historico("""
         SELECT 
             nome_arquivo,
             COUNT(*) as registros,
             MAX(data_importacao) as data_importacao,
-            MAX (data_referencia) as data_referencia
+            MAX(data_referencia) as data_referencia,
+            'Backlog' as tipo
         FROM pedidos
         GROUP BY nome_arquivo
-        ORDER BY data_importacao DESC
     """)
+
+    df_hist_prod = consultar_operacional("""
+        SELECT 
+            nome_arquivo,
+            COUNT(*) as registros,
+            MAX(data_importacao) as data_importacao,
+            NULL as data_referencia,
+            'Produtividade' as tipo
+        FROM produtividade
+        GROUP BY nome_arquivo
+    """)
+
+    df_hist = pd.concat([df_hist_backlog, df_hist_prod], ignore_index=True)
+    df_hist = df_hist.sort_values("data_importacao", ascending=False)
 
     if df_hist.empty:
         st.info("Nenhum arquivo importado ainda / 暂无导入记录")
@@ -209,16 +220,50 @@ def render():
 
             col1.write(row["nome_arquivo"])
             col2.write(row["registros"])
-
-            # 📅 DATA REFERÊNCIA (NOVA)
             col3.write(f"📅: {row['data_referencia']}")
-
-            # ⏱️ DATA IMPORTAÇÃO
             col4.write(f"⏱️ {row['data_importacao']}")
 
             if col4.button("🗑️", key=row["nome_arquivo"]):
                 excluir_arquivo(row["nome_arquivo"])
                 st.success(f"{row['nome_arquivo']} excluído")
+                st.rerun()
+
+    # ========================
+    # ⚠️ ZONA DE PERIGO
+    # ========================
+    st.divider()
+    st.subheader("⚠️ Zona de Perigo")
+
+    confirmar = st.checkbox("Tenho certeza que quero fazer isso (modo destruição)")
+
+    col1, col2, col3 = st.columns(3)
+
+    if confirmar:
+
+        with col1:
+            if st.button("🔥 Resetar Backlog Atual"):
+                executar_backlog("DELETE FROM backlog_atual")
+                st.success("Backlog atual zerado!")
+                st.cache_data.clear()
+                st.rerun()
+
+        with col2:
+            data_delete = st.date_input("Excluir por data de referência")
+
+            if st.button("🗑️ Excluir por Data"):
+                executar_historico(
+                    "DELETE FROM pedidos WHERE data_referencia = %s",
+                    [data_delete]
+                )
+                st.success(f"Dados da data {data_delete} excluídos!")
+                st.cache_data.clear()
+                st.rerun()
+
+        with col3:
+            if st.button("🧹 Limpar histórico > 30 dias"):
+                limpar_base()
+                st.success("Histórico antigo removido!")
+                st.cache_data.clear()
                 st.rerun()
 
 
@@ -227,8 +272,13 @@ def render():
 # ========================
 def excluir_arquivo(nome_arquivo):
 
-    executar(
+    executar_historico(
         "DELETE FROM pedidos WHERE nome_arquivo = %s",
+        [nome_arquivo]
+    )
+
+    executar_operacional(
+        "DELETE FROM produtividade WHERE nome_arquivo = %s",
         [nome_arquivo]
     )
 
