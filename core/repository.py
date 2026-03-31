@@ -10,6 +10,7 @@ from core.database import (
     consultar_historico,
     consultar_devolucoes
 )
+from core.database import consultar_processamento
 
 # =========================
 # 🗑️ DELETE
@@ -374,13 +375,14 @@ def buscar_tempo_processamento():
     query = """
         SELECT 
             estado,
+            ponto_entrada,
             entrada_hub1,
             saida_hub1
-        FROM pedidos
+        FROM tempo_processamento
         WHERE entrada_hub1 IS NOT NULL
     """
 
-    return consultar_historico(query)   # 🔥 TEM QUE SER ISSO
+    return consultar_processamento(query)   # 🔥 TEM QUE SER ISSO
 
 def buscar_devolucoes(limit=1000):
     return consultar_devolucoes("""

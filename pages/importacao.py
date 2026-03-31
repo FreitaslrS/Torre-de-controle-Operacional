@@ -13,6 +13,8 @@ from core.database import (
     executar_historico,
     executar_operacional
 )
+from core.processar_arquivo import importar_tempo_processamento
+from core.database import consultar_processamento
 
 @st.cache_resource
 
@@ -60,6 +62,9 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao):
         elif tipo_importacao == "Produtividade":
             qtd = importar_produtividade(arquivo)
 
+        elif tipo_importacao == "Tempo de Processamento":
+            qtd = importar_tempo_processamento(arquivo)
+
         else:
             raise Exception("Tipo de importação inválido")
 
@@ -77,7 +82,6 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao):
         "registros": qtd,
         "tempo": tempo
     }
-
 
 # =========================
 # 🎯 TELA
@@ -103,7 +107,7 @@ def render():
 
     tipo_importacao = st.selectbox(
         "Tipo de Importação / 导入类型",
-        ["Backlog", "Produtividade"]
+        ["Backlog", "Produtividade", "Tempo de Processamento"]
     )
 
     # ========================
@@ -203,27 +207,43 @@ def render():
             nome_arquivo,
             COUNT(*) as registros,
             MAX(data_importacao) as data_importacao,
-            NULL as data_referencia,
+            MAX(data) as data_referencia,
             'Produtividade' as tipo
         FROM produtividade
         GROUP BY nome_arquivo
     """)
 
-    df_hist = pd.concat([df_hist_backlog, df_hist_prod], ignore_index=True)
+    df_hist_proc = consultar_processamento("""
+        SELECT 
+            nome_arquivo,
+            COUNT(*) as registros,
+            MAX(data_importacao) as data_importacao,
+            MAX(DATE(entrada_hub1)) as data_referencia,
+            'Tempo Processamento' as tipo
+        FROM tempo_processamento
+        GROUP BY nome_arquivo
+    """)
+
+    df_hist = pd.concat(
+        [df_hist_backlog, df_hist_prod, df_hist_proc],
+        ignore_index=True
+    )
+
     df_hist = df_hist.sort_values("data_importacao", ascending=False)
 
     if df_hist.empty:
         st.info("Nenhum arquivo importado ainda / 暂无导入记录")
     else:
         for _, row in df_hist.iterrows():
-            col1, col2, col3, col4, col5 = st.columns([4,2,3,3,1])
+            col1, col2, col3, col4, col5, col6 = st.columns([4,2,2,3,3,1])
 
             col1.write(row["nome_arquivo"])
             col2.write(row["registros"])
-            col3.write(f"📅: {row['data_referencia']}")
-            col4.write(f"⏱️ {row['data_importacao']}")
+            col3.write(row["tipo"])  # 🔥 novo
+            col4.write(f"📅: {row['data_referencia']}")
+            col5.write(f"⏱️ {row['data_importacao']}")
 
-            if col4.button("🗑️", key=row["nome_arquivo"]):
+            if col6.button("🗑️", key=f"{row['nome_arquivo']}_{row['data_importacao']}"):
                 excluir_arquivo(row["nome_arquivo"])
                 st.success(f"{row['nome_arquivo']} excluído")
                 st.rerun()

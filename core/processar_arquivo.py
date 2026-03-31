@@ -10,8 +10,10 @@ from core.database import (
     conectar_historico,
     executar_historico
 )
+from core.database import conectar_processamento
 
 import requests
+import os
 
 def enviar_telegram(msg):
     TOKEN = 'SEU_TOKEN_AQUI'
@@ -24,15 +26,9 @@ def enviar_telegram(msg):
         'text': msg
     })
 
-    enviar_telegram(f"""
-    🚀 Automação Anjun Executada
-
-    📅 Data: {ontem}
-    📦 Total: {vol_total}
-    🟢 T1: {prod_turnos.get('T1', 0)}
-    🟡 T2: {prod_turnos.get('T2', 0)}
-    🔴 T3: {prod_turnos.get('T3', 0)}
-    """)
+    # ⚠️ BLOCO DESATIVADO (evita erro e loop infinito)
+    """
+    enviar_telegram(f"...")
 
     import tkinter as tk
 
@@ -46,6 +42,7 @@ def enviar_telegram(msg):
     botao.pack(padx=50, pady=30)
 
     janela.mainloop()
+    """
 
 COLUNAS_MAPEAMENTO = {
     "waybill": ["waybill", "awb", "pedido"],
@@ -299,6 +296,8 @@ def importar_produtividade(arquivo):
 
     if df.empty:
         return 0
+    
+    df["data_referencia"] = df["data"]
 
     # =========================
     # 🧠 RENOMEAR COLUNAS
@@ -393,3 +392,53 @@ def importar_produtividade(arquivo):
     conn.close()
 
     return len(df)
+
+def importar_tempo_processamento(arquivo):
+
+    df = pd.read_excel(arquivo)
+
+    if df.empty:
+        return 0
+
+    df.columns = df.columns.str.strip()
+
+    df_tratado = pd.DataFrame()
+
+    df_tratado["estado"] = df["收件人州(Estado do destinatário)"]
+    df_tratado["ponto_entrada"] = df["实际入库网点(Ponto de entrada)"]
+    df_tratado["entrada_hub1"] = pd.to_datetime(df["一级分拨到件时间(Entrada no centro nível 01)"], errors="coerce")
+    df_tratado["saida_hub1"] = pd.to_datetime(df["一级分拨发件时间(Saída do centro nível 01)"], errors="coerce")
+
+    df_tratado["nome_arquivo"] = arquivo.name
+    df_tratado["data_importacao"] = datetime.now()
+
+    df_tratado = df_tratado.dropna(subset=["entrada_hub1"])
+
+    conn = conectar_processamento()
+    cur = conn.cursor()
+
+    colunas = [
+        "estado",
+        "ponto_entrada",
+        "entrada_hub1",
+        "saida_hub1",
+        "nome_arquivo",
+        "data_importacao"
+    ]
+
+    values = [
+        tuple(None if pd.isna(v) else v for v in row)
+        for row in df_tratado[colunas].itertuples(index=False, name=None)
+    ]
+
+    execute_values(
+        cur,
+        f"INSERT INTO tempo_processamento ({','.join(colunas)}) VALUES %s",
+        values
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return len(df_tratado)

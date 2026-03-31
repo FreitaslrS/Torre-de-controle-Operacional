@@ -137,6 +137,17 @@ def inicializar_banco():
         )
     """)
 
+    executar_processamento("""
+    CREATE TABLE IF NOT EXISTS tempo_processamento (
+        estado TEXT,
+        ponto_entrada TEXT,
+        entrada_hub1 TIMESTAMP,
+        saida_hub1 TIMESTAMP,
+        nome_arquivo TEXT,
+        data_importacao TIMESTAMP
+        )
+    """)
+
 def conectar_devolucoes():
     return psycopg2.connect(
         os.getenv("DATABASE_URL_DEVOLUCOES"),
@@ -156,3 +167,23 @@ def executar_devolucoes(query, params=None):
     conn.commit()
     cur.close()
     conn.close()
+
+def conectar_processamento():
+    return psycopg2.connect(
+        os.getenv("DATABASE_URL_PROCESSAMENTO"),
+        sslmode="require"
+    )
+
+def executar_processamento(query, params=None):
+    conn = conectar_processamento()
+    cur = conn.cursor()
+    cur.execute(query, params or ())
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def consultar_processamento(query, params=None):
+    conn = conectar_processamento()
+    df = pd.read_sql(query, conn, params=params)
+    conn.close()
+    return df

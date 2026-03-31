@@ -50,7 +50,7 @@ def render():
     df["saida_hub1"] = pd.to_datetime(df["saida_hub1"], errors="coerce")
 
     # 🔥 remove lixo (melhoria)
-    df = df.dropna(subset=["entrada_hub1", "saida_hub1"])
+    df = df.dropna(subset=["entrada_hub1"])
 
     # =========================
     # 📅 FILTRO APLICADO
@@ -215,6 +215,36 @@ def render():
     }])
 
     tabela = pd.concat([tabela, total_linha], ignore_index=True)
+
+    # =========================
+    # 📊 PRÉ-ENTREGA (ATRASO)
+    # =========================
+    st.subheader("📦 Top 10 Pontos de Entrada com Atraso / 入库点延误TOP10")
+
+    df_atraso_pre = df[df["tempo_horas"] > 24]
+
+    if not df_atraso_pre.empty:
+
+        ranking_pre = (
+            df_atraso_pre.groupby("ponto_entrada")
+            .size()
+            .reset_index(name="qtd_atrasos")
+            .sort_values("qtd_atrasos", ascending=False)
+            .head(10)
+        )
+
+        fig_pre = px.bar(
+            ranking_pre,
+            x="ponto_entrada",
+            y="qtd_atrasos",
+            text="qtd_atrasos",
+            color_discrete_sequence=["#DC2626"]
+        )
+
+        st.plotly_chart(fig_pre, use_container_width=True)
+
+    else:
+        st.info("Sem atrasos nos pontos de entrada")
 
     # =========================
     # 📋 EXIBIÇÃO
