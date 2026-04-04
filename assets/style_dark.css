@@ -143,3 +143,24 @@ div[data-testid="stHorizontalBlock"] > div {
 div[data-testid="stHorizontalBlock"] > div:hover {
     transform: translateY(-2px);
 }
+
+/* ===== SIDEBAR ATIVO ===== */
+button[kind="secondary"] {
+    background-color: #16a34a !important;
+    color: white !important;
+}
+
+/* ===== HOVER GLOBAL ===== */
+button:hover {
+    transform: scale(1.02);
+}
+
+/* ===== CARD CLICK ===== */
+div[data-testid="stButton"] button {
+    background: linear-gradient(145deg, #111827, #1f2937);
+    border: 1px solid #374151;
+}
+
+button i {
+    margin-right: 8px;
+}

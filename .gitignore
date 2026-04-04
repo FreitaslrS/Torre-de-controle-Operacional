@@ -23,3 +23,4 @@ uploads/
 .venv/
 venv/
 >>>>>>> 5f1762f (importação dos arquivos no ambiente localhost)
+.env

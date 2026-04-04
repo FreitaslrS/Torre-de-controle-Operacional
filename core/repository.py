@@ -290,9 +290,9 @@ def buscar_backlog_historico(data_inicio, data_fim):
 # =========================
 # 📊 PRODUTIVIDADE (AGORA NO RAILWAY)
 # =========================
-@st.cache_data(ttl=300)
-def buscar_produtividade():
-    return consultar_operacional("""
+def buscar_produtividade(data_inicio=None, data_fim=None):
+
+    query = """
         SELECT 
             cliente,
             estado,
@@ -304,8 +304,25 @@ def buscar_produtividade():
             dispositivo,
             volumes
         FROM produtividade
-    """)
+        WHERE 1=1
+    """
 
+    params = []
+
+    # 🔥 PERÍODO
+    if data_inicio and data_fim:
+        query += " AND data BETWEEN %s AND %s"
+        params.extend([data_inicio, data_fim])
+
+    # 🔥 SNAPSHOT (PADRÃO)
+    else:
+        query += """
+            AND data = (
+                SELECT MAX(data) FROM produtividade
+            )
+        """
+
+    return consultar_operacional(query, params)
 
 # =========================
 # 📦 PEDIDOS
@@ -399,12 +416,10 @@ def buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa):
 
     return consultar_historico(query, params)
 
-
 # =========================
 # ⏱️ TEMPO PROCESSAMENTO
 # =========================
-@st.cache_data(ttl=300)
-def buscar_tempo_processamento():
+def buscar_tempo_processamento(data_inicio=None, data_fim=None):
 
     query = """
         SELECT 
@@ -416,19 +431,26 @@ def buscar_tempo_processamento():
             hiata
         FROM tempo_processamento
         WHERE entrada_hub1 IS NOT NULL
-        AND cliente = 'szanjun'
-        AND hiata IN (
-            'ES-W-H001',
-            'MG-W-H001',
-            'PR-W-H001',
-            'RJ-W-H001',
-            'RS-W-H001',
-            'SC-W-H001'
-        )
     """
 
-    return consultar_processamento(query)   # 🔥 TEM QUE SER ISSO
+    params = []
 
+    if data_inicio and data_fim:
+        query += " AND DATE(entrada_hub1) BETWEEN %s AND %s"
+        params.extend([data_inicio, data_fim])
+    else:
+        query += """
+            AND DATE(entrada_hub1) = (
+                SELECT MAX(DATE(entrada_hub1))
+                FROM tempo_processamento
+            )
+        """
+
+    return consultar_processamento(query, params)
+
+# =========================
+# ⏱️ DEVOLUÇÕES
+# =========================
 def buscar_devolucoes(limit=1000):
     return consultar_devolucoes("""
         SELECT *

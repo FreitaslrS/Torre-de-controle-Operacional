@@ -66,3 +66,25 @@ small {
     background: #d1d5db;
     border-radius: 10px;
 }
+
+/* ===== SIDEBAR ATIVO ===== */
+button[kind="secondary"] {
+    background-color: #16a34a !important;
+    color: white !important;
+}
+
+/* ===== BOTÃO SUAVE ===== */
+.stButton button {
+    background: #16a34a;
+    color: white;
+}
+
+/* ===== CARDS ===== */
+div[data-testid="stButton"] button {
+    background: white;
+    border: 1px solid #e5e7eb;
+}
+
+button i {
+    margin-right: 8px;
+}
