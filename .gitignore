@@ -1,7 +1,6 @@
 # ambiente
 .venv/
 venv/
-<<<<<<< HEAD
 
 # banco de dados
 *.db
@@ -14,13 +13,4 @@ venv/
 # cache
 __pycache__/
 
-=======
-data/
-uploads/
-*.duckdb
-*.xlsx
-*.csv
-.venv/
-venv/
->>>>>>> 5f1762f (importação dos arquivos no ambiente localhost)
 .env
