@@ -281,8 +281,8 @@ def buscar_backlog_historico(data_inicio, data_fim):
             pre_entrega,
             cliente,
             horas_backlog_snapshot
-        FROM pedidos
-        WHERE status = 'backlog'
+        FROM mv_backlog_historico
+        WHERE 1=1
         AND data_referencia BETWEEN %s AND %s
     """, [data_inicio, data_fim])
 
@@ -303,7 +303,7 @@ def buscar_produtividade(data_inicio=None, data_fim=None):
             turno,
             dispositivo,
             volumes
-        FROM produtividade
+        FROM mv_produtividade_dia
         WHERE 1=1
     """
 
@@ -318,7 +318,7 @@ def buscar_produtividade(data_inicio=None, data_fim=None):
     else:
         query += """
             AND data = (
-                SELECT MAX(data) FROM produtividade
+                SELECT MAX(data) FROM mv_produtividade_dia
             )
         """
 
@@ -430,18 +430,18 @@ def buscar_tempo_processamento(data_inicio=None, data_fim=None):
             cliente,
             hiata
         FROM tempo_processamento
-        WHERE entrada_hub1 IS NOT NULL
+        WHERE 1=1
     """
 
     params = []
 
     if data_inicio and data_fim:
-        query += " AND DATE(entrada_hub1) BETWEEN %s AND %s"
+        query += " AND data BETWEEN %s AND %s"
         params.extend([data_inicio, data_fim])
     else:
         query += """
-            AND DATE(entrada_hub1) = (
-                SELECT MAX(DATE(entrada_hub1))
+            AND data_snapshot = (
+                SELECT MAX(data_snapshot)
                 FROM tempo_processamento
             )
         """
@@ -485,7 +485,7 @@ def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
 
     query = """
         SELECT 
-            DATE(data_importacao) as data,
+            data,
             hiata,
             COUNT(*) as qtd
         FROM tempo_processamento
@@ -497,17 +497,27 @@ def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
             'RS-W-H001',
             'SC-W-H001'
         )
+        AND 1=1
     """
 
     params = []
 
-    # 🔥 FILTRO DE PERÍODO (AGORA FUNCIONA)
+    # 🔥 PERÍODO
     if data_inicio and data_fim:
-        query += " AND DATE(data_importacao) BETWEEN %s AND %s"
+        query += " AND data BETWEEN %s AND %s"
         params.extend([data_inicio, data_fim])
 
+    # 🔥 SNAPSHOT
+    else:
+        query += """
+            AND data_snapshot = (
+                SELECT MAX(data_snapshot)
+                FROM tempo_processamento
+            )
+        """
+
     query += """
-        GROUP BY DATE(data_importacao), hiata
+        GROUP BY data, hiata
         ORDER BY data DESC
     """
 
@@ -518,15 +528,15 @@ def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
 
     query_prod = """
         SELECT 
-            DATE(data_importacao) as data,
+            data,
             SUM(volumes) as total_perus
-        FROM produtividade
+        FROM mv_produtividade_dia
         WHERE 1=1
     """
 
     query_tfk = """
         SELECT 
-            DATE(data_importacao) as data,
+            data,
             COUNT(*) as total_tfk
         FROM tempo_processamento
         WHERE hiata IN (
@@ -537,18 +547,31 @@ def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
             'RS-W-H001',
             'SC-W-H001'
         )
+        AND 1=1
     """
 
     params = []
 
+    # 🔥 PERÍODO
     if data_inicio and data_fim:
-        filtro = " AND DATE(data_importacao) BETWEEN %s AND %s"
-        query_prod += filtro
-        query_tfk += filtro
+        query_prod += " AND data BETWEEN %s AND %s"
+        query_tfk += " AND data BETWEEN %s AND %s"
         params.extend([data_inicio, data_fim])
 
-    query_prod += " GROUP BY DATE(data_importacao)"
-    query_tfk += " GROUP BY DATE(data_importacao)"
+    # 🔥 SNAPSHOT
+    else:
+        query_prod += """
+            AND data = (SELECT MAX(data) FROM mv_produtividade_dia)
+        """
+        query_tfk += """
+            AND data_snapshot = (
+                SELECT MAX(data_snapshot)
+                FROM tempo_processamento
+            )
+        """
+
+    query_prod += " GROUP BY data"
+    query_tfk += " GROUP BY data"
 
     df_prod = consultar_operacional(query_prod, params)
     df_tfk = consultar_processamento(query_tfk, params)

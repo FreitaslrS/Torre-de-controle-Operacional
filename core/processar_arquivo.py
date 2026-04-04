@@ -481,6 +481,10 @@ def importar_produtividade(arquivo):
     conn.close()
 
     return len(df)
+
+from core.database import executar_operacional
+
+executar_operacional("REFRESH MATERIALIZED VIEW mv_produtividade_dia")
     
 def importar_tempo_processamento(arquivo):
 

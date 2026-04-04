@@ -35,9 +35,8 @@ map_traducao = {
 # ⚡ CACHE
 # =========================
 @st.cache_data(ttl=300)
-def carregar_dados():
-    df = buscar_produtividade()
-    return df[["data", "hora", "dispositivo", "cliente", "volumes"]].copy()
+def carregar_dados(data_inicio=None, data_fim=None):
+    return buscar_produtividade(data_inicio, data_fim)
 
 @st.cache_data(ttl=300)
 def preparar_dados(df):
@@ -103,8 +102,6 @@ def render():
             "🕒 Turno / 班次",
             ["Todos", "T1", "T2", "T3"]
         )
-
-    df = df[(df["data"] >= data_inicio) & (df["data"] <= data_fim)]
 
     if turno != "Todos":
         df = df[df["turno_real"] == turno]
