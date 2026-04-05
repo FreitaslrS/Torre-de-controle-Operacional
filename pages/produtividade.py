@@ -3,26 +3,27 @@ import plotly.express as px
 import pandas as pd
 
 from core.repository import buscar_produtividade
+from utils.theme import aplicar_layout_padrao
 
 # =========================
 # 🎨 CORES
 # =========================
 COR_VERDE = "#16A34A"
-COR_VERMELHO = "#DC2626"
-COR_CINZA = "#6B7280"
+COR_AZUL = "#0F172A"
+COR_AZUL_GELO = "#CBD5E1"
 
-cores_empresa = [COR_VERDE, COR_VERMELHO, COR_CINZA]
+cores_empresa = [COR_VERDE, COR_AZUL, COR_AZUL_GELO]
 
 color_dispositivo = {
     "Sorter Oval": COR_VERDE,
-    "Sorter Linear": COR_VERMELHO,
-    "Cubometro": COR_CINZA
+    "Sorter Linear": COR_AZUL,
+    "Cubometro": COR_AZUL_GELO
 }
 
 color_turno = {
     "T1": COR_VERDE,
-    "T2": COR_VERMELHO,
-    "T3": COR_CINZA
+    "T2": COR_AZUL,
+    "T3": COR_AZUL_GELO
 }
 
 map_traducao = {
@@ -133,6 +134,8 @@ def render():
         color_discrete_map=color_turno
     )
 
+    fig_pizza = aplicar_layout_padrao(fig_pizza)
+
     st.plotly_chart(fig_pizza, use_container_width=True)
 
     # =========================
@@ -170,6 +173,8 @@ def render():
 
     fig_bar.update_xaxes(dtick=1)
 
+    fig_bar = aplicar_layout_padrao(fig_bar)
+
     st.plotly_chart(fig_bar, use_container_width=True)
 
     # =========================
@@ -199,9 +204,9 @@ def render():
     )
 
     # 🔥 aplica cores da empresa (cíclico)
-    fig_cliente.update_traces(
-        marker_color=[cores_empresa[i % 3] for i in range(len(df_top10))]
-    )
+    cores = ["#0F172A"] + ["#16A34A"] * (len(df_top10) - 1)
+
+    fig_cliente.update_traces(marker_color=cores)
 
     fig_cliente.update_layout(
         xaxis_title="Volumes / 数量",
@@ -209,6 +214,8 @@ def render():
     )
 
     fig_cliente.update_traces(textposition="outside")
+
+    fig_cliente = aplicar_layout_padrao(fig_cliente)
 
     st.plotly_chart(fig_cliente, use_container_width=True)
 

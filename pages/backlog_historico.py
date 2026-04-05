@@ -1,6 +1,7 @@
 import streamlit as st
 import plotly.express as px
 import io
+import pandas as pd
 
 from core.repository import (
     buscar_backlog_historico,
@@ -8,9 +9,7 @@ from core.repository import (
     consultar_backlog as consultar
 )
 
-COR_VERDE = "#16A34A"
-COR_CINZA = "#6B7280"
-
+from utils.theme import grafico_barra, grafico_linha, aplicar_layout_padrao
 
 def gerar_download(df, key_prefix):
 
@@ -119,10 +118,42 @@ def render():
     df_tempo = df.groupby("data_referencia").size().reset_index(name="qtd")
 
     if not df_tempo.empty:
-        st.plotly_chart(
-            px.line(df_tempo, x="data_referencia", y="qtd", markers=True),
-            use_container_width=True
+        df_tempo = df_tempo.sort_values("data_referencia")
+
+        # 🔥 cálculo de variação %
+        df_tempo["pct_change"] = df_tempo["qtd"].pct_change() * 100
+        df_tempo["pct_label"] = df_tempo["pct_change"].apply(
+            lambda x: f"{x:+.1f}%" if pd.notna(x) and x != float("inf") else ""
         )
+
+        # 🔥 gráfico combinado
+        import plotly.graph_objects as go
+
+        fig = go.Figure()
+
+        # 📊 barras
+        fig.add_bar(
+            x=df_tempo["data_referencia"],
+            y=df_tempo["qtd"],
+            name="Volume",
+            marker_color="#CBD5E1"
+        )
+
+        # 📈 linha
+        fig.add_trace(go.Scatter(
+            x=df_tempo["data_referencia"],
+            y=df_tempo["qtd"],
+            mode="lines+markers+text",
+            name="Tendência",
+            line=dict(color="#16A34A", width=3),
+            text=df_tempo["pct_label"],
+            textposition="top center"
+        ))
+
+        from utils.theme import aplicar_layout_padrao
+        fig = aplicar_layout_padrao(fig)
+
+        st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
 
@@ -145,33 +176,60 @@ def render():
 
     with col_g1:
         st.subheader("📊 Estado")
-        st.plotly_chart(
-            px.bar(df_estado.sort_values("qtd", ascending=False),
-                   x="estado", y="qtd", text="qtd",
-                   color_discrete_sequence=[COR_VERDE]),
-            use_container_width=True
+
+        df_estado_sorted = df_estado.sort_values("qtd", ascending=False)
+
+        cores = ["#0F172A"] + ["#16A34A"] * (len(df_estado_sorted) - 1)
+
+        fig_estado = grafico_barra(
+            df_estado_sorted,
+            x="estado",
+            y="qtd",
+            text="qtd"
         )
+
+        fig_estado.update_traces(marker_color=cores)
+
+        st.plotly_chart(fig_estado, use_container_width=True)
 
     with col_g2:
         st.subheader("📊 Cliente")
-        st.plotly_chart(
-            px.bar(df_cliente.sort_values("qtd", ascending=False),
-                   x="cliente", y="qtd", text="qtd",
-                   color_discrete_sequence=[COR_VERDE]),
-            use_container_width=True
+
+        df_cliente_sorted = df_cliente.sort_values("qtd", ascending=False)
+
+        cores = ["#0F172A"] + ["#16A34A"] * (len(df_cliente_sorted) - 1)
+
+        fig_cliente = grafico_barra(
+            df_cliente_sorted,
+            x="cliente",
+            y="qtd",
+            text="qtd"
         )
+
+        fig_cliente.update_traces(marker_color=cores)
+
+        st.plotly_chart(fig_cliente, use_container_width=True)
 
     # =========================
     # 📊 PRÓXIMO PONTO
     # =========================
-    if df_proximo is not None:
-        st.subheader("📊 Próximo Ponto / 下一站")
-        st.plotly_chart(
-            px.bar(df_proximo.sort_values("qtd", ascending=False),
-                   x="proximo_ponto", y="qtd", text="qtd",
-                   color_discrete_sequence=[COR_VERDE]),
-            use_container_width=True
+    if df_proximo is not None and not df_proximo.empty:
+
+        df_proximo_sorted = df_proximo.sort_values("qtd", ascending=False)
+
+        cores = ["#0F172A"] + ["#16A34A"] * (len(df_proximo_sorted) - 1)
+
+        fig_proximo = grafico_barra(
+            df_proximo_sorted,
+            x="proximo_ponto",
+            y="qtd",
+            text="qtd"
         )
+
+        fig_proximo.update_traces(marker_color=cores)
+
+        st.subheader("📊 Próximo Ponto / 下一站")
+        st.plotly_chart(fig_proximo, use_container_width=True)
 
     # =========================
     # 📊 TOP 10 PRÉ-ENTREGA 🔥
@@ -180,17 +238,15 @@ def render():
 
     df_pre_top10 = df_pre.sort_values("qtd", ascending=False).head(10)
 
-    st.plotly_chart(
-        px.bar(
-            df_pre_top10,
-            x="qtd",
-            y="pre_entrega",
-            orientation="h",
-            text="qtd",
-            color_discrete_sequence=[COR_CINZA]
-        ),
-        use_container_width=True
+    fig_pre = grafico_barra(
+        df_pre_top10,
+        x="qtd",
+        y="pre_entrega",
+        text="qtd",
+        cor="#CBD5E1"
     )
+
+    st.plotly_chart(fig_pre, use_container_width=True)
 
     st.divider()
 
@@ -235,3 +291,32 @@ def render():
 
     st.dataframe(df_sla, use_container_width=True)
     gerar_download(df_sla, "drill_sla")
+
+    st.subheader("📊 Backlog por Estado (Faixa de Tempo)")
+
+    df["faixa"] = df["horas_backlog_snapshot"].apply(
+        lambda x: (
+            "0-24h" if x <= 24 else
+            "24-48h" if x <= 48 else
+            "48-72h" if x <= 72 else
+            ">72h"
+        )
+    )
+
+    tabela_estado = (
+        df.groupby(["estado", "faixa"])
+        .size()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+
+    # garantir colunas
+    for col in ["0-24h", "24-48h", "48-72h", ">72h"]:
+        if col not in tabela_estado.columns:
+            tabela_estado[col] = 0
+
+    tabela_estado["Total"] = tabela_estado[
+        ["0-24h", "24-48h", "48-72h", ">72h"]
+    ].sum(axis=1)
+
+    st.dataframe(tabela_estado, use_container_width=True)

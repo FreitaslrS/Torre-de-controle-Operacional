@@ -9,10 +9,7 @@ from core.repository import (
     buscar_top10_pre_entrega,
     buscar_backlog_por_proximo_ponto
 )
-
-COR_VERDE = "#16A34A"
-COR_CINZA = "#6B7280"
-
+from utils.theme import grafico_barra, aplicar_layout_padrao
 
 def render():
 
@@ -105,29 +102,49 @@ def render():
     # =========================
     # 📊 GRÁFICOS
     # =========================
-    fig_estado = px.bar(
-        df_estado.sort_values("qtd", ascending=False),
+    from utils.theme import grafico_barra
+
+    df_estado_sorted = df_estado.sort_values("qtd", ascending=False)
+
+    cores = ["#0F172A"] + ["#16A34A"] * (len(df_estado_sorted) - 1)
+
+    fig_estado = grafico_barra(
+        df_estado_sorted,
         x="estado",
         y="qtd",
-        text="qtd",
-        color_discrete_sequence=[COR_VERDE]
+        text="qtd"
     )
 
-    fig_cliente = px.bar(
-        df_cliente.sort_values("qtd", ascending=False),
+    fig_estado.update_traces(
+        marker_color=cores,
+        hovertemplate="<b>%{x}</b><br>Volume: %{y}<extra></extra>"
+    )
+
+    df_cliente_sorted = df_cliente.sort_values("qtd", ascending=False)
+
+    cores = ["#0F172A"] + ["#16A34A"] * (len(df_cliente_sorted) - 1)
+
+    fig_cliente = grafico_barra(
+        df_cliente_sorted,
         x="cliente",
         y="qtd",
-        text="qtd",
-        color_discrete_sequence=[COR_VERDE]
+        text="qtd"
     )
 
-    fig_proximo = px.bar(
-        df_proximo.sort_values("qtd", ascending=False),
+    fig_cliente.update_traces(marker_color=cores)
+
+    df_proximo_sorted = df_proximo.sort_values("qtd", ascending=False)
+
+    cores = ["#0F172A"] + ["#16A34A"] * (len(df_proximo_sorted) - 1)
+
+    fig_proximo = grafico_barra(
+        df_proximo_sorted,
         x="proximo_ponto",
         y="qtd",
-        text="qtd",
-        color_discrete_sequence=[COR_VERDE]
+        text="qtd"
     )
+
+    fig_proximo.update_traces(marker_color=cores)
 
     # =========================
     # 📊 EXIBE
@@ -169,19 +186,48 @@ def render():
     # =========================
     st.subheader("📊 Top 10 Pré-entrega / 预交付前10")
 
-    fig_pre = px.bar(
+    fig_pre = grafico_barra(
         df_pre,
         x="qtd",
         y="pre_entrega",
-        orientation="h",
         text="qtd",
-        color_discrete_sequence=[COR_CINZA]
+        cor="#CBD5E1"
     )
 
     fig_pre.update_layout(yaxis=dict(autorange="reversed"))
     st.plotly_chart(fig_pre, use_container_width=True)
 
     st.divider()
+
+    st.subheader("📊 Backlog Atual por Estado (SLA)")
+
+    df_detalhe_full = buscar_backlog_paginado(limit=100000)
+
+    df_detalhe_full["faixa"] = df_detalhe_full["horas_backlog_snapshot"].apply(
+        lambda x: (
+            "0-24h" if x <= 24 else
+            "24-48h" if x <= 48 else
+            "48-72h" if x <= 72 else
+            ">72h"
+        )
+    )
+
+    tabela_estado = (
+        df_detalhe_full.groupby(["estado", "faixa"])
+        .size()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+
+    for col in ["0-24h", "24-48h", "48-72h", ">72h"]:
+        if col not in tabela_estado.columns:
+            tabela_estado[col] = 0
+
+    tabela_estado["Total"] = tabela_estado[
+        ["0-24h", "24-48h", "48-72h", ">72h"]
+    ].sum(axis=1)
+
+    st.dataframe(tabela_estado, use_container_width=True)
 
     # =========================
     # 📦 TABELA

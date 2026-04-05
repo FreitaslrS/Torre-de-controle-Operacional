@@ -9,10 +9,12 @@ from core.repository import (
     buscar_consolidado_por_dia
 )
 
-cores = {
+from utils.theme import grafico_barra, grafico_pizza
+
+cores_pizza = {
     "Até 24h": "#16A34A",
-    "> 24h": "#DC2626",
-    "Sem saída": "#6B7280"
+    "> 24h": "#0F172A",
+    "Sem saída": "#CBD5E1"
 }
 
 traducao_status = {
@@ -98,6 +100,7 @@ def render():
 
     if perc_sla < 70:
         st.error("🚨 SLA crítico / SLA严重")
+        st.markdown("🔵 **Alto volume fora do SLA (visual crítico)**")
     elif perc_sla < 85:
         st.warning("⚠️ SLA em atenção / SLA需关注")
     else:
@@ -142,13 +145,14 @@ def render():
     df_pizza.columns = ["status", "qtd"]
     df_pizza["status_label"] = df_pizza["status"].map(traducao_status)
 
-    fig_pizza = px.pie(
+    from utils.theme import grafico_pizza
+
+    fig_pizza = grafico_pizza(
         df_pizza,
         names="status_label",
         values="qtd",
         color="status",
-        color_discrete_map=cores,
-        title="Status de Expedição / 出库状态"
+        color_map=cores_pizza
     )
 
     st.plotly_chart(fig_pizza, use_container_width=True)
@@ -200,13 +204,20 @@ def render():
         .head(5)
     )
 
-    fig_rank = px.bar(
-        ranking,
+    from utils.theme import grafico_barra
+
+    ranking_sorted = ranking.sort_values("qtd_atrasos", ascending=False)
+
+    cores = ["#0F172A"] + ["#16A34A"] * (len(ranking_sorted) - 1)
+
+    fig_rank = grafico_barra(
+        ranking_sorted,
         x="estado",
         y="qtd_atrasos",
-        text="qtd_atrasos",
-        color_discrete_sequence=["#DC2626"]
+        text="qtd_atrasos"
     )
+
+    fig_rank.update_traces(marker_color=cores)
 
     st.plotly_chart(fig_rank, use_container_width=True)
 
@@ -246,13 +257,18 @@ def render():
             .head(10)
         )
 
-        fig_pre = px.bar(
-            ranking_pre,
+        ranking_pre_sorted = ranking_pre.sort_values("qtd_atrasos", ascending=False)
+
+        cores = ["#0F172A"] + ["#16A34A"] * (len(ranking_pre_sorted) - 1)
+
+        fig_pre = grafico_barra(
+            ranking_pre_sorted,
             x="ponto_entrada",
             y="qtd_atrasos",
-            text="qtd_atrasos",
-            color_discrete_sequence=["#DC2626"]
+            text="qtd_atrasos"
         )
+
+        fig_pre.update_traces(marker_color=cores)
 
         st.plotly_chart(fig_pre, use_container_width=True)
 
