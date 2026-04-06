@@ -1,4 +1,6 @@
 import streamlit as st
+from utils.style import aplicar_css_global
+aplicar_css_global()
 from core.database import consultar_backlog as consultar
 
 st.markdown("""
@@ -8,6 +10,53 @@ href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
 
 st.markdown("""
 <style>
+            
+/* =========================
+   📊 TABELAS PADRÃO GLOBAL
+========================= */
+
+/* HEADER REAL STREAMLIT */
+[data-testid="stDataFrame"] [role="columnheader"] {
+    background-color: #0F172A !important;
+    color: white !important;
+    font-weight: 600 !important;
+    text-align: center !important;
+}
+
+/* LINHAS */
+[data-testid="stDataFrame"] [role="row"] {
+    background-color: transparent !important;
+}
+
+/* HOVER */
+[data-testid="stDataFrame"] [role="row"]:hover {
+    background-color: rgba(22,163,74,0.08) !important;
+}
+
+/* BORDA */
+[data-testid="stDataFrame"] {
+    border: 1px solid rgba(0,0,0,0.05);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* CÉLULAS */
+[data-testid="stDataFrame"] [role="gridcell"] {
+    text-align: center !important;
+}
+
+/* PRIMEIRA COLUNA */
+[data-testid="stDataFrame"] [role="gridcell"]:first-child {
+    font-weight: 600;
+    color: #0F172A;
+}
+
+/* COLUNA TOTAL */
+[data-testid="stDataFrame"] [role="gridcell"]:last-child {
+    font-weight: bold;
+    color: #16A34A;
+}
+            
 div[data-testid="stButton"] button {
     transition: 0.2s;
 }
@@ -48,7 +97,7 @@ def render():
     /* ☀️ LIGHT MODE */
     body[data-theme="light"] .card {
         background: #ffffff;
-        border: 1px solid #e5e7eb;
+        border: 1px solid rgba(0,0,0,0.05);
         color: #111827;
     }
 

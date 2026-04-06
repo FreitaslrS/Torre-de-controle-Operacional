@@ -75,6 +75,9 @@ def agrupar_cliente(df):
 # 🚀 RENDER
 # =========================
 def render():
+    from utils.style import aplicar_css_global
+
+    aplicar_css_global()
 
     st.markdown("## ⚡ Produtividade / 生产效率")
 

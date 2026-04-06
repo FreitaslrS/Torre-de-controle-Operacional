@@ -12,6 +12,9 @@ from core.repository import (
 from utils.theme import grafico_barra, aplicar_layout_padrao
 
 def render():
+    from utils.style import aplicar_css_global
+
+    aplicar_css_global()
 
     st.markdown("""
     ## <i class='fas fa-box'></i> Backlog Atual / 当前积压
@@ -164,6 +167,8 @@ def render():
         st.subheader("📊 Cliente / 客户")
         st.plotly_chart(fig_cliente, use_container_width=True)
 
+    st.divider()
+
     st.subheader("📊 Próximo Ponto / 下一站")
     st.plotly_chart(fig_proximo, use_container_width=True)
 
@@ -180,6 +185,8 @@ def render():
     )
 
     st.dataframe(df_detalhe, use_container_width=True)
+
+    st.divider()
 
     # =========================
     # 🚚 PRÉ ENTREGA
@@ -198,6 +205,10 @@ def render():
     st.plotly_chart(fig_pre, use_container_width=True)
 
     st.divider()
+
+    # ===========================
+    # 📊 BACKLOG POR ESTADO (SLA)
+    # ===========================
 
     st.subheader("📊 Backlog Atual por Estado (SLA)")
 
@@ -228,6 +239,8 @@ def render():
     ].sum(axis=1)
 
     st.dataframe(tabela_estado, use_container_width=True)
+
+    st.divider()
 
     # =========================
     # 📦 TABELA

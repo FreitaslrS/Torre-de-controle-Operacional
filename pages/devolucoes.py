@@ -3,6 +3,10 @@ from core.repository import buscar_pedidos
 
 
 def render():
+    from utils.style import aplicar_css_global
+
+    aplicar_css_global()
+
     st.markdown("## <i class='fas fa-undo'></i> Devoluções / 退货", unsafe_allow_html=True)
 
     from core.repository import buscar_devolucoes

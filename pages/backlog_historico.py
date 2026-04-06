@@ -38,6 +38,9 @@ def gerar_download(df, key_prefix):
 
 
 def render():
+    from utils.style import aplicar_css_global
+
+    aplicar_css_global()
 
     st.markdown("""
     ## Backlog Histórico / 历史积压

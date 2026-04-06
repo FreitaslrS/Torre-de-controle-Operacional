@@ -59,6 +59,10 @@ if tema:
 else:
     load_css_light()
 
+# 🔥 FORÇA CSS POR ÚLTIMO (GANHA DE TUDO)
+from utils.style import aplicar_css_global
+aplicar_css_global()
+
 # ===== SIDEBAR =====
 def nav(nome, pagina, icon):
     is_active = st.session_state.page == pagina
