@@ -4,22 +4,22 @@ def aplicar_css_global():
     st.markdown("""
     <style>
 
-    /* 🔥 ATAQUE DIRETO NO DATAFRAME */
-    div[data-testid="stDataFrame"] * {
-        background-color: #0F172A !important;
-        color: white !important;
-    }
-
-    /* 🔥 fallback (caso outra estrutura) */
+    /* 🎯 SOMENTE HEADER */
     div[data-testid="stDataFrame"] div[role="columnheader"] {
         background-color: #0F172A !important;
         color: white !important;
+        font-weight: 700 !important;
     }
 
-    /* 🔥 remove estilo antigo */
-    thead tr th {
-        background-color: #0F172A !important;
-        color: white !important;
+    /* ❌ REMOVE QUALQUER FUNDO FORÇADO NAS LINHAS */
+    div[data-testid="stDataFrame"] div[role="gridcell"] {
+        background-color: transparent !important;
+        color: inherit !important;
+    }
+
+    /* hover leve */
+    div[data-testid="stDataFrame"] div[role="row"]:hover {
+        background-color: rgba(22,163,74,0.08) !important;
     }
 
     </style>

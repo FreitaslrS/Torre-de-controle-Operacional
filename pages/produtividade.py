@@ -81,7 +81,37 @@ def render():
 
     st.markdown("## ⚡ Produtividade / 生产效率")
 
-    df = carregar_dados()
+    df = None
+
+    # =========================
+    # 🎛️ FILTROS
+    # =========================
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        data_inicio = st.date_input(
+            "📅 Data início / 开始日期",
+            value=None
+        )
+
+    with col2:
+        data_fim = st.date_input(
+            "📅 Data fim / 结束日期",
+            value=None
+        )
+
+    if data_inicio and data_fim:
+        df = carregar_dados(data_inicio, data_fim)
+    else:
+        df = carregar_dados()
+
+    df = preparar_dados(df)
+
+    with col3:
+        turno = st.selectbox(
+            "🕒 Turno / 班次",
+            ["Todos", "T1", "T2", "T3"]
+        )
 
     if df.empty:
         st.warning("Sem dados / 暂无数据")
@@ -89,35 +119,32 @@ def render():
 
     df = preparar_dados(df)
 
-    # =========================
-    # 🎛️ FILTROS
-    # =========================
-    col1, col2 = st.columns(2)
-
-    with col1:
-        datas = df["data"].unique()
-        data_inicio, data_fim = st.date_input(
-            "📅 Período / 日期范围",
-            value=(datas.min(), datas.max())
-        )
-
-    with col2:
-        turno = st.selectbox(
-            "🕒 Turno / 班次",
-            ["Todos", "T1", "T2", "T3"]
-        )
-
     if turno != "Todos":
         df = df[df["turno_real"] == turno]
 
     if df.empty:
         st.warning("Sem dados após filtros / 筛选后无数据")
         return
+    
+    st.divider()
 
     # =========================
-    # KPI
+    # 📊 KPIs
     # =========================
-    st.metric("📦 Total / 总量", int(df["volumes"].sum()))
+    total = int(df["volumes"].sum())
+
+    t1 = int(df[df["turno_real"] == "T1"]["volumes"].sum())
+    t2 = int(df[df["turno_real"] == "T2"]["volumes"].sum())
+    t3 = int(df[df["turno_real"] == "T3"]["volumes"].sum())
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("📦 Total / 总量", total)
+    col2.metric("🟢 T1", t1, f"{(t1/total*100):.1f}%")
+    col3.metric("🔵 T2", t2, f"{(t2/total*100):.1f}%")
+    col4.metric("⚪ T3", t3, f"{(t3/total*100):.1f}%")
+
+    st.divider()
 
     # =========================
     # ⚡ AGRUPAMENTO
@@ -140,6 +167,8 @@ def render():
     fig_pizza = aplicar_layout_padrao(fig_pizza)
 
     st.plotly_chart(fig_pizza, use_container_width=True)
+
+    st.divider()
 
     # =========================
     # 📊 BARRA
@@ -180,6 +209,8 @@ def render():
 
     st.plotly_chart(fig_bar, use_container_width=True)
 
+    st.divider()
+
     # =========================
     # 📋 TABELA
     # =========================
@@ -190,6 +221,8 @@ def render():
     df_tabela.columns = df_tabela.columns.map(lambda x: map_traducao.get(x, x))
 
     st.dataframe(df_tabela, use_container_width=True)
+
+    st.divider()
 
     # =========================
     # 🧑‍💼 PRODUTIVIDADE POR CLIENTE
@@ -221,6 +254,8 @@ def render():
     fig_cliente = aplicar_layout_padrao(fig_cliente)
 
     st.plotly_chart(fig_cliente, use_container_width=True)
+
+    st.divider()
 
     # =========================
     # 📋 TABELA CLIENTES

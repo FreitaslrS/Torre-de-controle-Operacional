@@ -414,7 +414,7 @@ def importar_produtividade(arquivo):
 
     df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce")
     df["hora"] = df["data_hora"].dt.hour
-    df["data"] = df["data_hora"].apply(ajustar_data_operacional)
+    df["data"] = df["data_hora"].dt.date
 
     def definir_turno(data_hora):
         if pd.isna(data_hora):

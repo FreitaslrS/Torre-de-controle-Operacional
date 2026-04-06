@@ -4,7 +4,6 @@ import plotly.express as px
 
 from core.repository import (
     buscar_tempo_processamento,
-    buscar_tempo_processamento_geral,
     buscar_hiata_por_dia,
     buscar_consolidado_por_dia
 )
@@ -42,17 +41,7 @@ def render():
         data_inicio = None
         data_fim = None
 
-    st.markdown("""
-    ## ⏱️ Tempo de Processamento / 处理时效
-    <p style='opacity:0.7'>Tempo entre entrada e saída HUB 1 / HUB1入库到出库时间</p>
-    """, unsafe_allow_html=True)
-
-    modo = st.radio("Modo de análise", ["H01 (TFK)", "Geral"])
-
-    if modo == "H01 (TFK)":
-        df = buscar_tempo_processamento()
-    else:
-        df = buscar_tempo_processamento_geral()
+    df = buscar_tempo_processamento()
 
     if df.empty:
         st.warning("Sem dados / 暂无数据")
@@ -91,41 +80,45 @@ def render():
     # 🔥 FILTRO TFK + H01
     df_h01 = df.copy() if not df.empty else pd.DataFrame()
 
+    st.divider()
+
     # =========================
-    # 📊 SLA
+    # 📊 CÁLCULOS
     # =========================
     total = len(df)
     dentro_sla = len(df[df["tempo_horas"] <= 24])
 
     perc_sla = (dentro_sla / total) * 100 if total else 0
 
-    st.metric("📊 SLA 24h / 24小时达标率", f"{perc_sla:.1f}%")
-
-    if perc_sla < 70:
-        st.error("🚨 SLA crítico / SLA严重")
-        st.markdown("🔵 **Alto volume fora do SLA (visual crítico)**")
-    elif perc_sla < 85:
-        st.warning("⚠️ SLA em atenção / SLA需关注")
-    else:
-        st.success("✅ SLA saudável / SLA正常")
-
-    # =========================
-    # ⏱️ TEMPO MÉDIO
-    # =========================
     df_valido = df[
         (df["tempo_horas"] >= 0) &
         (df["tempo_horas"] <= 240)
     ]
 
-    tempo_medio = df["tempo_horas"].dropna().mean()
-    tempo_medio_limpo = df_valido["tempo_horas"].mean()
+    tempo_medio_limpo = df_valido["tempo_horas"].mean() or 0
 
-    st.metric("⏱️ Tempo médio / 平均处理时间", f"{tempo_medio_limpo:.1f}h")
+    # =========================
+    # 📊 SLA
+    # =========================
+    col1, col2 = st.columns(2)
 
-    if tempo_medio_limpo > 24:
-        st.error("🚨 Tempo médio acima de 24h / 超过24小时")
-    else:
-        st.success("✅ Tempo médio dentro do SLA / 时效正常")
+    with col1:
+        st.metric("📊 SLA 24h / 24小时达标率", f"{perc_sla:.1f}%")
+
+        if perc_sla < 70:
+            st.error("🚨 SLA crítico / SLA严重")
+        elif perc_sla < 85:
+            st.warning("⚠️ SLA em atenção / SLA需关注")
+        else:
+            st.success("✅ SLA saudável / SLA正常")
+
+    with col2:
+        st.metric("⏱️ Tempo médio / 平均处理时间", f"{tempo_medio_limpo:.1f}h")
+
+        if tempo_medio_limpo > 24:
+            st.error("🚨 Tempo médio acima de 24h / 超过24小时")
+        else:
+            st.success("✅ Tempo médio dentro do SLA / 时效正常")
 
     # =========================
     # 🧩 CLASSIFICAÇÃO
@@ -141,9 +134,12 @@ def render():
     df["status"] = df.apply(classificar, axis=1)
     df["status_label"] = df["status"].map(traducao_status)
 
+    st.divider()
+
     # =========================
     # 🥧 PIZZA
     # =========================
+    st.subheader("📊 Distribuição por Status / 各状态分布")
     df_pizza = df["status"].value_counts().reset_index()
     df_pizza.columns = ["status", "qtd"]
     df_pizza["status_label"] = df_pizza["status"].map(traducao_status)
@@ -159,6 +155,8 @@ def render():
     )
 
     st.plotly_chart(fig_pizza, use_container_width=True)
+
+    st.divider()
 
     # =========================
     # 📊 TABELA
@@ -224,6 +222,8 @@ def render():
 
     st.plotly_chart(fig_rank, use_container_width=True)
 
+    st.divider()
+
     # =========================
     # 📊 TOTAL
     # =========================
@@ -278,6 +278,8 @@ def render():
     else:
         st.info("Sem atrasos nos pontos de entrada")
 
+    st.divider()
+
     # =========================
     # 📋 EXIBIÇÃO
     # =========================
@@ -298,6 +300,8 @@ def render():
         )
         .reset_index()
     )
+
+    st.divider()
 
     # ======================================
     # 🥧 TABELA DESTINOS H01 (ENVIO DIRETO)
@@ -321,6 +325,8 @@ def render():
     else:
         st.warning("Sem dados de hiata")
 
+
+    st.divider()
     st.subheader("📊 Consolidação Operacional (Perus + TFK)")
 
     df_cons = buscar_consolidado_por_dia(data_inicio, data_fim)

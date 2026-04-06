@@ -63,6 +63,8 @@ def render():
     if df.empty:
         st.warning("Sem dados")
         return
+    
+    st.divider()
 
     # =========================
     # 🎛️ FILTROS IGUAL BACKLOG
@@ -99,6 +101,8 @@ def render():
         df = df[df["horas_backlog_snapshot"] > 48]
     elif faixa == "72h+":
         df = df[df["horas_backlog_snapshot"] > 72]
+
+    st.divider()  
 
     # =========================
     # 📊 KPI
@@ -213,6 +217,8 @@ def render():
 
         st.plotly_chart(fig_cliente, use_container_width=True)
 
+    st.divider()
+
     # =========================
     # 📊 PRÓXIMO PONTO
     # =========================
@@ -233,6 +239,8 @@ def render():
 
         st.subheader("📊 Próximo Ponto / 下一站")
         st.plotly_chart(fig_proximo, use_container_width=True)
+
+    st.divider()
 
     # =========================
     # 📊 TOP 10 PRÉ-ENTREGA 🔥
@@ -294,6 +302,8 @@ def render():
 
     st.dataframe(df_sla, use_container_width=True)
     gerar_download(df_sla, "drill_sla")
+
+    st.divider()
 
     st.subheader("📊 Backlog por Estado (Faixa de Tempo)")
 

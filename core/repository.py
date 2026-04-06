@@ -561,7 +561,6 @@ def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
     # 🔥 SNAPSHOT
     else:
         query_prod += """
-            AND data = (SELECT MAX(data) FROM mv_produtividade_dia)
         """
         query_tfk += """
             AND data_snapshot = (
