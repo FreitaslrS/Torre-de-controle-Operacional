@@ -77,6 +77,13 @@ def render():
         .dt.total_seconds() / 3600
     )
 
+    # mantém tudo (inclusive sem saída)
+    # só evita valores negativos ou absurdos
+    df = df[
+        (df["tempo_horas"].isna()) |
+        ((df["tempo_horas"] >= 0) & (df["tempo_horas"] <= 240))
+    ]
+
     # 🔥 FILTRO TFK + H01
     df_h01 = df.copy() if not df.empty else pd.DataFrame()
 
@@ -137,6 +144,23 @@ def render():
     st.divider()
 
     # =========================
+    # 📊 TABELA
+    # =========================
+    def faixa(h):
+        if pd.isna(h):
+            return "Sem saída"
+        elif h <= 24:
+            return "0-24h"
+        elif h <= 48:
+            return "24-48h"
+        elif h <= 72:
+            return "48-72h"
+        else:
+            return ">72h"
+
+    df["faixa"] = df["tempo_horas"].apply(faixa)
+
+    # =========================
     # 🥧 PIZZA
     # =========================
     st.subheader("📊 Distribuição por Status / 各状态分布")
@@ -159,21 +183,80 @@ def render():
     st.divider()
 
     # =========================
-    # 📊 TABELA
+    # 📊 TABELA POR DIA (STATUS)
     # =========================
-    def faixa(h):
-        if pd.isna(h):
-            return "Sem saída"
-        elif h <= 24:
-            return "0-24h"
-        elif h <= 48:
-            return "24-48h"
-        elif h <= 72:
-            return "48-72h"
-        else:
-            return ">72h"
+    st.subheader("📊 Evolução por Dia / 每日时效分布")
 
-    df["faixa"] = df["tempo_horas"].apply(faixa)
+    # 🔥 GARANTE QUE FAIXA EXISTE (ANTI BUG STREAMLIT)
+    if "faixa" not in df.columns:
+        def faixa(h):
+            if pd.isna(h):
+                return "Sem saída"
+            elif h <= 24:
+                return "0-24h"
+            elif h <= 48:
+                return "24-48h"
+            elif h <= 72:
+                return "48-72h"
+            else:
+                return ">72h"
+
+        df["faixa"] = df["tempo_horas"].apply(faixa)
+
+    df["data"] = df["entrada_hub1"].dt.date
+
+    # agrupamento por dia e faixa
+    tabela_dia = (
+        df.groupby(["data", "faixa"])
+        .size()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+
+    # garante colunas
+    for col in ["0-24h", "24-48h", "48-72h"]:
+        if col not in tabela_dia.columns:
+            tabela_dia[col] = 0
+
+    # total do dia
+    tabela_dia["Total"] = tabela_dia[
+        ["0-24h", "24-48h", "48-72h"]
+    ].sum(axis=1)
+
+    # média (tempo médio real do dia)
+    media_dia = (
+        df.groupby("data")["tempo_horas"]
+        .mean()
+        .reset_index(name="Média (h)")
+    )
+
+    def formatar_horas(h):
+        if pd.isna(h):
+            return "00:00"
+        horas = int(h)
+        minutos = int((h - horas) * 60)
+        return f"{horas:02d}:{minutos:02d}"
+
+    media_dia["Média (h)"] = media_dia["Média (h)"].apply(formatar_horas)
+
+    # merge
+    tabela_dia = tabela_dia.merge(media_dia, on="data", how="left")
+
+    # percentual SLA (até 24h)
+    tabela_dia["% SLA"] = (
+        (tabela_dia["0-24h"] / tabela_dia["Total"].replace(0, 1)) * 100
+    ).round(1)
+
+    tabela_dia["% SLA"] = tabela_dia["% SLA"].astype(str) + "%"
+
+    # ordena
+    tabela_dia = tabela_dia.sort_values("data", ascending=False)
+
+    st.dataframe(tabela_dia, use_container_width=True)
+
+    st.divider()
+
+    
 
     tabela = (
         df.groupby(["estado", "faixa"])
@@ -307,7 +390,7 @@ def render():
     # 🥧 TABELA DESTINOS H01 (ENVIO DIRETO)
     # ======================================
 
-    st.subheader("📊 Volume de Hiatas H001 por Dia")
+    st.subheader("📊 Volume de Hiatas H001 por Dia - 每日 H001 批次量")
 
     df_hiata = buscar_hiata_por_dia(data_inicio, data_fim)
 
@@ -320,6 +403,14 @@ def render():
             .reset_index()
         )
 
+        # 🔥 TOTAL POR DIA
+        colunas_hiata = [col for col in tabela_hiata.columns if col != "data"]
+
+        tabela_hiata["Total"] = tabela_hiata[colunas_hiata].sum(axis=1)
+
+        # ordenar opcional
+        tabela_hiata = tabela_hiata.sort_values("data", ascending=False)
+
         st.dataframe(tabela_hiata, use_container_width=True)
 
     else:
@@ -327,9 +418,13 @@ def render():
 
 
     st.divider()
-    st.subheader("📊 Consolidação Operacional (Perus + TFK)")
 
-    df_cons = buscar_consolidado_por_dia(data_inicio, data_fim)
+    # ============================
+    # 📊 CONSOLIDAÇÃO OPERACIONAL
+    # ============================
+    st.subheader("📊 Consolidação Operacional (Perus + TFK) - 运营整合（Perus + TFK）")
+
+    df_cons = buscar_consolidado_por_dia(None, None)
 
     if not df_cons.empty:
 

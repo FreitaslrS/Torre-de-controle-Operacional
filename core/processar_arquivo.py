@@ -64,8 +64,10 @@ COLUNAS_MAPEAMENTO = {
 
 def encontrar_coluna_mapeada(df, aliases):
     for col in df.columns:
+        col_str = str(col)
+
         for alias in aliases:
-            if alias.lower() in col.lower():
+            if alias.lower() in col_str.lower():
                 return col
     return None
 
@@ -295,7 +297,7 @@ def importar_excel(arquivo, data_referencia):
     dados = dados[dados["status"] == "backlog"]
 
     # ✅ remove duplicados
-    dados = dados.drop_duplicates(subset=["waybill"])
+    dados = dados.drop_duplicates(subset=["waybill", "data_referencia"])
 
     if dados.empty:
         return 0
@@ -392,29 +394,34 @@ def importar_produtividade(arquivo):
     # 🔥 RENOMEAR
     df = df.rename(columns={
         "客户名称(Nome do Cliente)": "cliente",
-        "操作时间(tempo de operação)": "data_hora",
         "收件人州(Estado do destinatário)": "estado",
         "预派送网点(Ponto de Pré-entrega)": "hub",
         "操作人(Operador)": "operador"
     })
 
-    # 🔥 GARANTIR COLUNAS
-    df["cliente"] = df.get("cliente", "Desconhecido")
-    df["estado"] = df.get("estado", "Desconhecido")
-    df["hub"] = df.get("hub", "Desconhecido")
-    df["operador"] = df.get("operador", "Desconhecido")
+    col_data = None
 
-    # 🔥 LIMPEZA
-    df["operador"] = (
-        df["operador"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-    )
+    for col in df.columns:
+        col_str = str(col)
 
-    df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce")
+        if "操作时间" in col_str or "tempo de operação" in col_str.lower():
+            col_data = col
+            break
+
+    if not col_data:
+        print("❌ Coluna de data não encontrada no arquivo")
+        return 0
+
+    df["data_hora"] = pd.to_datetime(df[col_data], errors="coerce")
+
+    # 🔥 remove inválidos
+    df = df[df["data_hora"].notna()]
+
+    # 🔥 cria hora (tava faltando)
     df["hora"] = df["data_hora"].dt.hour
-    df["data"] = df["data_hora"].dt.date
+
+    # 🔥 data operacional
+    df["data"] = df["data_hora"].apply(ajustar_data_operacional)
 
     def definir_turno(data_hora):
         if pd.isna(data_hora):
@@ -434,6 +441,11 @@ def importar_produtividade(arquivo):
 
     # 🔥 CLASSIFICAÇÃO
     def classificar_dispositivo(op):
+        if pd.isna(op):
+            return "Desconhecido"
+
+        op = str(op)
+
         if "PERUS01" in op:
             return "Sorter Oval"
         elif "PERUS02" in op:
@@ -441,6 +453,7 @@ def importar_produtividade(arquivo):
         else:
             return "Cubometro"
 
+    df["operador"] = df.get("operador", "Desconhecido").fillna("Desconhecido")
     df["dispositivo"] = df["operador"].apply(classificar_dispositivo)
 
     # 🔥 VOLUME
@@ -480,6 +493,10 @@ def importar_produtividade(arquivo):
     cur.close()
     conn.close()
 
+    # 🔥 ATUALIZA VIEW AUTOMATICAMENTE
+    from core.database import executar_operacional
+    executar_operacional("REFRESH MATERIALIZED VIEW mv_produtividade_dia")
+
     return len(df)
 
 from core.database import executar_operacional
@@ -494,6 +511,9 @@ def importar_tempo_processamento(arquivo):
     from core.database import conectar_processamento
 
     df = pd.read_excel(arquivo)
+
+    df.columns = df.columns.map(str)
+    df.columns = df.columns.str.strip()
 
     if df.empty:
         return 0
