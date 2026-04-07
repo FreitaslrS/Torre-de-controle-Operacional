@@ -440,10 +440,7 @@ def buscar_tempo_processamento(data_inicio=None, data_fim=None):
         params.extend([data_inicio, data_fim])
     else:
         query += """
-            AND data_snapshot = (
-                SELECT MAX(data_snapshot)
-                FROM tempo_processamento
-            )
+            AND data >= CURRENT_DATE - INTERVAL '7 days'
         """
 
     return consultar_processamento(query, params)
@@ -510,10 +507,7 @@ def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
     # 🔥 SNAPSHOT
     else:
         query += """
-            AND data_snapshot = (
-                SELECT MAX(data_snapshot)
-                FROM tempo_processamento
-            )
+            AND data >= CURRENT_DATE - INTERVAL '7 days'
         """
 
     query += """
@@ -574,6 +568,9 @@ def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
 
     df_prod = consultar_operacional(query_prod, params)
     df_tfk = consultar_processamento(query_tfk, params)
+
+    df_prod["data"] = pd.to_datetime(df_prod["data"]).dt.date
+    df_tfk["data"] = pd.to_datetime(df_tfk["data"]).dt.date
 
     df = pd.merge(df_prod, df_tfk, on="data", how="outer")
 
