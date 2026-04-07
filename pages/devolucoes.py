@@ -6,7 +6,7 @@ from utils.style import aplicar_css_global, tabela_padrao
 def render():
     aplicar_css_global()
 
-    st.markdown("## <i class='fas fa-undo'></i> Devoluções / 退货", unsafe_allow_html=True)
+    st.title("🔁 Devoluções / 退货")
 
     df = buscar_devolucoes(2000)
 

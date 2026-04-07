@@ -40,10 +40,8 @@ def gerar_download(df, key_prefix):
 def render():
     aplicar_css_global()
 
-    st.markdown("""
-    ## Backlog Histórico / 历史积压
-    <p style='opacity:0.7'>Visão completa histórica da operação</p>
-    """, unsafe_allow_html=True)
+    st.title("📊 Backlog Histórico / 历史积压")
+    st.caption("Visão completa histórica da operação")
 
     # =========================
     # 📅 DATA

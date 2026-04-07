@@ -95,7 +95,7 @@ def render():
     if not verificar_senha():
         return
 
-    st.markdown("## <i class='fas fa-upload'></i> Importação de Dados / 数据导入", unsafe_allow_html=True)
+    st.title("📥 Importação de Dados / 数据导入")
 
     data_ref = st.date_input("Data de referência / 参考日期")
 
