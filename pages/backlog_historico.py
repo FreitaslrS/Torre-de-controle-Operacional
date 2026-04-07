@@ -1,15 +1,15 @@
 import streamlit as st
-import plotly.express as px
 import io
 import pandas as pd
 
 from core.repository import (
     buscar_backlog_historico,
-    buscar_waybills_por_faixa_dias,
-    consultar_backlog as consultar
+    buscar_waybills_por_faixa_dias
 )
+from core.database import consultar_historico
 
-from utils.theme import grafico_barra, grafico_linha, aplicar_layout_padrao
+from utils.theme import grafico_barra, aplicar_layout_padrao
+from utils.style import aplicar_css_global, tabela_padrao
 
 def gerar_download(df, key_prefix):
 
@@ -38,8 +38,6 @@ def gerar_download(df, key_prefix):
 
 
 def render():
-    from utils.style import aplicar_css_global
-
     aplicar_css_global()
 
     st.markdown("""
@@ -56,6 +54,10 @@ def render():
     data_fim = col2.date_input("Data fim")
 
     if not data_inicio or not data_fim:
+        return
+
+    if data_inicio > data_fim:
+        st.error("Data início não pode ser maior que a data fim.")
         return
 
     df = buscar_backlog_historico(data_inicio, data_fim)
@@ -157,7 +159,6 @@ def render():
             textposition="top center"
         ))
 
-        from utils.theme import aplicar_layout_padrao
         fig = aplicar_layout_padrao(fig)
 
         st.plotly_chart(fig, use_container_width=True)
@@ -273,7 +274,7 @@ def render():
 
     df_drill = buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa_dias)
 
-    st.dataframe(df_drill, use_container_width=True)
+    tabela_padrao(df_drill, use_container_width=True)
     gerar_download(df_drill, "drill_dias")
 
     st.divider()
@@ -294,13 +295,18 @@ def render():
     elif faixa_tempo == "72h+":
         condicao = "horas_backlog_snapshot > 72"
 
-    df_sla = consultar(f"""
+    df_sla = consultar_historico(
+        f"""
         SELECT *
-        FROM backlog_atual
-        WHERE {condicao}
-    """)
+        FROM pedidos
+        WHERE status = 'backlog'
+        AND data_referencia BETWEEN %s AND %s
+        AND {condicao}
+        """,
+        [data_inicio, data_fim]
+    )
 
-    st.dataframe(df_sla, use_container_width=True)
+    tabela_padrao(df_sla, use_container_width=True)
     gerar_download(df_sla, "drill_sla")
 
     st.divider()
@@ -332,4 +338,4 @@ def render():
         ["0-24h", "24-48h", "48-72h", ">72h"]
     ].sum(axis=1)
 
-    st.dataframe(tabela_estado, use_container_width=True)
+    tabela_padrao(tabela_estado, use_container_width=True)

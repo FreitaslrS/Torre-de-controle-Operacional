@@ -1,26 +1,166 @@
+from datetime import date, datetime, time
+import html
+import math
+
+import pandas as pd
+import streamlit as st
+
+
 def aplicar_css_global():
-    import streamlit as st
 
     st.markdown("""
     <style>
 
-    /* 🎯 SOMENTE HEADER */
-    div[data-testid="stDataFrame"] div[role="columnheader"] {
-        background-color: #0F172A !important;
-        color: white !important;
-        font-weight: 700 !important;
-    }
-
-    /* ❌ REMOVE QUALQUER FUNDO FORÇADO NAS LINHAS */
-    div[data-testid="stDataFrame"] div[role="gridcell"] {
-        background-color: transparent !important;
-        color: inherit !important;
-    }
-
-    /* hover leve */
-    div[data-testid="stDataFrame"] div[role="row"]:hover {
-        background-color: rgba(22,163,74,0.08) !important;
+    /* Estilos globais da aplicação */
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {
+        border-radius: 8px;
+        overflow: hidden;
     }
 
     </style>
     """, unsafe_allow_html=True)
+
+
+def _formatar_valor(col_name, valor):
+    """
+    Formata o valor de uma célula de acordo com o nome da coluna.
+    Colunas com 'hora' ou 'tempo' no nome são tratadas como duração em horas
+    e exibidas no formato  HH:MM  (ex: 23.79 → 23:47).
+    Valores inválidos (nan, vazio, negativo) são exibidos como traço.
+    """
+    col_lower = str(col_name).lower()
+
+    # detecta colunas de duração em horas
+    eh_hora = any(k in col_lower for k in ("hora", "tempo", "horas", "time", "(h)"))
+
+    if eh_hora:
+        if isinstance(valor, str) and ":" in valor:
+            return html.escape(valor)
+        try:
+            h = float(valor)
+            if math.isnan(h) or h < 0:
+                return "-"
+            horas_int  = int(h)
+            minutos    = int(round((h - horas_int) * 60))
+            if minutos == 60:
+                horas_int += 1
+                minutos = 0
+            return f"{horas_int:02d}:{minutos:02d}"
+        except (ValueError, TypeError):
+            s = str(valor)
+            return html.escape(s) if s not in ("nan", "None", "", "NaT") else "-"
+
+    if isinstance(valor, pd.Timestamp):
+        if pd.isna(valor):
+            return "-"
+        if valor.time() == time.min:
+            return valor.strftime("%d/%m/%Y")
+        return valor.strftime("%d/%m/%Y %H:%M")
+
+    if isinstance(valor, datetime):
+        if valor.time() == time.min:
+            return valor.strftime("%d/%m/%Y")
+        return valor.strftime("%d/%m/%Y %H:%M")
+
+    if isinstance(valor, date):
+        return valor.strftime("%d/%m/%Y")
+
+    # valor comum
+    s = str(valor)
+    return "-" if s in ("nan", "None", "", "NaT") else html.escape(s)
+
+
+def tabela_padrao(df, use_container_width=True, altura_linhas=13):
+    """
+    Renderiza um DataFrame como tabela HTML estilizada com:
+    - Cabeçalho azul escuro (#0F172A)
+    - Scroll vertical (≈13 linhas visíveis por padrão)
+    - Scroll horizontal automático
+    - Formatação automática de colunas de horas → HH:MM
+    - Linhas alternadas (zebra) + hover
+    """
+    if df is None or df.empty:
+        st.info("Sem dados para exibir.")
+        return
+
+    df_display = df.copy()
+
+    # ── Paleta ─────────────────────────────────────────────────────────
+    header_bg    = "#0F172A"
+    header_color = "#FFFFFF"
+    row_bg       = "#FFFFFF"
+    row_alt_bg   = "#F8FAFC"
+    border_color = "#E2E8F0"
+    text_color   = "#1E293B"
+    hover_bg     = "#F1F5F9"
+
+    # altura do scroll: ~13 linhas × 37px por linha + 42px do header
+    ROW_H   = 37
+    HEADER_H = 42
+    max_height = HEADER_H + altura_linhas * ROW_H  # ≈ 523px
+
+    cols = df_display.columns.tolist()
+
+    # ── Cabeçalho ──────────────────────────────────────────────────────
+    header_cells = "".join(
+        f'<th style="'
+        f'background-color:{header_bg};'
+        f'color:{header_color};'
+        f'font-weight:700;'
+        f'font-size:13px;'
+        f'padding:10px 14px;'
+        f'text-align:left;'
+        f'white-space:nowrap;'
+        f'position:sticky;top:0;z-index:2;'
+        f'border-bottom:2px solid #1E3A5F;'
+        f'font-family:Inter,Arial,sans-serif;'
+        f'">{html.escape(str(col))}</th>'
+        for col in cols
+    )
+
+    # ── Linhas ─────────────────────────────────────────────────────────
+    rows_html = ""
+    for i, (_, row) in enumerate(df_display.iterrows()):
+        bg = row_bg if i % 2 == 0 else row_alt_bg
+        cells = "".join(
+            f'<td style="'
+            f'padding:9px 14px;'
+            f'font-size:13px;'
+            f'color:{text_color};'
+            f'border-bottom:1px solid {border_color};'
+            f'font-family:Inter,Arial,sans-serif;'
+            f'white-space:nowrap;'
+            f'">{_formatar_valor(col, row[col])}</td>'
+            for col in cols
+        )
+        rows_html += (
+            f'<tr style="background-color:{bg};" '
+            f'onmouseover="this.style.backgroundColor=\'{hover_bg}\'" '
+            f'onmouseout="this.style.backgroundColor=\'{bg}\'">'
+            f'{cells}</tr>'
+        )
+
+    width = "100%" if use_container_width else "auto"
+
+    html = f"""
+    <div style="
+        overflow-x:auto;
+        overflow-y:auto;
+        max-height:{max_height}px;
+        border-radius:8px;
+        border:1px solid {border_color};
+        box-shadow:0 1px 4px rgba(0,0,0,0.06);
+        margin-bottom:1rem;
+    ">
+    <table style="
+        border-collapse:collapse;
+        width:{width};
+        min-width:100%;
+    ">
+        <thead><tr>{header_cells}</tr></thead>
+        <tbody>{rows_html}</tbody>
+    </table>
+    </div>
+    """
+
+    st.markdown(html, unsafe_allow_html=True)

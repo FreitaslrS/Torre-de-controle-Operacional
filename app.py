@@ -2,6 +2,8 @@ import streamlit as st
 import os
 from core.database import inicializar_banco
 
+st.set_page_config(page_title="Control Tower", layout="wide")
+
 inicializar_banco()
 
 import pages.home as home
@@ -11,10 +13,6 @@ import pages.produtividade as produtividade
 import pages.devolucoes as devolucoes
 import pages.importacao as importacao
 import pages.tempo_processamento as tempo_processamento
-
-st.markdown("""
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-""", unsafe_allow_html=True)
 
 # 🔥 BASE DIR (pra não dar erro de caminho)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,9 +28,6 @@ def load_css_light():
     path = os.path.join(BASE_DIR, "assets", "style_light.css")
     with open(path, encoding="utf-8") as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-
-# ===== CONFIG =====
-st.set_page_config(page_title="Control Tower", layout="wide")
 
 if "page" not in st.session_state:
     st.session_state.page = "home"

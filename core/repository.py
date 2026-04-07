@@ -13,6 +13,25 @@ from core.database import (
 )
 from core.database import consultar_processamento
 
+
+def _aplicar_faixa_backlog(query, faixa):
+    if faixa in (None, "Todos"):
+        return query
+    if faixa == "0-24h":
+        return query + " AND horas_backlog_snapshot <= 24"
+    if faixa == "24-48h":
+        return query + " AND horas_backlog_snapshot > 24 AND horas_backlog_snapshot <= 48"
+    if faixa == "48-72h":
+        return query + " AND horas_backlog_snapshot > 48 AND horas_backlog_snapshot <= 72"
+    if faixa in ("72h+", ">72h"):
+        return query + " AND horas_backlog_snapshot > 72"
+    if faixa == "24h+":
+        return query + " AND horas_backlog_snapshot > 24"
+    if faixa == "48h+":
+        return query + " AND horas_backlog_snapshot > 48"
+    return query
+
+
 # =========================
 # 🗑️ DELETE
 # =========================
@@ -61,6 +80,26 @@ def buscar_backlog_resumo():
     """)
 
 
+@st.cache_data(ttl=300)
+def buscar_backlog_atual():
+    return consultar_backlog("""
+        SELECT *
+        FROM backlog_atual
+        ORDER BY data_atualizacao DESC
+    """)
+
+
+@st.cache_data(ttl=300)
+def buscar_backlog_periodo(data_inicio, data_fim):
+    return consultar_historico("""
+        SELECT *
+        FROM pedidos
+        WHERE status = 'backlog'
+        AND data_referencia BETWEEN %s AND %s
+        ORDER BY data_referencia DESC
+    """, [data_inicio, data_fim])
+
+
 # =========================
 # 📊 GRÁFICO POR ESTADO
 # =========================
@@ -82,17 +121,7 @@ def buscar_backlog_por_estado(remover_estados=None, remover_clientes=None, faixa
         query += " AND cliente != ALL(%s)"
         params.append(remover_clientes)
 
-    if faixa == "0-24h":
-        query += " AND horas_backlog_snapshot <= 24"
-
-    elif faixa == "24-48h":
-        query += " AND horas_backlog_snapshot > 24 AND horas_backlog_snapshot <= 48"
-
-    elif faixa == "48-72h":
-        query += " AND horas_backlog_snapshot > 48 AND horas_backlog_snapshot <= 72"
-
-    elif faixa == "72h+":
-        query += " AND horas_backlog_snapshot > 72"
+    query = _aplicar_faixa_backlog(query, faixa)
 
     query += " GROUP BY estado ORDER BY qtd DESC"
 
@@ -120,18 +149,7 @@ def buscar_backlog_por_cliente(remover_clientes=None, remover_estados=None, faix
         query += " AND estado != ALL(%s)"
         params.append(remover_estados)
 
-    # 🔥 AQUI TAVA FALTANDO
-    if faixa == "0-24h":
-        query += " AND horas_backlog_snapshot <= 24"
-
-    elif faixa == "24-48h":
-        query += " AND horas_backlog_snapshot > 24 AND horas_backlog_snapshot <= 48"
-
-    elif faixa == "48-72h":
-        query += " AND horas_backlog_snapshot > 48 AND horas_backlog_snapshot <= 72"
-
-    elif faixa == "72h+":
-        query += " AND horas_backlog_snapshot > 72"
+    query = _aplicar_faixa_backlog(query, faixa)
 
     query += " GROUP BY cliente ORDER BY qtd DESC"
 
@@ -155,17 +173,7 @@ def buscar_backlog_por_proximo_ponto(faixa=None):
         WHERE 1=1
     """
 
-    if faixa == "0-24h":
-        query += " AND horas_backlog_snapshot <= 24"
-
-    elif faixa == "24-48h":
-        query += " AND horas_backlog_snapshot > 24 AND horas_backlog_snapshot <= 48"
-
-    elif faixa == "48-72h":
-        query += " AND horas_backlog_snapshot > 48 AND horas_backlog_snapshot <= 72"
-
-    elif faixa == "72h+":
-        query += " AND horas_backlog_snapshot > 72"
+    query = _aplicar_faixa_backlog(query, faixa)
 
     query += """
         GROUP BY 
@@ -191,13 +199,7 @@ def buscar_top10_pre_entrega(faixa=None):
         WHERE 1=1
     """
 
-    # 🔥 ADICIONA ISSO
-    if faixa == "24h+":
-        query += " AND horas_backlog_snapshot > 24"
-    elif faixa == "48h+":
-        query += " AND horas_backlog_snapshot > 48"
-    elif faixa == "72h+":
-        query += " AND horas_backlog_snapshot > 72"
+    query = _aplicar_faixa_backlog(query, faixa)
 
     query += " GROUP BY pre_entrega ORDER BY qtd DESC LIMIT 10"
 
@@ -235,12 +237,7 @@ def buscar_backlog_paginado(limit=100, offset=0, estados=None, clientes=None, fa
         query += " AND cliente = ANY(%s)"
         params.append(clientes)
 
-    if faixa == "24h+":
-        query += " AND horas_backlog_snapshot > 24"
-    elif faixa == "48h+":
-        query += " AND horas_backlog_snapshot > 48"
-    elif faixa == "72h+":
-        query += " AND horas_backlog_snapshot > 72"
+    query = _aplicar_faixa_backlog(query, faixa)
 
     query += " ORDER BY data_atualizacao DESC LIMIT %s OFFSET %s"
     params.extend([limit, offset])
@@ -254,7 +251,7 @@ def buscar_backlog_paginado(limit=100, offset=0, estados=None, clientes=None, fa
 @st.cache_data(ttl=120)
 def contar_backlog(estados=None, clientes=None, faixa=None):
 
-    query = "SELECT SUM(qtd) as total FROM backlog_atual WHERE 1=1"
+    query = "SELECT COUNT(*) as total FROM backlog_atual WHERE 1=1"
     params = []
 
     if estados:
@@ -265,7 +262,7 @@ def contar_backlog(estados=None, clientes=None, faixa=None):
         query += " AND cliente = ANY(%s)"
         params.append(clientes)
 
-    # ❌ NÃO usa faixa aqui (view não tem horas)
+    query = _aplicar_faixa_backlog(query, faixa)
 
     return consultar_backlog(query, params)
 

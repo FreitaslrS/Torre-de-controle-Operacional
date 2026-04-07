@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 import pandas as pd
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.database import executar_backlog
@@ -25,7 +26,7 @@ def get_conexao():
 # 🔐 LOGIN
 # =========================
 def obter_senha():
-    return "Ss.sist@05060711*"
+    return os.getenv("IMPORTACAO_SENHA", "")
 
 
 def verificar_senha():
@@ -40,7 +41,10 @@ def verificar_senha():
     senha = st.text_input("Digite a senha / 输入密码", type="password")
 
     if st.button("Entrar / 登录"):
-        if senha == obter_senha():
+        senha_configurada = obter_senha()
+        if not senha_configurada:
+            st.error("Configure IMPORTACAO_SENHA no .env.")
+        elif senha == senha_configurada:
             st.session_state.autenticado = True
             st.rerun()
         else:
