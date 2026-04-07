@@ -95,6 +95,12 @@ div[role="listbox"] {
     border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* ===== HEADER TABLE ===== */
+thead tr th {
+    background-color: #020617 !important;
+    color: #22c55e !important;
+}
+
 /* ===== GRÁFICOS (plotly fundo) ===== */
 .js-plotly-plot,
 .plotly {

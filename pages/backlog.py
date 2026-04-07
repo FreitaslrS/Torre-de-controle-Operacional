@@ -1,20 +1,19 @@
 import streamlit as st
-import os
-
-import requests
-
+import plotly.express as px
 from core.repository import (
     buscar_backlog_resumo,
     buscar_backlog_paginado,
+    contar_backlog,
     buscar_backlog_por_estado,
     buscar_backlog_por_cliente,
     buscar_top10_pre_entrega,
     buscar_backlog_por_proximo_ponto
 )
-from utils.theme import grafico_barra
-from utils.style import aplicar_css_global, tabela_padrao
+from utils.theme import grafico_barra, aplicar_layout_padrao
 
 def render():
+    from utils.style import aplicar_css_global
+
     aplicar_css_global()
 
     st.markdown("""
@@ -106,6 +105,8 @@ def render():
     # =========================
     # 📊 GRÁFICOS
     # =========================
+    from utils.theme import grafico_barra
+
     df_estado_sorted = df_estado.sort_values("qtd", ascending=False)
 
     cores = ["#0F172A"] + ["#16A34A"] * (len(df_estado_sorted) - 1)
@@ -157,10 +158,6 @@ def render():
         st.subheader("📊 Estado / 州")
         st.plotly_chart(fig_estado, use_container_width=True)
 
-        if df_estado.empty:
-            st.warning("Sem dados para o filtro selecionado.")
-            return
-
         estado_select = st.selectbox(
             "Ver detalhe por estado",
             options=df_estado["estado"].tolist()
@@ -187,7 +184,7 @@ def render():
         faixa=faixa if faixa != "Todos" else None
     )
 
-    tabela_padrao(df_detalhe)
+    st.dataframe(df_detalhe, use_container_width=True)
 
     st.divider()
 
@@ -241,7 +238,7 @@ def render():
         ["0-24h", "24-48h", "48-72h", ">72h"]
     ].sum(axis=1)
 
-    tabela_padrao(tabela_estado)
+    st.dataframe(tabela_estado, use_container_width=True)
 
     st.divider()
 
@@ -250,7 +247,7 @@ def render():
     # =========================
     if st.button("📦 Carregar pedidos / 加载订单 (modo pesado)"):
         df = buscar_backlog_paginado(limit=100)
-        tabela_padrao(df)
+        st.dataframe(df, use_container_width=True)
 
     # ✅ BOTÃO CORRIGIDO
     if st.button("🚀 Enviar relatório no Telegram"):
@@ -268,15 +265,15 @@ def render():
 # 🔥 TELEGRAM
 # =========================
 
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+import pandas as pd
+import requests
+import os
+
+TOKEN = "8632831814:AAHU8LIDCP2iI6ZZ03j_F3i7y21XVunbTIM"
+CHAT_ID = 8752000601
 
 
 def enviar_telegram(texto):
-    if not TOKEN or not CHAT_ID:
-        st.error("Configure TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env.")
-        return
-
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={
         "chat_id": CHAT_ID,
@@ -287,10 +284,6 @@ def enviar_telegram(texto):
 
 
 def enviar_imagem(caminho):
-    if not TOKEN or not CHAT_ID:
-        st.error("Configure TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env.")
-        return
-
     url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
 
     with open(caminho, "rb") as img:
@@ -371,10 +364,6 @@ def gerar_texto_completo(df_cliente):
 """
 
 def enviar_excel(df):
-    if not TOKEN or not CHAT_ID:
-        st.error("Configure TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env.")
-        return
-
 
     caminho = "temp/waybills.xlsx"
     df.to_excel(caminho, index=False)

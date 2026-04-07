@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 from core.repository import (
     buscar_tempo_processamento,
@@ -8,7 +9,6 @@ from core.repository import (
 )
 
 from utils.theme import grafico_barra, grafico_pizza
-from utils.style import aplicar_css_global, tabela_padrao
 
 cores_pizza = {
     "Até 24h": "#16A34A",
@@ -23,6 +23,8 @@ traducao_status = {
 }
 
 def render():
+    from utils.style import aplicar_css_global
+
     aplicar_css_global()
 
     # =========================
@@ -35,14 +37,11 @@ def render():
     if usar_filtro:
         data_inicio = col1.date_input("Data início / 开始日期")
         data_fim = col2.date_input("Data fim / 结束日期")
-        if data_inicio and data_fim and data_inicio > data_fim:
-            st.error("Data início não pode ser maior que a data fim.")
-            return
     else:
         data_inicio = None
         data_fim = None
 
-    df = buscar_tempo_processamento(data_inicio, data_fim)
+    df = buscar_tempo_processamento()
 
     if df.empty:
         st.warning("Sem dados / 暂无数据")
@@ -56,6 +55,15 @@ def render():
 
     # 🔥 remove lixo (melhoria)
     df = df.dropna(subset=["entrada_hub1"])
+
+    # =========================
+    # 📅 FILTRO APLICADO
+    # =========================
+    if usar_filtro and data_inicio and data_fim:
+        df = df[
+            (df["entrada_hub1"].dt.date >= data_inicio) &
+            (df["entrada_hub1"].dt.date <= data_fim)
+        ]
 
     if df.empty:
         st.warning("Sem dados no período / 当前时间段无数据")
@@ -206,13 +214,13 @@ def render():
     )
 
     # garante colunas
-    for col in ["0-24h", "24-48h", "48-72h", ">72h", "Sem saída"]:
+    for col in ["0-24h", "24-48h", "48-72h"]:
         if col not in tabela_dia.columns:
             tabela_dia[col] = 0
 
     # total do dia
     tabela_dia["Total"] = tabela_dia[
-        ["0-24h", "24-48h", "48-72h", ">72h", "Sem saída"]
+        ["0-24h", "24-48h", "48-72h"]
     ].sum(axis=1)
 
     # média (tempo médio real do dia)
@@ -244,7 +252,7 @@ def render():
     # ordena
     tabela_dia = tabela_dia.sort_values("data", ascending=False)
 
-    tabela_padrao(tabela_dia)
+    st.dataframe(tabela_dia, use_container_width=True)
 
     st.divider()
 
@@ -360,7 +368,7 @@ def render():
     # =========================
     st.subheader("📊 Tempo por Estado / 各州时效")
 
-    tabela_padrao(tabela)
+    st.dataframe(tabela, use_container_width=True)
 
     # ======================================
     # 🥧 TABELA DESTINO DIRETO AOS ESTADOS
@@ -403,7 +411,7 @@ def render():
         # ordenar opcional
         tabela_hiata = tabela_hiata.sort_values("data", ascending=False)
 
-        tabela_padrao(tabela_hiata)
+        st.dataframe(tabela_hiata, use_container_width=True)
 
     else:
         st.warning("Sem dados de hiata")
@@ -416,7 +424,7 @@ def render():
     # ============================
     st.subheader("📊 Consolidação Operacional (Perus + TFK) - 运营整合（Perus + TFK）")
 
-    df_cons = buscar_consolidado_por_dia(data_inicio, data_fim)
+    df_cons = buscar_consolidado_por_dia(None, None)
 
     if not df_cons.empty:
 
@@ -432,7 +440,7 @@ def render():
         col3.metric("🔥 Total", f"{media_total:.0f}/dia")
 
         # 📋 TABELA
-        tabela_padrao(df_cons)
+        st.dataframe(df_cons, use_container_width=True)
 
     else:
         st.warning("Sem dados para o período")

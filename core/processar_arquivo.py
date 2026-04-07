@@ -16,11 +16,8 @@ import requests
 import os
 
 def enviar_telegram(msg):
-    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-    if not TOKEN or not CHAT_ID:
-        return
+    TOKEN = 'SEU_TOKEN_AQUI'
+    CHAT_ID = 'SEU_CHAT_ID_AQUI'
 
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
@@ -447,7 +444,7 @@ def importar_produtividade(arquivo):
         if pd.isna(op):
             return "Desconhecido"
 
-        op = str(op).upper().replace(" ", "").replace("-", "")
+        op = str(op)
 
         if "PERUS01" in op:
             return "Sorter Oval"
@@ -502,6 +499,10 @@ def importar_produtividade(arquivo):
 
     return len(df)
 
+from core.database import executar_operacional
+
+executar_operacional("REFRESH MATERIALIZED VIEW mv_produtividade_dia")
+    
 def importar_tempo_processamento(arquivo):
 
     import pandas as pd

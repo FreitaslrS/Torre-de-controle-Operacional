@@ -110,7 +110,6 @@ def inicializar_banco():
             estado TEXT,
             cidade TEXT,
             pre_entrega TEXT,
-            proximo_ponto TEXT,
             entrada_hub1 TIMESTAMP,
             horas_backlog_snapshot DOUBLE PRECISION,
             faixa_backlog_snapshot TEXT,
@@ -121,13 +120,8 @@ def inicializar_banco():
     executar_operacional("""
         CREATE TABLE IF NOT EXISTS produtividade (
             operador TEXT,
-            cliente TEXT,
-            estado TEXT,
             hub TEXT,
             data DATE,
-            hora INTEGER,
-            turno TEXT,
-            dispositivo TEXT,
             volumes INTEGER,
             tempo_medio DOUBLE PRECISION,
             nome_arquivo TEXT,
@@ -152,10 +146,6 @@ def inicializar_banco():
         ponto_entrada TEXT,
         entrada_hub1 TIMESTAMP,
         saida_hub1 TIMESTAMP,
-        cliente TEXT,
-        hiata TEXT,
-        data DATE,
-        data_snapshot DATE,
         nome_arquivo TEXT,
         data_importacao TIMESTAMP
         )

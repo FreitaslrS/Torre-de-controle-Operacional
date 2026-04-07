@@ -4,7 +4,6 @@ import pandas as pd
 
 from core.repository import buscar_produtividade
 from utils.theme import aplicar_layout_padrao
-from utils.style import aplicar_css_global, tabela_padrao
 
 # =========================
 # 🎨 CORES
@@ -67,7 +66,7 @@ def agrupar_cliente(df):
         .reset_index()
         .sort_values(by="volumes", ascending=False)
     )
-
+    
     df_top10 = df_cliente.head(10)
 
     return df_cliente, df_top10
@@ -76,9 +75,11 @@ def agrupar_cliente(df):
 # 🚀 RENDER
 # =========================
 def render():
+    from utils.style import aplicar_css_global
+
     aplicar_css_global()
 
-    st.title("⚡ Produtividade / 生产效率")
+    st.markdown("## ⚡ Produtividade / 生产效率")
 
     df = None
 
@@ -99,14 +100,12 @@ def render():
             value=None
         )
 
-    if data_inicio and data_fim and data_inicio > data_fim:
-        st.error("Data início não pode ser maior que a data fim.")
-        return
-
     if data_inicio and data_fim:
         df = carregar_dados(data_inicio, data_fim)
     else:
         df = carregar_dados()
+
+    df = preparar_dados(df)
 
     with col3:
         turno = st.selectbox(
@@ -126,7 +125,7 @@ def render():
     if df.empty:
         st.warning("Sem dados após filtros / 筛选后无数据")
         return
-
+    
     st.divider()
 
     # =========================
@@ -141,9 +140,9 @@ def render():
     col1, col2, col3, col4 = st.columns(4)
 
     col1.metric("📦 Total / 总量", total)
-    col2.metric("🟢 T1", t1, f"{(t1/total*100):.1f}%" if total else "0.0%")
-    col3.metric("🔵 T2", t2, f"{(t2/total*100):.1f}%" if total else "0.0%")
-    col4.metric("⚪ T3", t3, f"{(t3/total*100):.1f}%" if total else "0.0%")
+    col2.metric("🟢 T1", t1, f"{(t1/total*100):.1f}%")
+    col3.metric("🔵 T2", t2, f"{(t2/total*100):.1f}%")
+    col4.metric("⚪ T3", t3, f"{(t3/total*100):.1f}%")
 
     st.divider()
 
@@ -221,8 +220,7 @@ def render():
     df_tabela.index = df_tabela.index.map(lambda x: f"{x:02d}:00")
     df_tabela.columns = df_tabela.columns.map(lambda x: map_traducao.get(x, x))
 
-    df_tabela = df_tabela.reset_index().rename(columns={"hora": "Hora / 时间"})
-    tabela_padrao(df_tabela)
+    st.dataframe(df_tabela, use_container_width=True)
 
     st.divider()
 
@@ -267,5 +265,5 @@ def render():
     df_cliente_formatado = df_cliente.copy()
     df_cliente_formatado.columns = ["Cliente / 客户", "Volumes / 数量"]
 
-    tabela_padrao(df_cliente_formatado)
-
+    st.dataframe(df_cliente_formatado, use_container_width=True)
+    
