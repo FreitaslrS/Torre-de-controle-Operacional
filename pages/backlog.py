@@ -17,8 +17,10 @@ from utils.style import aplicar_css_global, tabela_padrao
 def render():
     aplicar_css_global()
 
-    st.title("📦 Backlog Atual / 当前积压")
-    st.caption("Monitoramento em tempo real da operação / 实时运营监控")
+    st.markdown("""
+    ## <i class='fas fa-box'></i> Backlog Atual / 当前积压
+    <p style='opacity:0.7'>Monitoramento em tempo real da operação / 实时运营监控</p>
+    """, unsafe_allow_html=True)
 
     df_resumo = buscar_backlog_resumo()
 
