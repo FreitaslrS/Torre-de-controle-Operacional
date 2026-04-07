@@ -440,7 +440,6 @@ def buscar_tempo_processamento(data_inicio=None, data_fim=None):
         params.extend([data_inicio, data_fim])
     else:
         query += """
-            AND data >= CURRENT_DATE - INTERVAL '7 days'
         """
 
     return consultar_processamento(query, params)
@@ -486,7 +485,8 @@ def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
             hiata,
             COUNT(*) as qtd
         FROM tempo_processamento
-        WHERE hiata IN (
+        WHERE hiata IS NOT NULL
+        AND UPPER(TRIM(hiata)) IN (
             'ES-W-H001',
             'MG-W-H001',
             'PR-W-H001',

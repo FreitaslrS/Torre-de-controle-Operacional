@@ -4,6 +4,7 @@ import pandas as pd
 
 from core.repository import buscar_produtividade
 from utils.theme import aplicar_layout_padrao
+from utils.style import tabela_padrao
 
 # =========================
 # 🎨 CORES
@@ -220,7 +221,10 @@ def render():
     df_tabela.index = df_tabela.index.map(lambda x: f"{x:02d}:00")
     df_tabela.columns = df_tabela.columns.map(lambda x: map_traducao.get(x, x))
 
-    st.dataframe(df_tabela, use_container_width=True)
+    # converte index (hora) para coluna para exibir na tabela_padrao
+    df_tabela_reset = df_tabela.reset_index()
+    df_tabela_reset = df_tabela_reset.rename(columns={"hora": "Hora / 时间"})
+    tabela_padrao(df_tabela_reset)
 
     st.divider()
 
@@ -265,5 +269,4 @@ def render():
     df_cliente_formatado = df_cliente.copy()
     df_cliente_formatado.columns = ["Cliente / 客户", "Volumes / 数量"]
 
-    st.dataframe(df_cliente_formatado, use_container_width=True)
-    
+    tabela_padrao(df_cliente_formatado)

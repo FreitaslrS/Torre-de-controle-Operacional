@@ -536,7 +536,12 @@ def importar_tempo_processamento(arquivo):
     # 🔥 NOVO (CORRIGIDO COM CHINÊS)
     df_tratado["cliente"] = df["客户名称(Nome do cliente)"]
 
-    df_tratado["hiata"] = df["下一站(Próximo ponto)"] if "下一站(Próximo ponto)" in df.columns else None
+    df_tratado["hiata"] = (
+        df["下一站(Próximo ponto)"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
 
     df_tratado["nome_arquivo"] = arquivo.name
     df_tratado["data_importacao"] = datetime.now()

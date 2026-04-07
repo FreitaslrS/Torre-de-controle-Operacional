@@ -10,6 +10,7 @@ from core.repository import (
     buscar_backlog_por_proximo_ponto
 )
 from utils.theme import grafico_barra, aplicar_layout_padrao
+from utils.style import tabela_padrao
 
 def render():
     from utils.style import aplicar_css_global
@@ -184,7 +185,8 @@ def render():
         faixa=faixa if faixa != "Todos" else None
     )
 
-    st.dataframe(df_detalhe, use_container_width=True)
+    from utils.style import tabela_padrao
+    tabela_padrao(df_detalhe)
 
     st.divider()
 
@@ -238,7 +240,7 @@ def render():
         ["0-24h", "24-48h", "48-72h", ">72h"]
     ].sum(axis=1)
 
-    st.dataframe(tabela_estado, use_container_width=True)
+    tabela_padrao(tabela_estado)
 
     st.divider()
 

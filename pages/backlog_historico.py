@@ -10,6 +10,7 @@ from core.repository import (
 )
 
 from utils.theme import grafico_barra, grafico_linha, aplicar_layout_padrao
+from utils.style import tabela_padrao
 
 def gerar_download(df, key_prefix):
 
@@ -273,7 +274,11 @@ def render():
 
     df_drill = buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa_dias)
 
-    st.dataframe(df_drill, use_container_width=True)
+    if len(df_drill) > 500:
+        st.info(f"Exibindo 500 de {len(df_drill)} registros. Use o Excel para exportar o total.")
+        tabela_padrao(df_drill.head(500), use_container_width=True)
+    else:
+        tabela_padrao(df_drill, use_container_width=True)
     gerar_download(df_drill, "drill_dias")
 
     st.divider()
@@ -287,20 +292,26 @@ def render():
 
     if faixa_tempo == "24h+":
         condicao = "horas_backlog_snapshot > 24 AND horas_backlog_snapshot <= 48"
-
     elif faixa_tempo == "48h+":
         condicao = "horas_backlog_snapshot > 48 AND horas_backlog_snapshot <= 72"
-
     elif faixa_tempo == "72h+":
         condicao = "horas_backlog_snapshot > 72"
 
+    # conta total real antes do LIMIT
+    df_count = consultar(f"SELECT COUNT(*) as total FROM backlog_atual WHERE {condicao}")
+    total_registros = int(df_count["total"].iloc[0]) if not df_count.empty else 0
+
     df_sla = consultar(f"""
-        SELECT *
+        SELECT waybill, cliente, estado, pre_entrega, proximo_ponto, horas_backlog_snapshot
         FROM backlog_atual
         WHERE {condicao}
+        LIMIT 500
     """)
 
-    st.dataframe(df_sla, use_container_width=True)
+    if total_registros > 500:
+        st.info(f"Exibindo 500 de {total_registros} registros. Use o botão abaixo para exportar o total completo.")
+
+    tabela_padrao(df_sla, use_container_width=True)
     gerar_download(df_sla, "drill_sla")
 
     st.divider()
@@ -332,4 +343,4 @@ def render():
         ["0-24h", "24-48h", "48-72h", ">72h"]
     ].sum(axis=1)
 
-    st.dataframe(tabela_estado, use_container_width=True)
+    tabela_padrao(tabela_estado, use_container_width=True)

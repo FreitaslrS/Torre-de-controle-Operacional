@@ -8,65 +8,6 @@ st.markdown("""
 href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<style>
-            
-/* =========================
-   📊 TABELAS PADRÃO GLOBAL
-========================= */
-
-/* HEADER REAL STREAMLIT */
-[data-testid="stDataFrame"] [role="columnheader"] {
-    background-color: #0F172A !important;
-    color: white !important;
-    font-weight: 600 !important;
-    text-align: center !important;
-}
-
-/* LINHAS */
-[data-testid="stDataFrame"] [role="row"] {
-    background-color: transparent !important;
-}
-
-/* HOVER */
-[data-testid="stDataFrame"] [role="row"]:hover {
-    background-color: rgba(22,163,74,0.08) !important;
-}
-
-/* BORDA */
-[data-testid="stDataFrame"] {
-    border: 1px solid rgba(0,0,0,0.05);
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-/* CÉLULAS */
-[data-testid="stDataFrame"] [role="gridcell"] {
-    text-align: center !important;
-}
-
-/* PRIMEIRA COLUNA */
-[data-testid="stDataFrame"] [role="gridcell"]:first-child {
-    font-weight: 600;
-    color: #0F172A;
-}
-
-/* COLUNA TOTAL */
-[data-testid="stDataFrame"] [role="gridcell"]:last-child {
-    font-weight: bold;
-    color: #16A34A;
-}
-            
-div[data-testid="stButton"] button {
-    transition: 0.2s;
-}
-
-div[data-testid="stButton"] button:hover {
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-}
-</style>
-""", unsafe_allow_html=True)
-
 @st.cache_data(ttl=600)
 def carregar():
     return consultar("SELECT COUNT(*) as total FROM backlog_atual")

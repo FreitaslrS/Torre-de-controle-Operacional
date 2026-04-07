@@ -9,6 +9,7 @@ from core.repository import (
 )
 
 from utils.theme import grafico_barra, grafico_pizza
+from utils.style import tabela_padrao
 
 cores_pizza = {
     "Até 24h": "#16A34A",
@@ -252,7 +253,7 @@ def render():
     # ordena
     tabela_dia = tabela_dia.sort_values("data", ascending=False)
 
-    st.dataframe(tabela_dia, use_container_width=True)
+    tabela_padrao(tabela_dia)
 
     st.divider()
 
@@ -368,7 +369,7 @@ def render():
     # =========================
     st.subheader("📊 Tempo por Estado / 各州时效")
 
-    st.dataframe(tabela, use_container_width=True)
+    tabela_padrao(tabela)
 
     # ======================================
     # 🥧 TABELA DESTINO DIRETO AOS ESTADOS
@@ -411,7 +412,7 @@ def render():
         # ordenar opcional
         tabela_hiata = tabela_hiata.sort_values("data", ascending=False)
 
-        st.dataframe(tabela_hiata, use_container_width=True)
+        tabela_padrao(tabela_hiata)
 
     else:
         st.warning("Sem dados de hiata")
@@ -440,7 +441,7 @@ def render():
         col3.metric("🔥 Total", f"{media_total:.0f}/dia")
 
         # 📋 TABELA
-        st.dataframe(df_cons, use_container_width=True)
+        tabela_padrao(df_cons)
 
     else:
         st.warning("Sem dados para o período")

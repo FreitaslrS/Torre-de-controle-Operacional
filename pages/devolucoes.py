@@ -1,5 +1,6 @@
 import streamlit as st
 from core.repository import buscar_pedidos
+from utils.style import tabela_padrao
 
 
 def render():
@@ -17,4 +18,4 @@ def render():
         st.warning("Sem dados carregados.")
         return
 
-    st.dataframe(df)
+    tabela_padrao(df)
