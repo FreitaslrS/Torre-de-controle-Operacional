@@ -275,15 +275,16 @@ def contar_backlog(estados=None, clientes=None, faixa=None):
 # =========================
 def buscar_backlog_historico(data_inicio, data_fim):
     return consultar_historico("""
-        SELECT 
+        SELECT
             data_referencia,
             estado,
             pre_entrega,
             cliente,
-            horas_backlog_snapshot
-        FROM mv_backlog_historico
-        WHERE 1=1
-        AND data_referencia BETWEEN %s AND %s
+            proximo_ponto,
+            faixa_backlog_snapshot,
+            qtd
+        FROM pedidos_resumo
+        WHERE data_referencia BETWEEN %s AND %s
     """, [data_inicio, data_fim])
 
 
@@ -420,27 +421,20 @@ def buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa):
 # ⏱️ TEMPO PROCESSAMENTO
 # =========================
 def buscar_tempo_processamento(data_inicio=None, data_fim=None):
-
     query = """
-        SELECT 
-            estado,
-            ponto_entrada,
-            entrada_hub1,
-            saida_hub1,
-            cliente,
-            hiata
+        SELECT
+            estado, ponto_entrada, hiata, cliente, data,
+            qtd_total, qtd_dentro_sla, qtd_fora_sla,
+            qtd_sem_saida, tempo_medio_h
         FROM tempo_processamento
         WHERE 1=1
     """
-
     params = []
-
     if data_inicio and data_fim:
         query += " AND data BETWEEN %s AND %s"
         params.extend([data_inicio, data_fim])
     else:
-        query += """
-        """
+        query += " AND data >= CURRENT_DATE - INTERVAL '30 days'"
 
     return consultar_processamento(query, params)
 

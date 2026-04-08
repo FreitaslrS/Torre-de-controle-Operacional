@@ -278,174 +278,174 @@ def inserir_em_massa(df):
 
 
 def importar_excel(arquivo, data_referencia):
-    dados = preparar_dados(arquivo, data_referencia)
+    import pandas as pd
+    from datetime import datetime
+    from psycopg2.extras import execute_values
+    from core.database import conectar_historico, conectar_backlog, consultar_backlog, executar_historico
 
-    if dados.empty:
-        return 0
-
-    # ✅ valida
-    erros = validar_backlog(dados)
-
-    if erros:
-        print("🚨 ERROS ENCONTRADOS:")
-        for e in erros:
-            print(e)
-
-    
-
-    # ✅ filtra backlog
-    dados = dados[dados["status"] == "backlog"]
-
-    # ✅ remove duplicados
-    dados = dados.drop_duplicates(subset=["waybill", "data_referencia"])
-
-    if dados.empty:
-        return 0
-    
-    # 🔥 SALVA HISTÓRICO (ESSA É A LINHA QUE VOCÊ QUER)
-    inserir_em_massa(dados)
-
-    # 🔥 pega backlog atual do banco
-    existentes = consultar_backlog("SELECT waybill FROM backlog_atual")
-
-    existentes_set = set(existentes["waybill"]) if not existentes.empty else set()
-    novos_set = set(dados["waybill"])
-
-    # =========================
-    # 🧠 1. REMOVER QUEM SUMIU
-    # =========================
-    removidos = existentes_set - novos_set
-
-    if removidos:
-        conn = conectar_backlog()
-        cur = conn.cursor()
-
-        cur.execute(
-            "DELETE FROM backlog_atual WHERE waybill = ANY(%s)",
-            (list(removidos),)
-        )
-
-        conn.commit()
-        cur.close()
-        conn.close()
-
-    # =========================
-    # 🚀 2. UPSERT (NOVOS + ATUALIZA)
-    # =========================
-    conn = conectar_backlog()
-    cur = conn.cursor()
-
-    values = [
-        (
-            row["waybill"],
-            row["cliente"],
-            row["estado"],
-            row["cidade"],
-            row["pre_entrega"],
-            row["proximo_ponto"],
-            row["entrada_hub1"],
-            row["horas_backlog_snapshot"],
-            row["faixa_backlog_snapshot"]
-        )
-        for _, row in dados.iterrows()
+    # Lê só colunas necessárias
+    df = pd.read_excel(
+        arquivo,
+        usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 56],
+        engine="openpyxl"
+    )
+    df.columns = [
+        "waybill", "estado", "cidade", "cliente",
+        "pre_entrega", "ponto_entrada",
+        "entrada_hub1", "saida_hub1", "proximo_ponto",
+        "entrada_hub2", "entrada_hub3"
     ]
 
-    execute_values(
-        cur,
-        """
-        INSERT INTO backlog_atual (
-            waybill,
-            cliente,
-            estado,
-            cidade,
-            pre_entrega,
-            proximo_ponto,
-            entrada_hub1,
-            horas_backlog_snapshot,
-            faixa_backlog_snapshot
-        ) VALUES %s
-        ON CONFLICT (waybill)
-        DO UPDATE SET
-            horas_backlog_snapshot = EXCLUDED.horas_backlog_snapshot,
-            faixa_backlog_snapshot = EXCLUDED.faixa_backlog_snapshot,
-            proximo_ponto = EXCLUDED.proximo_ponto,
-            data_atualizacao = NOW()
-        """,
-        values
+    df["waybill"] = df["waybill"].astype(str).str.strip()
+    df = df[df["waybill"].str.lower() != "nan"]
+
+    for col in ["entrada_hub1", "saida_hub1", "entrada_hub2", "entrada_hub3"]:
+        df[col] = pd.to_datetime(df[col], errors="coerce")
+
+    # Filtra só backlog real (parado no hub1)
+    df_backlog = df[
+        df["entrada_hub1"].notna() &
+        df["saida_hub1"].isna() &
+        df["entrada_hub2"].isna() &
+        df["entrada_hub3"].isna()
+    ].copy()
+
+    if df_backlog.empty:
+        return 0
+
+    agora = pd.to_datetime(data_referencia)
+
+    df_backlog["horas_backlog_snapshot"] = (
+        (agora - df_backlog["entrada_hub1"]).dt.total_seconds() / 3600
     )
 
-    conn.commit()
-    cur.close()
-    conn.close()
+    def classificar_faixa(h):
+        if pd.isna(h) or h < 0: return None
+        elif h <= 24:  return "0-24h"
+        elif h <= 48:  return "24-48h"
+        elif h <= 72:  return "48-72h"
+        else:          return "72h+"
 
-    return len(dados)
+    df_backlog["faixa_backlog_snapshot"] = df_backlog["horas_backlog_snapshot"].apply(classificar_faixa)
+    df_backlog["data_referencia"]        = agora.date()
+    df_backlog["data_importacao"]        = datetime.now()
+    df_backlog["nome_arquivo"]           = arquivo.name
+    df_backlog["proximo_ponto"]          = df_backlog["proximo_ponto"].fillna("Sem informação / 无信息")
+
+    # ── CAMADA 1: backlog_atual (snapshot atual por waybill) ──────────
+    existentes     = consultar_backlog("SELECT waybill FROM backlog_atual")
+    existentes_set = set(existentes["waybill"]) if not existentes.empty else set()
+    novos_set      = set(df_backlog["waybill"])
+
+    removidos = existentes_set - novos_set
+    if removidos:
+        conn = conectar_backlog()
+        cur  = conn.cursor()
+        cur.execute("DELETE FROM backlog_atual WHERE waybill = ANY(%s)", (list(removidos),))
+        conn.commit(); cur.close(); conn.close()
+
+    conn = conectar_backlog()
+    cur  = conn.cursor()
+    execute_values(cur, """
+        INSERT INTO backlog_atual (
+            waybill, cliente, estado, cidade, pre_entrega,
+            proximo_ponto, entrada_hub1,
+            horas_backlog_snapshot, faixa_backlog_snapshot
+        ) VALUES %s
+        ON CONFLICT (waybill) DO UPDATE SET
+            horas_backlog_snapshot = EXCLUDED.horas_backlog_snapshot,
+            faixa_backlog_snapshot = EXCLUDED.faixa_backlog_snapshot,
+            proximo_ponto          = EXCLUDED.proximo_ponto,
+            data_atualizacao       = NOW()
+    """, [
+        (row["waybill"], row["cliente"], row["estado"], row["cidade"],
+         row["pre_entrega"], row["proximo_ponto"], row["entrada_hub1"],
+         row["horas_backlog_snapshot"], row["faixa_backlog_snapshot"])
+        for _, row in df_backlog.iterrows()
+    ])
+    conn.commit(); cur.close(); conn.close()
+
+    # ── CAMADA 2: pedidos_resumo (agregado para gráficos históricos) ──
+    df_resumo = (
+        df_backlog.groupby([
+            "data_referencia", "estado", "cliente",
+            "pre_entrega", "proximo_ponto", "faixa_backlog_snapshot"
+        ])
+        .size()
+        .reset_index(name="qtd")
+    )
+    df_resumo["nome_arquivo"]    = arquivo.name
+    df_resumo["data_importacao"] = datetime.now()
+
+    conn = conectar_historico()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM pedidos_resumo WHERE nome_arquivo = %s", [arquivo.name])
+
+    colunas_resumo = [
+        "data_referencia", "estado", "cliente", "pre_entrega",
+        "proximo_ponto", "faixa_backlog_snapshot", "qtd",
+        "nome_arquivo", "data_importacao"
+    ]
+    execute_values(cur,
+        f"INSERT INTO pedidos_resumo ({','.join(colunas_resumo)}) VALUES %s",
+        [tuple(None if pd.isna(v) else v for v in row)
+         for row in df_resumo[colunas_resumo].itertuples(index=False, name=None)]
+    )
+
+    # ── CAMADA 3: pedidos bruto — só 7 dias para drill down ──────────
+    executar_historico(
+        "DELETE FROM pedidos WHERE data_referencia = %s", [agora.date()]
+    )
+    executar_historico(
+        "DELETE FROM pedidos WHERE data_referencia < CURRENT_DATE - INTERVAL '7 days'"
+    )
+
+    colunas_bruto = [
+        "waybill", "cliente", "estado", "cidade", "pre_entrega", "proximo_ponto",
+        "entrada_hub1", "horas_backlog_snapshot", "faixa_backlog_snapshot",
+        "data_referencia", "data_importacao", "nome_arquivo"
+    ]
+    execute_values(cur,
+        f"INSERT INTO pedidos ({','.join(colunas_bruto)}) VALUES %s",
+        [tuple(None if pd.isna(v) else v for v in row)
+         for row in df_backlog[colunas_bruto].itertuples(index=False, name=None)]
+    )
+
+    conn.commit(); cur.close(); conn.close()
+
+    return len(df_backlog)
 
 
 def importar_produtividade(arquivo):
     import pandas as pd
     from datetime import datetime
+    from psycopg2.extras import execute_values
+    from core.database import conectar_operacional, executar_operacional
 
-    # 🔥 LEITURA
-    df = pd.read_excel(arquivo)
+    # Lê só colunas D, I, U (índices 3, 8, 20)
+    df = pd.read_excel(arquivo, usecols=[3, 8, 20], engine="openpyxl")
+    df.columns = ["cliente", "data_hora", "operador"]
 
     if df.empty:
         return 0
 
-    # 🔥 RENOMEAR
-    df = df.rename(columns={
-        "客户名称(Nome do Cliente)": "cliente",
-        "收件人州(Estado do destinatário)": "estado",
-        "预派送网点(Ponto de Pré-entrega)": "hub",
-        "操作人(Operador)": "operador"
-    })
-
-    col_data = None
-
-    for col in df.columns:
-        col_str = str(col)
-
-        if "操作时间" in col_str or "tempo de operação" in col_str.lower():
-            col_data = col
-            break
-
-    if not col_data:
-        print("❌ Coluna de data não encontrada no arquivo")
-        return 0
-
-    df["data_hora"] = pd.to_datetime(df[col_data], errors="coerce")
-
-    # 🔥 remove inválidos
+    df = df[df["data_hora"].notna()]
+    df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce")
     df = df[df["data_hora"].notna()]
 
-    # 🔥 cria hora (tava faltando)
-    df["hora"] = df["data_hora"].dt.hour
+    # Remove devoluções e operadores MG
+    mask_remover = (
+        df["operador"].astype(str).str.upper().str.contains("DEVOL", na=False) |
+        df["operador"].astype(str).str.upper().str.startswith("MG", na=False)
+    )
+    df = df[~mask_remover]
 
-    # 🔥 data operacional
-    df["data"] = df["data_hora"].apply(ajustar_data_operacional)
+    if df.empty:
+        return 0
 
-    def definir_turno(data_hora):
-        if pd.isna(data_hora):
-            return None
-
-        hora = data_hora.hour
-        minuto = data_hora.minute
-
-        if (hora == 5 and minuto >= 30) or (6 <= hora < 13) or (hora == 13 and minuto < 50):
-            return "T1"
-        elif (hora == 13 and minuto >= 50) or (14 <= hora < 22):
-            return "T2"
-        else:
-            return "T3"
-
-    df["turno"] = df["data_hora"].apply(definir_turno)
-
-    # 🔥 CLASSIFICAÇÃO
+    # Dispositivo
     def classificar_dispositivo(op):
-        if pd.isna(op):
-            return "Desconhecido"
-
-        op = str(op)
-
+        op = str(op).strip().upper()
         if "PERUS01" in op:
             return "Sorter Oval"
         elif "PERUS02" in op:
@@ -453,136 +453,135 @@ def importar_produtividade(arquivo):
         else:
             return "Cubometro"
 
-    df["operador"] = df.get("operador", "Desconhecido").fillna("Desconhecido")
     df["dispositivo"] = df["operador"].apply(classificar_dispositivo)
 
-    # 🔥 VOLUME
-    df["volumes"] = 1
+    # Turno + data operacional (T3 madrugada = dia anterior)
+    def classificar_turno_e_data(dt):
+        minuto_total = dt.hour * 60 + dt.minute
+        if 330 <= minuto_total <= 829:       # 05:30–13:49
+            return "T1", dt.date()
+        elif 830 <= minuto_total <= 1319:    # 13:50–21:59
+            return "T2", dt.date()
+        else:                                # 22:00–05:29 (T3)
+            data_op = (dt - pd.Timedelta(days=1)).date() if dt.hour < 6 else dt.date()
+            return "T3", data_op
 
-    # 🔥 CONTROLE
-    df["data_importacao"] = datetime.now()
-    df["nome_arquivo"] = arquivo.name
+    turnos_datas = df["data_hora"].apply(
+        lambda dt: pd.Series(classificar_turno_e_data(dt), index=["turno", "data"])
+    )
+    df[["turno", "data"]] = turnos_datas
 
-    # 🔥 BANCO
-    from psycopg2.extras import execute_values
-    from core.database import conectar_operacional
-
-    conn = conectar_operacional()
-    cur = conn.cursor()
-
-    cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])
-
-    colunas = [
-        "cliente", "estado", "hub", "operador",
-        "data", "hora", "turno", "dispositivo",
-        "volumes", "nome_arquivo", "data_importacao"
-    ]
-
-    values = [
-        tuple(None if pd.isna(v) else v for v in row)
-        for row in df[colunas].itertuples(index=False, name=None)
-    ]
-
-    execute_values(
-        cur,
-        f"INSERT INTO produtividade ({','.join(colunas)}) VALUES %s",
-        values
+    # Agrega — de 166k linhas para ~300
+    df_agg = (
+        df.groupby(["cliente", "data", "turno", "dispositivo"])
+        .size()
+        .reset_index(name="volumes")
     )
 
+    df_agg["nome_arquivo"]    = arquivo.name
+    df_agg["data_importacao"] = datetime.now()
+
+    conn = conectar_operacional()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])
+
+    colunas = ["cliente", "data", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
+    values  = [tuple(None if pd.isna(v) else v for v in row)
+               for row in df_agg[colunas].itertuples(index=False, name=None)]
+
+    execute_values(cur, f"INSERT INTO produtividade ({','.join(colunas)}) VALUES %s", values)
     conn.commit()
     cur.close()
     conn.close()
 
-    # 🔥 ATUALIZA VIEW AUTOMATICAMENTE
-    from core.database import executar_operacional
-    executar_operacional("REFRESH MATERIALIZED VIEW mv_produtividade_dia")
+    try:
+        executar_operacional("REFRESH MATERIALIZED VIEW mv_produtividade_dia")
+    except Exception as e:
+        print(f"⚠️ View não atualizada: {e}")
 
-    return len(df)
+    return len(df_agg)
 
-from core.database import executar_operacional
 
-executar_operacional("REFRESH MATERIALIZED VIEW mv_produtividade_dia")
-    
 def importar_tempo_processamento(arquivo):
-
     import pandas as pd
     from datetime import datetime
     from psycopg2.extras import execute_values
     from core.database import conectar_processamento
 
-    df = pd.read_excel(arquivo)
-
-    df.columns = df.columns.map(str)
-    df.columns = df.columns.str.strip()
+    # Lê só colunas necessárias
+    df = pd.read_excel(
+        arquivo,
+        usecols=[0, 11, 21, 24, 25, 41, 42, 43],
+        engine="openpyxl"
+    )
+    df.columns = [
+        "waybill", "estado", "cliente",
+        "pre_entrega", "ponto_entrada",
+        "entrada_hub1", "saida_hub1", "hiata"
+    ]
 
     if df.empty:
         return 0
 
-    df.columns = df.columns.str.strip()
+    df["entrada_hub1"] = pd.to_datetime(df["entrada_hub1"], errors="coerce")
+    df["saida_hub1"]   = pd.to_datetime(df["saida_hub1"],   errors="coerce")
+    df = df[df["entrada_hub1"].notna()]
+    df["data"] = df["entrada_hub1"].dt.date
 
-    df_tratado = pd.DataFrame()
-
-    df_tratado["estado"] = df["收件人州(Estado do destinatário)"]
-    df_tratado["ponto_entrada"] = df["实际入库网点(Ponto de entrada)"]
-
-    df_tratado["entrada_hub1"] = pd.to_datetime(
-        df["一级分拨到件时间(Entrada no centro nível 01)"], errors="coerce"
+    # Tempo em horas
+    df["tempo_horas"] = (
+        (df["saida_hub1"] - df["entrada_hub1"])
+        .dt.total_seconds() / 3600
     )
 
-    df_tratado["saida_hub1"] = pd.to_datetime(
-        df["一级分拨发件时间(Saída do centro nível 01)"], errors="coerce"
-    )
+    # Remove tempos absurdos
+    df = df[
+        (df["tempo_horas"].isna()) |
+        ((df["tempo_horas"] >= 0) & (df["tempo_horas"] <= 240))
+    ]
 
-    # 🔥 NOVO (CORRIGIDO COM CHINÊS)
-    df_tratado["cliente"] = df["客户名称(Nome do cliente)"]
+    # Hiata padronizado
+    df["hiata"] = df["hiata"].astype(str).str.strip().str.upper()
 
-    df_tratado["hiata"] = (
-        df["下一站(Próximo ponto)"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-    )
+    # Status SLA por linha
+    def classificar_status(row):
+        if pd.isna(row["saida_hub1"]):
+            return "sem_saida"
+        elif row["tempo_horas"] <= 24:
+            return "dentro_sla"
+        else:
+            return "fora_sla"
 
-    df_tratado["nome_arquivo"] = arquivo.name
-    df_tratado["data_importacao"] = datetime.now()
+    df["status"] = df.apply(classificar_status, axis=1)
 
-    df_tratado["data_snapshot"] = datetime.now().date()
+    # Agrega — de 178k linhas para ~500
+    agg = df.groupby(["estado", "ponto_entrada", "hiata", "cliente", "data"]).agg(
+        qtd_total      = ("waybill",     "count"),
+        qtd_dentro_sla = ("status",      lambda x: (x == "dentro_sla").sum()),
+        qtd_fora_sla   = ("status",      lambda x: (x == "fora_sla").sum()),
+        qtd_sem_saida  = ("status",      lambda x: (x == "sem_saida").sum()),
+        tempo_medio_h  = ("tempo_horas", lambda x: x.dropna().mean() if x.dropna().any() else None)
+    ).reset_index()
 
-    # 🔥 remove linhas sem data válida
-    df_tratado = df_tratado.dropna(subset=["entrada_hub1"])
-
-    # 🔥 agora sim cria data
-    df_tratado["data"] = df_tratado["entrada_hub1"].dt.date
+    agg["data_snapshot"]   = datetime.now().date()
+    agg["nome_arquivo"]    = arquivo.name
+    agg["data_importacao"] = datetime.now()
 
     conn = conectar_processamento()
-    cur = conn.cursor()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM tempo_processamento WHERE nome_arquivo = %s", [arquivo.name])
 
     colunas = [
-        "estado",
-        "ponto_entrada",
-        "entrada_hub1",
-        "saida_hub1",
-        "cliente",
-        "hiata",
-        "data",
-        "data_snapshot",
-        "nome_arquivo",
-        "data_importacao"
+        "estado", "ponto_entrada", "hiata", "cliente", "data",
+        "data_snapshot", "qtd_total", "qtd_dentro_sla", "qtd_fora_sla",
+        "qtd_sem_saida", "tempo_medio_h", "nome_arquivo", "data_importacao"
     ]
+    values = [tuple(None if pd.isna(v) else v for v in row)
+              for row in agg[colunas].itertuples(index=False, name=None)]
 
-    values = [
-        tuple(None if pd.isna(v) else v for v in row)
-        for row in df_tratado[colunas].itertuples(index=False, name=None)
-    ]
-
-    execute_values(
-        cur,
-        f"INSERT INTO tempo_processamento ({','.join(colunas)}) VALUES %s",
-        values
-    )
-
+    execute_values(cur, f"INSERT INTO tempo_processamento ({','.join(colunas)}) VALUES %s", values)
     conn.commit()
     cur.close()
     conn.close()
 
-    return len(df_tratado)
+    return len(agg)

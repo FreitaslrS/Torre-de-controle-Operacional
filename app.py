@@ -2,7 +2,11 @@ import streamlit as st
 import os
 from core.database import inicializar_banco
 
-inicializar_banco()
+try:
+    inicializar_banco()
+except Exception as e:
+    import streamlit as st
+    st.warning(f"⚠️ Banco de dados indisponível no momento: {e}")
 
 import pages.home as home
 import pages.backlog as backlog
