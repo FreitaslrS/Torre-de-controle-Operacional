@@ -83,104 +83,94 @@ def render():
     st.divider()
 
     # =========================
-    # 🥧 PIZZA
+    # 🥧 PIZZA + TABELA POR DIA
     # =========================
-    st.subheader("📊 Distribuição por Status / 各状态分布")
+    col_s1, col_s2 = st.columns(2)
 
-    df_pizza = pd.DataFrame([
-        {"status": "Até 24h",   "qtd": int(df["qtd_dentro_sla"].sum())},
-        {"status": "> 24h",     "qtd": int(df["qtd_fora_sla"].sum())},
-        {"status": "Sem saída", "qtd": int(df["qtd_sem_saida"].sum())},
-    ])
-    df_pizza["status_label"] = df_pizza["status"].map(traducao_status)
+    with col_s1:
+        st.subheader("📊 Distribuição por Status / 各状态分布")
+        df_pizza = pd.DataFrame([
+            {"status": "Até 24h",   "qtd": int(df["qtd_dentro_sla"].sum())},
+            {"status": "> 24h",     "qtd": int(df["qtd_fora_sla"].sum())},
+            {"status": "Sem saída", "qtd": int(df["qtd_sem_saida"].sum())},
+        ])
+        df_pizza["status_label"] = df_pizza["status"].map(traducao_status)
+        fig_pizza = grafico_pizza(
+            df_pizza,
+            names="status_label",
+            values="qtd",
+            color="status",
+            color_map=cores_pizza
+        )
+        st.plotly_chart(fig_pizza, use_container_width=True)
 
-    fig_pizza = grafico_pizza(
-        df_pizza,
-        names="status_label",
-        values="qtd",
-        color="status",
-        color_map=cores_pizza
-    )
-    st.plotly_chart(fig_pizza, use_container_width=True)
+    with col_s2:
+        st.subheader("📊 Evolução por Dia / 每日时效分布")
+        tabela_dia = (
+            df.groupby("data").agg(
+                dentro_sla  = ("qtd_dentro_sla", "sum"),
+                fora_sla    = ("qtd_fora_sla",   "sum"),
+                sem_saida   = ("qtd_sem_saida",  "sum"),
+                qtd_total   = ("qtd_total",      "sum"),
+                tempo_medio = ("tempo_medio_h",  lambda x:
+                    (x * df.loc[x.index, "qtd_total"]).sum() /
+                    df.loc[x.index, "qtd_total"].sum()
+                )
+            ).reset_index()
+        )
+        tabela_dia.rename(columns={"dentro_sla": "0-24h", "fora_sla": ">24h"}, inplace=True)
+
+        def formatar_horas(h):
+            if pd.isna(h): return "00:00"
+            horas   = int(h)
+            minutos = int((h - horas) * 60)
+            return f"{horas:02d}:{minutos:02d}"
+
+        tabela_dia["Média (h)"] = tabela_dia["tempo_medio"].apply(formatar_horas)
+        tabela_dia["% SLA"] = (
+            tabela_dia["0-24h"] / tabela_dia["qtd_total"].replace(0, 1) * 100
+        ).round(1).astype(str) + "%"
+        tabela_dia = tabela_dia.sort_values("data", ascending=False)
+        tabela_padrao(tabela_dia[["data", "0-24h", ">24h", "sem_saida", "qtd_total", "Média (h)", "% SLA"]])
 
     st.divider()
 
     # =========================
-    # 📊 TABELA POR DIA
+    # 🏆 RANKING ESTADOS + TOP 10 PONTOS ENTRADA
     # =========================
-    st.subheader("📊 Evolução por Dia / 每日时效分布")
+    col_r1, col_r2 = st.columns(2)
 
-    tabela_dia = (
-        df.groupby("data").agg(
-            dentro_sla  = ("qtd_dentro_sla", "sum"),
-            fora_sla    = ("qtd_fora_sla",   "sum"),
-            sem_saida   = ("qtd_sem_saida",  "sum"),
-            qtd_total   = ("qtd_total",      "sum"),
-            tempo_medio = ("tempo_medio_h",  lambda x:
-                (x * df.loc[x.index, "qtd_total"]).sum() /
-                df.loc[x.index, "qtd_total"].sum()
-            )
-        ).reset_index()
-    )
-    tabela_dia.rename(columns={"dentro_sla": "0-24h", "fora_sla": ">24h"}, inplace=True)
+    with col_r1:
+        st.subheader("🏆 Top 5 Estados com Maior Atraso / 延误最多的州")
+        ranking = (
+            df.groupby("estado")["qtd_fora_sla"]
+            .sum()
+            .reset_index(name="qtd_atrasos")
+            .sort_values("qtd_atrasos", ascending=False)
+            .head(5)
+        )
+        if not ranking.empty:
+            cores = ["#0F172A"] + ["#16A34A"] * (len(ranking) - 1)
+            fig_rank = grafico_barra(ranking, x="estado", y="qtd_atrasos", text="qtd_atrasos")
+            fig_rank.update_traces(marker_color=cores)
+            st.plotly_chart(fig_rank, use_container_width=True)
 
-    def formatar_horas(h):
-        if pd.isna(h): return "00:00"
-        horas   = int(h)
-        minutos = int((h - horas) * 60)
-        return f"{horas:02d}:{minutos:02d}"
-
-    tabela_dia["Média (h)"] = tabela_dia["tempo_medio"].apply(formatar_horas)
-    tabela_dia["% SLA"] = (
-        tabela_dia["0-24h"] / tabela_dia["qtd_total"].replace(0, 1) * 100
-    ).round(1).astype(str) + "%"
-    tabela_dia = tabela_dia.sort_values("data", ascending=False)
-
-    tabela_padrao(tabela_dia[["data", "0-24h", ">24h", "sem_saida", "qtd_total", "Média (h)", "% SLA"]])
-
-    st.divider()
-
-    # =========================
-    # 🏆 RANKING ESTADOS
-    # =========================
-    st.subheader("🏆 Top 5 Estados com Maior Atraso / 延误最多的州")
-
-    ranking = (
-        df.groupby("estado")["qtd_fora_sla"]
-        .sum()
-        .reset_index(name="qtd_atrasos")
-        .sort_values("qtd_atrasos", ascending=False)
-        .head(5)
-    )
-
-    if not ranking.empty:
-        cores = ["#0F172A"] + ["#16A34A"] * (len(ranking) - 1)
-        fig_rank = grafico_barra(ranking, x="estado", y="qtd_atrasos", text="qtd_atrasos")
-        fig_rank.update_traces(marker_color=cores)
-        st.plotly_chart(fig_rank, use_container_width=True)
-
-    st.divider()
-
-    # =========================
-    # 📦 TOP 10 PONTOS ENTRADA
-    # =========================
-    st.subheader("📦 Top 10 Pontos de Entrada com Atraso / 入库点延误TOP10")
-
-    ranking_pre = (
-        df.groupby("ponto_entrada")["qtd_fora_sla"]
-        .sum()
-        .reset_index(name="qtd_atrasos")
-        .sort_values("qtd_atrasos", ascending=False)
-        .head(10)
-    )
-
-    if not ranking_pre.empty:
-        cores_pre = ["#0F172A"] + ["#16A34A"] * (len(ranking_pre) - 1)
-        fig_pre = grafico_barra(ranking_pre, x="ponto_entrada", y="qtd_atrasos", text="qtd_atrasos")
-        fig_pre.update_traces(marker_color=cores_pre)
-        st.plotly_chart(fig_pre, use_container_width=True)
-    else:
-        st.info("Sem atrasos nos pontos de entrada")
+    with col_r2:
+        st.subheader("📦 Top 10 Pontos de Entrada com Atraso / 入库点延误TOP10")
+        ranking_pre = (
+            df.groupby("ponto_entrada")["qtd_fora_sla"]
+            .sum()
+            .reset_index(name="qtd_atrasos")
+            .sort_values("qtd_atrasos", ascending=False)
+            .head(10)
+        )
+        if not ranking_pre.empty:
+            cores_pre = ["#0F172A"] + ["#16A34A"] * (len(ranking_pre) - 1)
+            fig_pre = grafico_barra(ranking_pre, x="ponto_entrada", y="qtd_atrasos", text="qtd_atrasos")
+            fig_pre.update_traces(marker_color=cores_pre)
+            st.plotly_chart(fig_pre, use_container_width=True)
+        else:
+            st.info("Sem atrasos nos pontos de entrada")
 
     st.divider()
 

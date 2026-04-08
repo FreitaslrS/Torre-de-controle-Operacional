@@ -321,10 +321,12 @@ def importar_excel(arquivo, data_referencia):
 
     def classificar_faixa(h):
         if pd.isna(h) or h < 0: return None
-        elif h <= 24:  return "0-24h"
-        elif h <= 48:  return "24-48h"
-        elif h <= 72:  return "48-72h"
-        else:          return "72h+"
+        elif h <= 24:   return "1 dia"
+        elif h <= 120:  return "1-5 dias"
+        elif h <= 240:  return "5-10 dias"
+        elif h <= 480:  return "10-20 dias"
+        elif h <= 720:  return "20-30 dias"
+        else:           return "30+ dias"
 
     df_backlog["faixa_backlog_snapshot"] = df_backlog["horas_backlog_snapshot"].apply(classificar_faixa)
     df_backlog["data_referencia"]        = agora.date()
@@ -422,13 +424,9 @@ def importar_produtividade(arquivo):
     from psycopg2.extras import execute_values
     from core.database import conectar_operacional, executar_operacional
 
-    # 🔥 AQUI: Troque o 'X' pelo índice numérico da coluna HUB no seu Excel!
-    # Ex: A=0, B=1, C=2, D=3, E=4...
-    INDICE_HUB = X 
-    
-    # Lê só as colunas necessárias (agora puxando o hub também)
-    df = pd.read_excel(arquivo, usecols=[3, INDICE_HUB, 8, 20], engine="openpyxl")
-    df.columns = ["cliente", "hub", "data_hora", "operador"] # 🔥 hub mapeado aqui
+    # Colunas: D=3 (cliente), I=8 (data_hora), U=20 (operador)
+    df = pd.read_excel(arquivo, usecols=[3, 8, 20], engine="openpyxl")
+    df.columns = ["cliente", "data_hora", "operador"]
 
     if df.empty:
         return 0
@@ -476,9 +474,8 @@ def importar_produtividade(arquivo):
     df[["turno", "data"]] = turnos_datas
     df["hora"] = df["data_hora"].dt.hour
 
-    # 🔥 AQUI: Adicionamos hub e operador no groupby para não perdê-los!
     df_agg = (
-        df.groupby(["cliente", "hub", "operador", "data", "hora", "turno", "dispositivo"])
+        df.groupby(["cliente", "data", "hora", "turno", "dispositivo"])
         .size()
         .reset_index(name="volumes")
     )
@@ -490,8 +487,7 @@ def importar_produtividade(arquivo):
     cur  = conn.cursor()
     cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])
 
-    # 🔥 AQUI: Adicionamos hub e operador na lista de colunas que vão pro banco
-    colunas = ["cliente", "hub", "operador", "data", "hora", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
+    colunas = ["cliente", "data", "hora", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
     values  = [tuple(None if pd.isna(v) else v for v in row)
                for row in df_agg[colunas].itertuples(index=False, name=None)]
 
@@ -586,6 +582,100 @@ def importar_tempo_processamento(arquivo):
               for row in agg[colunas].itertuples(index=False, name=None)]
 
     execute_values(cur, f"INSERT INTO tempo_processamento ({','.join(colunas)}) VALUES %s", values)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return len(agg)
+
+
+# ================================
+# 📊 DEVOLUÇÃO — P90
+# ================================
+def importar_p90(arquivo):
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime
+    from psycopg2.extras import execute_values
+    from core.database import conectar_devolucoes
+
+    df = pd.read_excel(arquivo, engine="openpyxl")
+
+    if df.empty:
+        return 0
+
+    df.columns = [
+        "waybill", "status", "tipo_operacao", "cliente",
+        "data_operacao", "proximo_ponto", "operador",
+        "ponto_operacao", "estado", "regiao"
+    ]
+
+    # Filtra só "Recebido de devolução"
+    df = df[df["status"] == "Recebido de devolução"].copy()
+
+    if df.empty:
+        return 0
+
+    df["data_operacao"] = pd.to_datetime(df["data_operacao"], errors="coerce")
+    df = df[df["data_operacao"].notna()]
+
+    # Extrai data de criação do código do waybill (AJ AAMMDD...)
+    def extrair_data_criacao(waybill):
+        try:
+            w = str(waybill).strip()
+            ano = int("20" + w[2:4])
+            mes = int(w[4:6])
+            dia = int(w[6:8])
+            return pd.Timestamp(ano, mes, dia)
+        except:
+            return None
+
+    df["data_criacao"] = df["waybill"].apply(extrair_data_criacao)
+    df = df[df["data_criacao"].notna()]
+
+    # Dias corridos: criação → recebimento devolução
+    df["dias"] = (df["data_operacao"] - df["data_criacao"]).dt.days
+    df = df[df["dias"] >= 0]
+
+    if df.empty:
+        return 0
+
+    # Semana e ano de criação do pedido
+    df["semana"] = df["data_criacao"].dt.strftime("w%V")
+    df["ano"]    = df["data_criacao"].dt.year
+
+    # Agrega por estado + semana + ano
+    agg = (
+        df.groupby(["estado", "semana", "ano"])
+        .agg(
+            p90_dias    = ("dias", lambda x: round(float(np.percentile(x, 90)), 1)),
+            qtd_pedidos = ("dias", "count")
+        )
+        .reset_index()
+    )
+
+    agg["nome_arquivo"]    = arquivo.name
+    agg["data_importacao"] = datetime.now()
+
+    conn = conectar_devolucoes()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [arquivo.name])
+
+    colunas = [
+        "estado", "semana", "ano", "p90_dias",
+        "qtd_pedidos", "nome_arquivo", "data_importacao"
+    ]
+    values = [
+        tuple(None if pd.isna(v) else v for v in row)
+        for row in agg[colunas].itertuples(index=False, name=None)
+    ]
+
+    execute_values(
+        cur,
+        f"INSERT INTO p90_semanal ({','.join(colunas)}) VALUES %s",
+        values
+    )
+
     conn.commit()
     cur.close()
     conn.close()

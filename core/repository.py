@@ -294,10 +294,8 @@ def buscar_backlog_historico(data_inicio, data_fim):
 def buscar_produtividade(data_inicio=None, data_fim=None):
 
     query = """
-        SELECT 
+        SELECT
             cliente,
-            hub,
-            operador,
             data,
             hora,
             turno,
@@ -449,6 +447,26 @@ def buscar_devolucoes(limit=1000):
     """, [limit])
 
 
+# ================================
+# 📊 P90 DEVOLUÇÕES
+# ================================
+def buscar_p90(ano=None):
+    query = """
+        SELECT estado, semana, ano, p90_dias, qtd_pedidos
+        FROM p90_semanal
+        WHERE 1=1
+    """
+    params = []
+
+    if ano:
+        query += " AND ano = %s"
+        params.append(ano)
+
+    query += " ORDER BY estado, ano, semana"
+
+    return consultar_devolucoes(query, params if params else None)
+
+
 # =========================
 # ⏱️ CALCULO DE PACOTES H1
 # =========================
@@ -473,10 +491,10 @@ def buscar_tempo_processamento_geral():
 def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
 
     query = """
-        SELECT 
+        SELECT
             data,
             hiata,
-            COUNT(*) as qtd
+            SUM(qtd_total) as qtd
         FROM tempo_processamento
         WHERE hiata IS NOT NULL
         AND UPPER(TRIM(hiata)) IN (
@@ -500,7 +518,7 @@ def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
     # 🔥 SNAPSHOT
     else:
         query += """
-            AND data >= CURRENT_DATE - INTERVAL '7 days'
+            AND data >= CURRENT_DATE - INTERVAL '30 days'
         """
 
     query += """

@@ -65,6 +65,14 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao):
         elif tipo_importacao == "Tempo de Processamento":
             qtd = importar_tempo_processamento(arquivo)
 
+        elif tipo_importacao == "Devolução":
+            from core.processar_arquivo import importar_devolucoes
+            qtd = importar_devolucoes(arquivo)
+
+        elif tipo_importacao == "Devolução - P90":
+            from core.processar_arquivo import importar_p90
+            qtd = importar_p90(arquivo)
+
         else:
             raise Exception("Tipo de importação inválido")
 
@@ -107,7 +115,7 @@ def render():
 
     tipo_importacao = st.selectbox(
         "Tipo de Importação / 导入类型",
-        ["Backlog", "Produtividade", "Tempo de Processamento"]
+        ["Backlog", "Produtividade", "Tempo de Processamento", "Devolução", "Devolução - P90"]
     )
 
     # ========================

@@ -5,14 +5,13 @@ import pandas as pd
 
 from core.repository import (
     buscar_backlog_historico,
-    buscar_waybills_por_faixa_dias,
     consultar_backlog as consultar
 )
 
 from utils.theme import grafico_barra, aplicar_layout_padrao
 from utils.style import tabela_padrao
 
-FAIXAS_ORDEM = ["0-24h", "24-48h", "48-72h", "72h+"]
+FAIXAS_ORDEM = ["1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"]
 
 def gerar_download(df, key_prefix):
     col1, col2 = st.columns(2)
@@ -64,7 +63,7 @@ def render():
 
     remover_estados = col_f1.multiselect("Remover Estados", options=sorted(df["estado"].unique()))
     remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df["cliente"].unique()))
-    faixa_filtro = col_f3.selectbox("Faixa de backlog", ["Todos", "24h+", "48h+", "72h+"])
+    faixa_filtro = col_f3.selectbox("Faixa de backlog", ["Todos", "1-5 dias+", "5-10 dias+", "10+ dias"])
 
     if remover_estados:
         df = df[~df["estado"].isin(remover_estados)]
@@ -73,9 +72,9 @@ def render():
         df = df[~df["cliente"].isin(remover_clientes)]
 
     faixa_map = {
-        "24h+": ["24-48h", "48-72h", "72h+"],
-        "48h+": ["48-72h", "72h+"],
-        "72h+": ["72h+"],
+        "1-5 dias+": ["1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
+        "5-10 dias+": ["5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
+        "10+ dias":   ["10-20 dias", "20-30 dias", "30+ dias"],
     }
     if faixa_filtro in faixa_map:
         df = df[df["faixa_backlog_snapshot"].isin(faixa_map[faixa_filtro])]
@@ -92,11 +91,13 @@ def render():
     def qtd_faixa(faixa):
         return int(df.loc[df["faixa_backlog_snapshot"] == faixa, "qtd"].sum())
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("0-24h", qtd_faixa("0-24h"))
-    col2.metric("24-48h", qtd_faixa("24-48h"))
-    col3.metric("48-72h", qtd_faixa("48-72h"))
-    col4.metric("72h+", qtd_faixa("72h+"))
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    col1.metric("1 dia",      qtd_faixa("1 dia"))
+    col2.metric("1-5 dias",   qtd_faixa("1-5 dias"))
+    col3.metric("5-10 dias",  qtd_faixa("5-10 dias"))
+    col4.metric("10-20 dias", qtd_faixa("10-20 dias"))
+    col5.metric("20-30 dias", qtd_faixa("20-30 dias"))
+    col6.metric("30+ dias",   qtd_faixa("30+ dias"))
 
     st.divider()
 
@@ -153,27 +154,23 @@ def render():
     st.divider()
 
     # =========================
-    # 📊 PRÓXIMO PONTO
+    # 📋 PRÓXIMO PONTO + PRÉ-ENTREGA
     # =========================
-    if "proximo_ponto" in df.columns:
-        df_proximo = df.groupby("proximo_ponto")["qtd"].sum().reset_index()
-        df_proximo = df_proximo.sort_values("qtd", ascending=False)
-        if not df_proximo.empty:
-            cores = ["#0F172A"] + ["#16A34A"] * (len(df_proximo) - 1)
-            fig_p = grafico_barra(df_proximo, x="proximo_ponto", y="qtd", text="qtd")
-            fig_p.update_traces(marker_color=cores)
-            st.subheader("📊 Próximo Ponto / 下一站")
-            st.plotly_chart(fig_p, use_container_width=True)
+    col_pp1, col_pp2 = st.columns(2)
 
-    st.divider()
+    with col_pp1:
+        if "proximo_ponto" in df.columns:
+            st.subheader("📋 Próximo Ponto / 下一站")
+            df_proximo = df.groupby("proximo_ponto")["qtd"].sum().reset_index()
+            df_proximo = df_proximo.sort_values("qtd", ascending=False).reset_index(drop=True)
+            df_proximo.columns = ["Próximo Ponto / 下一站", "Qtd / 数量"]
+            tabela_padrao(df_proximo)
 
-    # =========================
-    # 📊 TOP 10 PRÉ-ENTREGA
-    # =========================
-    st.subheader("📊 Top 10 Pré-entrega")
-    df_pre_top10 = df_pre.sort_values("qtd", ascending=False).head(10)
-    fig_pre = grafico_barra(df_pre_top10, x="qtd", y="pre_entrega", text="qtd", cor="#CBD5E1")
-    st.plotly_chart(fig_pre, use_container_width=True)
+    with col_pp2:
+        st.subheader("📊 Top 10 Pré-entrega")
+        df_pre_top10 = df_pre.sort_values("qtd", ascending=False).head(10)
+        fig_pre = grafico_barra(df_pre_top10, x="qtd", y="pre_entrega", text="qtd", cor="#CBD5E1")
+        st.plotly_chart(fig_pre, use_container_width=True)
 
     st.divider()
 
@@ -193,26 +190,6 @@ def render():
             tabela_estado[col] = 0
     tabela_estado["Total"] = tabela_estado[[c for c in FAIXAS_ORDEM if c in tabela_estado.columns]].sum(axis=1)
     tabela_padrao(tabela_estado, use_container_width=True)
-
-    st.divider()
-
-    # =========================
-    # 🔎 DRILL DOWN (tabela pedidos — 7 dias)
-    # =========================
-    st.subheader("🔎 Drill Down")
-
-    faixa_dias = st.selectbox("Faixa de dias", ["1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "30+ dias"])
-    df_drill = buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa_dias)
-
-    if df_drill.empty:
-        st.info("Sem dados para esta faixa no período (dados brutos disponíveis apenas nos últimos 7 dias)")
-    else:
-        if len(df_drill) > 500:
-            st.info(f"Exibindo 500 de {len(df_drill)} registros. Use o Excel para exportar o total.")
-            tabela_padrao(df_drill.head(500), use_container_width=True)
-        else:
-            tabela_padrao(df_drill, use_container_width=True)
-        gerar_download(df_drill, "drill_dias")
 
     st.divider()
 

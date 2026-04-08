@@ -86,80 +86,74 @@ def render():
     st.divider()
 
     # =========================
-    # 🥧 PIZZA — POR TURNO
+    # 🥧 PIZZA — TURNO + DISPOSITIVO
     # =========================
-    st.subheader("🥧 Produtividade por Turno / 按班次效率")
+    col_p1, col_p2 = st.columns(2)
 
-    df_turno = df.groupby("turno")["volumes"].sum().reset_index()
-    fig_pizza = px.pie(
-        df_turno, names="turno", values="volumes",
-        color="turno", color_discrete_map=color_turno
-    )
-    fig_pizza = aplicar_layout_padrao(fig_pizza)
-    st.plotly_chart(fig_pizza, use_container_width=True)
+    with col_p1:
+        st.subheader("🥧 Por Turno / 按班次")
+        df_turno = df.groupby("turno")["volumes"].sum().reset_index()
+        fig_pizza_turno = px.pie(
+            df_turno, names="turno", values="volumes",
+            color="turno", color_discrete_map=color_turno
+        )
+        fig_pizza_turno = aplicar_layout_padrao(fig_pizza_turno)
+        st.plotly_chart(fig_pizza_turno, use_container_width=True)
+
+    with col_p2:
+        st.subheader("🥧 Por Dispositivo / 按设备")
+        df_disp = df.groupby("dispositivo")["volumes"].sum().reset_index()
+        df_disp["nome"] = df_disp["dispositivo"].map(map_traducao).fillna(df_disp["dispositivo"])
+        fig_pizza_disp = px.pie(
+            df_disp, names="nome", values="volumes",
+            color="dispositivo", color_discrete_map=color_dispositivo
+        )
+        fig_pizza_disp = aplicar_layout_padrao(fig_pizza_disp)
+        st.plotly_chart(fig_pizza_disp, use_container_width=True)
 
     st.divider()
 
     # =========================
-    # 📊 BARRA — TURNO × DISPOSITIVO
+    # 📊 BARRA — HORA × DISPOSITIVO
     # =========================
-    st.subheader("📊 Produtividade por Turno e Dispositivo / 按班次设备效率")
+    st.subheader("📊 Produtividade por Hora (Dispositivos) / 按小时设备效率")
+
+    dispositivos = ["Sorter Oval", "Sorter Linear", "Cubometro"]
 
     df_bar = (
-        df.groupby(["turno", "dispositivo"])["volumes"]
+        df.groupby(["hora", "dispositivo"])["volumes"]
         .sum()
         .reset_index()
     )
 
-    # garante todos os turnos × dispositivos
-    turnos      = ["T1", "T2", "T3"]
-    dispositivos = ["Sorter Oval", "Sorter Linear", "Cubometro"]
-    base = pd.MultiIndex.from_product([turnos, dispositivos], names=["turno", "dispositivo"])
-    df_bar = (
-        df_bar.set_index(["turno", "dispositivo"])
-        .reindex(base, fill_value=0)
-        .reset_index()
-    )
-
-    df_bar["dispositivo_label"] = df_bar["dispositivo"].map(map_traducao)
+    # garante todas as 24 horas × todos os dispositivos
+    horas = pd.DataFrame({"hora": range(24)})
+    base = horas.assign(key=1).merge(
+        pd.DataFrame({"dispositivo": dispositivos, "key": 1}), on="key"
+    ).drop("key", axis=1)
+    df_bar = base.merge(df_bar, on=["hora", "dispositivo"], how="left").fillna(0)
 
     fig_bar = px.bar(
-        df_bar, x="turno", y="volumes",
+        df_bar, x="hora", y="volumes",
         color="dispositivo", barmode="stack",
         color_discrete_map=color_dispositivo,
-        labels={"turno": "Turno / 班次", "volumes": "Volumes / 数量", "dispositivo": "Dispositivo / 设备"}
+        labels={"hora": "Hora / 时间", "volumes": "Volumes / 数量", "dispositivo": "Dispositivo / 设备"}
     )
     fig_bar.for_each_trace(lambda t: t.update(name=map_traducao.get(t.name, t.name)))
+    fig_bar.update_xaxes(dtick=1)
     fig_bar = aplicar_layout_padrao(fig_bar)
     st.plotly_chart(fig_bar, use_container_width=True)
 
-    st.divider()
-
-    # =========================
-    # 📊 EVOLUÇÃO POR DIA
-    # =========================
-    st.subheader("📊 Evolução Diária / 每日产量")
-
-    df_dia = df.groupby("data")["volumes"].sum().reset_index().sort_values("data")
-
-    if not df_dia.empty:
-        fig_dia = px.bar(
-            df_dia, x="data", y="volumes", text="volumes",
-            labels={"data": "Data / 日期", "volumes": "Volumes / 数量"}
-        )
-        fig_dia.update_traces(marker_color=COR_VERDE, textposition="outside")
-        fig_dia = aplicar_layout_padrao(fig_dia)
-        st.plotly_chart(fig_dia, use_container_width=True)
 
     st.divider()
 
     # =========================
-    # 📋 TABELA TURNO × DISPOSITIVO
+    # 📋 TABELA HORA × DISPOSITIVO
     # =========================
-    st.subheader("📋 Resumo por Turno / 班次汇总")
+    st.subheader("📋 Resumo por Hora / 每小时汇总")
 
     df_tabela = (
-        df.groupby(["turno", "dispositivo"])["volumes"]
+        df.groupby(["hora", "dispositivo"])["volumes"]
         .sum()
         .unstack(fill_value=0)
         .reset_index()
@@ -168,7 +162,10 @@ def render():
         if col not in df_tabela.columns:
             df_tabela[col] = 0
     df_tabela.rename(columns=map_traducao, inplace=True)
-    df_tabela["Total"] = df_tabela[[map_traducao[d] for d in dispositivos if map_traducao[d] in df_tabela.columns]].sum(axis=1)
+    cols_disp = [map_traducao[d] for d in dispositivos if map_traducao[d] in df_tabela.columns]
+    df_tabela["Total"] = df_tabela[cols_disp].sum(axis=1)
+    df_tabela["hora"] = df_tabela["hora"].apply(lambda x: f"{int(x):02d}:00")
+    df_tabela.rename(columns={"hora": "Hora / 时间"}, inplace=True)
     tabela_padrao(df_tabela)
 
     st.divider()
@@ -176,8 +173,6 @@ def render():
     # =========================
     # 🧑‍💼 TOP 10 CLIENTES
     # =========================
-    st.subheader("🧑‍💼 Top 10 Clientes / 前10客户")
-
     df_cliente = (
         df.groupby("cliente")["volumes"]
         .sum()
@@ -186,18 +181,21 @@ def render():
     )
     df_top10 = df_cliente.head(10)
 
-    cores = ["#0F172A"] + ["#16A34A"] * (len(df_top10) - 1)
-    fig_cliente = px.bar(
-        df_top10, x="volumes", y="cliente", orientation="h", text="volumes",
-        labels={"volumes": "Volumes / 数量", "cliente": "Cliente / 客户"}
-    )
-    fig_cliente.update_traces(marker_color=cores, textposition="outside")
-    fig_cliente = aplicar_layout_padrao(fig_cliente)
-    st.plotly_chart(fig_cliente, use_container_width=True)
+    col_c1, col_c2 = st.columns(2)
 
-    st.divider()
+    with col_c1:
+        st.subheader("🧑‍💼 Top 10 Clientes / 前10客户")
+        cores = ["#0F172A"] + ["#16A34A"] * (len(df_top10) - 1)
+        fig_cliente = px.bar(
+            df_top10, x="volumes", y="cliente", orientation="h", text="volumes",
+            labels={"volumes": "Volumes / 数量", "cliente": "Cliente / 客户"}
+        )
+        fig_cliente.update_traces(marker_color=cores, textposition="outside")
+        fig_cliente = aplicar_layout_padrao(fig_cliente)
+        st.plotly_chart(fig_cliente, use_container_width=True)
 
-    st.subheader("📋 Produção por Cliente (Completo) / 客户完整列表")
-    df_cliente_fmt = df_cliente.copy()
-    df_cliente_fmt.columns = ["Cliente / 客户", "Volumes / 数量"]
-    tabela_padrao(df_cliente_fmt)
+    with col_c2:
+        st.subheader("📋 Produção por Cliente (Completo) / 客户完整列表")
+        df_cliente_fmt = df_cliente.copy()
+        df_cliente_fmt.columns = ["Cliente / 客户", "Volumes / 数量"]
+        tabela_padrao(df_cliente_fmt)

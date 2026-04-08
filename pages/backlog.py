@@ -1,9 +1,10 @@
 import streamlit as st
 import plotly.express as px
+import pandas as pd
+import io
 from core.repository import (
     buscar_backlog_resumo,
     buscar_backlog_paginado,
-    contar_backlog,
     buscar_backlog_por_estado,
     buscar_backlog_por_cliente,
     buscar_top10_pre_entrega,
@@ -137,19 +138,6 @@ def render():
 
     fig_cliente.update_traces(marker_color=cores)
 
-    df_proximo_sorted = df_proximo.sort_values("qtd", ascending=False)
-
-    cores = ["#0F172A"] + ["#16A34A"] * (len(df_proximo_sorted) - 1)
-
-    fig_proximo = grafico_barra(
-        df_proximo_sorted,
-        x="proximo_ponto",
-        y="qtd",
-        text="qtd"
-    )
-
-    fig_proximo.update_traces(marker_color=cores)
-
     # =========================
     # 📊 EXIBE
     # =========================
@@ -159,59 +147,35 @@ def render():
         st.subheader("📊 Estado / 州")
         st.plotly_chart(fig_estado, use_container_width=True)
 
-        estado_select = st.selectbox(
-            "Ver detalhe por estado",
-            options=df_estado["estado"].tolist()
-        )
-
     with col_g2:
         st.subheader("📊 Cliente / 客户")
         st.plotly_chart(fig_cliente, use_container_width=True)
 
     st.divider()
 
-    st.subheader("📊 Próximo Ponto / 下一站")
-    st.plotly_chart(fig_proximo, use_container_width=True)
-
     # =========================
-    # 📦 DETALHE
+    # 📊 PRÓXIMO PONTO + PRÉ-ENTREGA
     # =========================
-    st.divider()
+    col_pp1, col_pp2 = st.columns(2)
 
-    st.subheader(f"📦 Detalhamento / 详细数据 - {estado_select}")
+    with col_pp1:
+        st.subheader("📋 Próximo Ponto / 下一站")
+        df_proximo_sorted = df_proximo.sort_values("qtd", ascending=False).reset_index(drop=True)
+        df_proximo_fmt = df_proximo_sorted.copy()
+        df_proximo_fmt.columns = ["Próximo Ponto / 下一站", "Qtd / 数量"]
+        tabela_padrao(df_proximo_fmt)
 
-    df_detalhe = buscar_backlog_paginado(
-        estados=[estado_select],
-        faixa=faixa if faixa != "Todos" else None
-    )
-
-    from utils.style import tabela_padrao
-    tabela_padrao(df_detalhe)
-
-    st.divider()
-
-    # =========================
-    # 🚚 PRÉ ENTREGA
-    # =========================
-    st.subheader("📊 Top 10 Pré-entrega / 预交付前10")
-
-    fig_pre = grafico_barra(
-        df_pre,
-        x="qtd",
-        y="pre_entrega",
-        text="qtd",
-        cor="#CBD5E1"
-    )
-
-    fig_pre.update_layout(yaxis=dict(autorange="reversed"))
-    st.plotly_chart(fig_pre, use_container_width=True)
+    with col_pp2:
+        st.subheader("📊 Top 10 Pré-entrega / 预交付前10")
+        fig_pre = grafico_barra(df_pre, x="qtd", y="pre_entrega", text="qtd", cor="#CBD5E1")
+        fig_pre.update_layout(yaxis=dict(autorange="reversed"))
+        st.plotly_chart(fig_pre, use_container_width=True)
 
     st.divider()
 
     # ===========================
     # 📊 BACKLOG POR ESTADO (SLA)
     # ===========================
-
     st.subheader("📊 Backlog Atual por Estado (SLA)")
 
     df_detalhe_full = buscar_backlog_paginado(limit=100000)
@@ -245,22 +209,39 @@ def render():
     st.divider()
 
     # =========================
-    # 📦 TABELA
+    # ⬇️ DOWNLOAD WAYBILLS
     # =========================
-    if st.button("📦 Carregar pedidos / 加载订单 (modo pesado)"):
-        df = buscar_backlog_paginado(limit=100)
-        st.dataframe(df, use_container_width=True)
+    st.subheader("⬇️ Download Waybills em Backlog / 下载积压运单")
 
-    # ✅ BOTÃO CORRIGIDO
-    if st.button("🚀 Enviar relatório no Telegram"):
-        st.write("🚀 Enviando relatório...")
-        gerar_e_enviar_relatorio(
-            df_estado,
-            df_cliente,
-            fig_estado,
-            fig_cliente,
-            fig_proximo
-        )
+    def formatar_tempo(h):
+        if pd.isna(h):
+            return "—"
+        elif h <= 72:
+            return f"{int(h)}h"
+        else:
+            dias = h / 24
+            return f"{dias:.1f} dias"
+
+    df_export = df_detalhe_full[[
+        "waybill", "estado", "cliente", "cidade",
+        "pre_entrega", "proximo_ponto", "horas_backlog_snapshot"
+    ]].copy()
+    df_export["tempo_backlog"] = df_export["horas_backlog_snapshot"].apply(formatar_tempo)
+    df_export = df_export.drop(columns=["horas_backlog_snapshot"])
+    df_export.columns = [
+        "Waybill", "Estado", "Cliente", "Cidade",
+        "Pré-entrega", "Próximo Ponto", "Tempo em Backlog"
+    ]
+    df_export = df_export.sort_values("Waybill")
+
+    buffer = io.BytesIO()
+    df_export.to_excel(buffer, index=False)
+    st.download_button(
+        label=f"⬇️ Baixar Excel ({len(df_export)} waybills)",
+        data=buffer.getvalue(),
+        file_name="backlog_waybills.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 
 # =========================
