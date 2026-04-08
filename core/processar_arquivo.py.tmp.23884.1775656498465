@@ -422,13 +422,9 @@ def importar_produtividade(arquivo):
     from psycopg2.extras import execute_values
     from core.database import conectar_operacional, executar_operacional
 
-    # 🔥 AQUI: Troque o 'X' pelo índice numérico da coluna HUB no seu Excel!
-    # Ex: A=0, B=1, C=2, D=3, E=4...
-    INDICE_HUB = X 
-    
-    # Lê só as colunas necessárias (agora puxando o hub também)
-    df = pd.read_excel(arquivo, usecols=[3, INDICE_HUB, 8, 20], engine="openpyxl")
-    df.columns = ["cliente", "hub", "data_hora", "operador"] # 🔥 hub mapeado aqui
+    # Lê só colunas D, I, U (índices 3, 8, 20)
+    df = pd.read_excel(arquivo, usecols=[3, 8, 20], engine="openpyxl")
+    df.columns = ["cliente", "data_hora", "operador"]
 
     if df.empty:
         return 0
@@ -476,9 +472,9 @@ def importar_produtividade(arquivo):
     df[["turno", "data"]] = turnos_datas
     df["hora"] = df["data_hora"].dt.hour
 
-    # 🔥 AQUI: Adicionamos hub e operador no groupby para não perdê-los!
+    # Agrega — de 166k linhas para ~900 (hora × turno × dispositivo)
     df_agg = (
-        df.groupby(["cliente", "hub", "operador", "data", "hora", "turno", "dispositivo"])
+        df.groupby(["cliente", "data", "hora", "turno", "dispositivo"])
         .size()
         .reset_index(name="volumes")
     )
@@ -490,8 +486,7 @@ def importar_produtividade(arquivo):
     cur  = conn.cursor()
     cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])
 
-    # 🔥 AQUI: Adicionamos hub e operador na lista de colunas que vão pro banco
-    colunas = ["cliente", "hub", "operador", "data", "hora", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
+    colunas = ["cliente", "data", "hora", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
     values  = [tuple(None if pd.isna(v) else v for v in row)
                for row in df_agg[colunas].itertuples(index=False, name=None)]
 

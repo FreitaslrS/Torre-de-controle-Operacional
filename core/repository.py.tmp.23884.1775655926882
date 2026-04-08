@@ -26,7 +26,7 @@ def deletar_arquivo(nome_arquivo):
 # =========================
 # 📂 LISTAR ARQUIVOS
 # =========================
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def listar_arquivos():
     return consultar_backlog("""
         SELECT 
@@ -41,7 +41,7 @@ def listar_arquivos():
 # =========================
 # 📊 BACKLOG RESUMO
 # =========================
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def buscar_backlog_resumo():
     return consultar_backlog("""
         SELECT 
@@ -207,7 +207,7 @@ def buscar_top10_pre_entrega(faixa=None):
 # =========================
 # 📊 BACKLOG DETALHADO
 # =========================
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def buscar_backlog_paginado(limit=100, offset=0, estados=None, clientes=None, faixa=None):
 
     query = """
@@ -251,7 +251,7 @@ def buscar_backlog_paginado(limit=100, offset=0, estados=None, clientes=None, fa
 # =========================
 # 🔢 CONTAGEM BACKLOG
 # =========================
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def contar_backlog(estados=None, clientes=None, faixa=None):
 
     query = "SELECT SUM(qtd) as total FROM backlog_atual WHERE 1=1"
@@ -294,12 +294,9 @@ def buscar_backlog_historico(data_inicio, data_fim):
 def buscar_produtividade(data_inicio=None, data_fim=None):
 
     query = """
-        SELECT 
+        SELECT
             cliente,
-            hub,
-            operador,
             data,
-            hora,
             turno,
             dispositivo,
             volumes
@@ -309,12 +306,9 @@ def buscar_produtividade(data_inicio=None, data_fim=None):
 
     params = []
 
-    # 🔥 PERÍODO
     if data_inicio and data_fim:
         query += " AND data BETWEEN %s AND %s"
         params.extend([data_inicio, data_fim])
-
-    # 🔥 SNAPSHOT (PADRÃO)
     else:
         query += """
             AND data = (
@@ -327,7 +321,7 @@ def buscar_produtividade(data_inicio=None, data_fim=None):
 # =========================
 # 📦 PEDIDOS
 # =========================
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def buscar_pedidos(limit=1000):
     return consultar_historico("""
         SELECT 
@@ -452,7 +446,7 @@ def buscar_devolucoes(limit=1000):
 # =========================
 # ⏱️ CALCULO DE PACOTES H1
 # =========================
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def buscar_tempo_processamento_geral():
 
     query = """
@@ -469,7 +463,7 @@ def buscar_tempo_processamento_geral():
 
     return consultar_processamento(query)
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
 
     query = """
@@ -510,7 +504,7 @@ def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
 
     return consultar_processamento(query, params)
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
 
     query_prod = """
