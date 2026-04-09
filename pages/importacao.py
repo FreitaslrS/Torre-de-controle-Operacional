@@ -78,6 +78,10 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao):
             from core.processar_arquivo import importar_devolucao_monitoramento
             qtd = importar_devolucao_monitoramento(arquivo, data_ref)
 
+        elif tipo_importacao == "Pacotes Grandes":
+            from core.processar_arquivo import importar_pacotes_grandes
+            qtd = importar_pacotes_grandes(arquivo)
+
         else:
             raise Exception("Tipo de importação inválido")
 
@@ -118,7 +122,7 @@ def render():
 
     tipo_importacao = st.selectbox(
         "Tipo de Importação / 导入类型",
-        ["Backlog", "Produtividade", "Tempo de Processamento", "Devolução", "Devolução - P90", "Devolução - Monitoramento"]
+        ["Backlog", "Produtividade", "Tempo de Processamento", "Devolução", "Devolução - P90", "Devolução - Monitoramento", "Pacotes Grandes"]
     )
 
     # ========================

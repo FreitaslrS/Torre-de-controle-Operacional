@@ -55,170 +55,173 @@ def render():
 
     st.divider()
 
-    # =========================
-    # 🎛️ FILTROS
-    # =========================
-    st.subheader("🎛️ Filtros")
-    col_f1, col_f2, col_f3 = st.columns(3)
+    tab1, tab2 = st.tabs(["📊 Evolução e Gráficos", "⏱️ Drill SLA"])
 
-    remover_estados = col_f1.multiselect("Remover Estados", options=sorted(df["estado"].unique()))
-    remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df["cliente"].unique()))
-    faixa_filtro = col_f3.selectbox("Faixa de backlog", ["Todos", "1-5 dias+", "5-10 dias+", "10+ dias"])
+    with tab1:
+        # =========================
+        # 🎛️ FILTROS
+        # =========================
+        st.subheader("🎛️ Filtros")
+        col_f1, col_f2, col_f3 = st.columns(3)
 
-    if remover_estados:
-        df = df[~df["estado"].isin(remover_estados)]
+        remover_estados  = col_f1.multiselect("Remover Estados",  options=sorted(df["estado"].unique()),  key="hist_rem_est")
+        remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df["cliente"].unique()), key="hist_rem_cli")
+        faixa_filtro     = col_f3.selectbox("Faixa de backlog", ["Todos", "1-5 dias+", "5-10 dias+", "10+ dias"], key="hist_faixa")
 
-    if remover_clientes:
-        df = df[~df["cliente"].isin(remover_clientes)]
+        df_t1 = df.copy()
 
-    faixa_map = {
-        "1-5 dias+": ["1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
-        "5-10 dias+": ["5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
-        "10+ dias":   ["10-20 dias", "20-30 dias", "30+ dias"],
-    }
-    if faixa_filtro in faixa_map:
-        df = df[df["faixa_backlog_snapshot"].isin(faixa_map[faixa_filtro])]
+        if remover_estados:
+            df_t1 = df_t1[~df_t1["estado"].isin(remover_estados)]
 
-    if df.empty:
-        st.warning("Sem dados para o filtro selecionado")
-        return
+        if remover_clientes:
+            df_t1 = df_t1[~df_t1["cliente"].isin(remover_clientes)]
 
-    st.divider()
+        faixa_map = {
+            "1-5 dias+": ["1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
+            "5-10 dias+": ["5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
+            "10+ dias":   ["10-20 dias", "20-30 dias", "30+ dias"],
+        }
+        if faixa_filtro in faixa_map:
+            df_t1 = df_t1[df_t1["faixa_backlog_snapshot"].isin(faixa_map[faixa_filtro])]
 
-    # =========================
-    # 📊 KPI POR FAIXA
-    # =========================
-    def qtd_faixa(faixa):
-        return int(df.loc[df["faixa_backlog_snapshot"] == faixa, "qtd"].sum())
+        if df_t1.empty:
+            st.warning("Sem dados para o filtro selecionado")
+        else:
+            st.divider()
 
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    col1.metric("1 dia",      qtd_faixa("1 dia"))
-    col2.metric("1-5 dias",   qtd_faixa("1-5 dias"))
-    col3.metric("5-10 dias",  qtd_faixa("5-10 dias"))
-    col4.metric("10-20 dias", qtd_faixa("10-20 dias"))
-    col5.metric("20-30 dias", qtd_faixa("20-30 dias"))
-    col6.metric("30+ dias",   qtd_faixa("30+ dias"))
+            # =========================
+            # 📊 KPI POR FAIXA
+            # =========================
+            def qtd_faixa(faixa):
+                return int(df_t1.loc[df_t1["faixa_backlog_snapshot"] == faixa, "qtd"].sum())
 
-    st.divider()
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
+            col1.metric("1 dia",      qtd_faixa("1 dia"))
+            col2.metric("1-5 dias",   qtd_faixa("1-5 dias"))
+            col3.metric("5-10 dias",  qtd_faixa("5-10 dias"))
+            col4.metric("10-20 dias", qtd_faixa("10-20 dias"))
+            col5.metric("20-30 dias", qtd_faixa("20-30 dias"))
+            col6.metric("30+ dias",   qtd_faixa("30+ dias"))
 
-    # =========================
-    # 📈 EVOLUÇÃO POR DIA
-    # =========================
-    df_tempo = df.groupby("data_referencia")["qtd"].sum().reset_index()
+            st.divider()
 
-    if not df_tempo.empty:
-        df_tempo = df_tempo.sort_values("data_referencia")
-        df_tempo["pct_change"] = df_tempo["qtd"].pct_change() * 100
-        df_tempo["pct_label"] = df_tempo["pct_change"].apply(
-            lambda x: f"{x:+.1f}%" if pd.notna(x) and x != float("inf") else ""
-        )
+            # =========================
+            # 📈 EVOLUÇÃO POR DIA
+            # =========================
+            df_tempo = df_t1.groupby("data_referencia")["qtd"].sum().reset_index()
 
-        fig = go.Figure()
-        fig.add_bar(x=df_tempo["data_referencia"], y=df_tempo["qtd"], name="Volume", marker_color="#CBD5E1")
-        fig.add_trace(go.Scatter(
-            x=df_tempo["data_referencia"], y=df_tempo["qtd"],
-            mode="lines+markers+text", name="Tendência",
-            line=dict(color="#16A34A", width=3),
-            text=df_tempo["pct_label"], textposition="top center"
-        ))
-        fig = aplicar_layout_padrao(fig)
-        st.plotly_chart(fig, use_container_width=True)
+            if not df_tempo.empty:
+                df_tempo = df_tempo.sort_values("data_referencia")
+                df_tempo["pct_change"] = df_tempo["qtd"].pct_change() * 100
+                df_tempo["pct_label"] = df_tempo["pct_change"].apply(
+                    lambda x: f"{x:+.1f}%" if pd.notna(x) and x != float("inf") else ""
+                )
 
-    st.divider()
+                fig = go.Figure()
+                fig.add_bar(x=df_tempo["data_referencia"], y=df_tempo["qtd"], name="Volume", marker_color="#CBD5E1")
+                fig.add_trace(go.Scatter(
+                    x=df_tempo["data_referencia"], y=df_tempo["qtd"],
+                    mode="lines+markers+text", name="Tendência",
+                    line=dict(color="#16A34A", width=3),
+                    text=df_tempo["pct_label"], textposition="top center"
+                ))
+                fig = aplicar_layout_padrao(fig)
+                st.plotly_chart(fig, use_container_width=True)
 
-    # =========================
-    # 📊 GRÁFICOS AGRUPADOS
-    # =========================
-    df_estado  = df.groupby("estado")["qtd"].sum().reset_index()
-    df_cliente = df.groupby("cliente")["qtd"].sum().reset_index()
-    df_pre     = df.groupby("pre_entrega")["qtd"].sum().reset_index()
+            st.divider()
 
-    col_g1, col_g2 = st.columns(2)
+            # =========================
+            # 📊 GRÁFICOS AGRUPADOS
+            # =========================
+            df_estado  = df_t1.groupby("estado")["qtd"].sum().reset_index()
+            df_cliente = df_t1.groupby("cliente")["qtd"].sum().reset_index()
+            df_pre     = df_t1.groupby("pre_entrega")["qtd"].sum().reset_index()
 
-    with col_g1:
-        st.subheader("📊 Estado")
-        df_e = df_estado.sort_values("qtd", ascending=False)
-        cores = ["#0F172A"] + ["#16A34A"] * (len(df_e) - 1)
-        fig_e = grafico_barra(df_e, x="estado", y="qtd", text="qtd")
-        fig_e.update_traces(marker_color=cores)
-        st.plotly_chart(fig_e, use_container_width=True)
+            col_g1, col_g2 = st.columns(2)
 
-    with col_g2:
-        st.subheader("📊 Cliente")
-        df_c = df_cliente.sort_values("qtd", ascending=False)
-        cores = ["#0F172A"] + ["#16A34A"] * (len(df_c) - 1)
-        fig_c = grafico_barra(df_c, x="cliente", y="qtd", text="qtd")
-        fig_c.update_traces(marker_color=cores)
-        st.plotly_chart(fig_c, use_container_width=True)
+            with col_g1:
+                st.subheader("📊 Estado")
+                df_e = df_estado.sort_values("qtd", ascending=False)
+                cores = ["#0F172A"] + ["#16A34A"] * (len(df_e) - 1)
+                fig_e = grafico_barra(df_e, x="estado", y="qtd", text="qtd")
+                fig_e.update_traces(marker_color=cores)
+                st.plotly_chart(fig_e, use_container_width=True)
 
-    st.divider()
+            with col_g2:
+                st.subheader("📊 Cliente")
+                df_c = df_cliente.sort_values("qtd", ascending=False)
+                cores = ["#0F172A"] + ["#16A34A"] * (len(df_c) - 1)
+                fig_c = grafico_barra(df_c, x="cliente", y="qtd", text="qtd")
+                fig_c.update_traces(marker_color=cores)
+                st.plotly_chart(fig_c, use_container_width=True)
 
-    # =========================
-    # 📋 PRÓXIMO PONTO + PRÉ-ENTREGA
-    # =========================
-    col_pp1, col_pp2 = st.columns(2)
+            st.divider()
 
-    with col_pp1:
-        if "proximo_ponto" in df.columns:
-            st.subheader("📋 Próximo Ponto / 下一站")
-            df_proximo = df.groupby("proximo_ponto")["qtd"].sum().reset_index()
-            df_proximo = df_proximo.sort_values("qtd", ascending=False).reset_index(drop=True)
-            df_proximo.columns = ["Próximo Ponto / 下一站", "Qtd / 数量"]
-            tabela_padrao(df_proximo)
+            # =========================
+            # 📋 PRÓXIMO PONTO + PRÉ-ENTREGA
+            # =========================
+            col_pp1, col_pp2 = st.columns(2)
 
-    with col_pp2:
-        st.subheader("📊 Top 10 Pré-entrega")
-        df_pre_top10 = df_pre.sort_values("qtd", ascending=False).head(10)
-        fig_pre = grafico_barra(df_pre_top10, x="qtd", y="pre_entrega", text="qtd", cor="#CBD5E1")
-        st.plotly_chart(fig_pre, use_container_width=True)
+            with col_pp1:
+                if "proximo_ponto" in df_t1.columns:
+                    st.subheader("📋 Próximo Ponto / 下一站")
+                    df_proximo = df_t1.groupby("proximo_ponto")["qtd"].sum().reset_index()
+                    df_proximo = df_proximo.sort_values("qtd", ascending=False).reset_index(drop=True)
+                    df_proximo.columns = ["Próximo Ponto / 下一站", "Qtd / 数量"]
+                    tabela_padrao(df_proximo)
 
-    st.divider()
+            with col_pp2:
+                st.subheader("📊 Top 10 Pré-entrega")
+                df_pre_top10 = df_pre.sort_values("qtd", ascending=False).head(10)
+                fig_pre = grafico_barra(df_pre_top10, x="qtd", y="pre_entrega", text="qtd", cor="#CBD5E1")
+                st.plotly_chart(fig_pre, use_container_width=True)
 
-    # =========================
-    # 📊 BACKLOG POR ESTADO × FAIXA
-    # =========================
-    st.subheader("📊 Backlog por Estado (Faixa de Tempo)")
+            st.divider()
 
-    tabela_estado = (
-        df.groupby(["estado", "faixa_backlog_snapshot"])["qtd"]
-        .sum()
-        .unstack(fill_value=0)
-        .reset_index()
-    )
-    for col in FAIXAS_ORDEM:
-        if col not in tabela_estado.columns:
-            tabela_estado[col] = 0
-    tabela_estado["Total"] = tabela_estado[[c for c in FAIXAS_ORDEM if c in tabela_estado.columns]].sum(axis=1)
-    tabela_padrao(tabela_estado, use_container_width=True)
+            # =========================
+            # 📊 BACKLOG POR ESTADO × FAIXA
+            # =========================
+            st.subheader("📊 Backlog por Estado (Faixa de Tempo)")
 
-    st.divider()
+            tabela_estado = (
+                df_t1.groupby(["estado", "faixa_backlog_snapshot"])["qtd"]
+                .sum()
+                .unstack(fill_value=0)
+                .reset_index()
+            )
+            for col in FAIXAS_ORDEM:
+                if col not in tabela_estado.columns:
+                    tabela_estado[col] = 0
+            tabela_estado["Total"] = tabela_estado[[c for c in FAIXAS_ORDEM if c in tabela_estado.columns]].sum(axis=1)
+            tabela_padrao(tabela_estado, use_container_width=True)
 
-    # =========================
-    # ⏱️ DRILL SLA (backlog_atual)
-    # =========================
-    st.subheader("⏱️ Drill SLA")
+    with tab2:
+        # =========================
+        # ⏱️ DRILL SLA (backlog_atual)
+        # =========================
+        st.subheader("⏱️ Drill SLA")
 
-    faixa_tempo = st.selectbox("Tempo backlog", ["24h+", "48h+", "72h+"])
+        faixa_tempo = st.selectbox("Tempo backlog", ["24h+", "48h+", "72h+"], key="drill_faixa")
 
-    condicao_map = {
-        "24h+": "horas_backlog_snapshot > 24 AND horas_backlog_snapshot <= 48",
-        "48h+": "horas_backlog_snapshot > 48 AND horas_backlog_snapshot <= 72",
-        "72h+": "horas_backlog_snapshot > 72",
-    }
-    condicao = condicao_map[faixa_tempo]
+        condicao_map = {
+            "24h+": "horas_backlog_snapshot > 24 AND horas_backlog_snapshot <= 48",
+            "48h+": "horas_backlog_snapshot > 48 AND horas_backlog_snapshot <= 72",
+            "72h+": "horas_backlog_snapshot > 72",
+        }
+        condicao = condicao_map[faixa_tempo]
 
-    df_count = consultar(f"SELECT COUNT(*) as total FROM backlog_atual WHERE {condicao}")
-    total_registros = int(df_count["total"].iloc[0]) if not df_count.empty else 0
+        df_count = consultar(f"SELECT COUNT(*) as total FROM backlog_atual WHERE {condicao}")
+        total_registros = int(df_count["total"].iloc[0]) if not df_count.empty else 0
 
-    df_sla = consultar(f"""
-        SELECT waybill, cliente, estado, pre_entrega, proximo_ponto, horas_backlog_snapshot
-        FROM backlog_atual
-        WHERE {condicao}
-        LIMIT 500
-    """)
+        df_sla = consultar(f"""
+            SELECT waybill, cliente, estado, pre_entrega, proximo_ponto, horas_backlog_snapshot
+            FROM backlog_atual
+            WHERE {condicao}
+            LIMIT 500
+        """)
 
-    if total_registros > 500:
-        st.info(f"Exibindo 500 de {total_registros} registros.")
+        if total_registros > 500:
+            st.info(f"Exibindo 500 de {total_registros} registros.")
 
-    tabela_padrao(df_sla, use_container_width=True)
-    gerar_download(df_sla, "drill_sla")
+        tabela_padrao(df_sla, use_container_width=True)
+        gerar_download(df_sla, "drill_sla")

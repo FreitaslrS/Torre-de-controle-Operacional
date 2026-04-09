@@ -13,6 +13,7 @@ from core.repository import (
     buscar_dev_motivos,
     buscar_dev_interceptados,
     buscar_dev_dsp_sem3tent,
+    buscar_clientes_fantasia,
 )
 from utils.theme import grafico_barra, grafico_pizza, aplicar_layout_padrao
 from utils.style import tabela_padrao, aplicar_css_global
@@ -32,13 +33,34 @@ def _opcoes_semana(df_semanas):
     """Converte DataFrame de semana/ano em lista de strings para selectbox."""
     if df_semanas.empty:
         return []
-    return [f"{row['semana']} / {row['ano']}" for _, row in df_semanas.iterrows()]
+    return [f"{row['semana']}/{row['ano']}" for _, row in df_semanas.iterrows()]
 
 
 def _parse_semana(opcao):
-    """'w15 / 2025' → ('w15', 2025)"""
-    partes = opcao.split(" / ")
+    """'w15/2025' -> ('w15', 2025)"""
+    partes = opcao.split("/")
     return partes[0], int(partes[1])
+
+
+def _cliente_selectbox(key, clientes_df):
+    """
+    Exibe selectbox com nomes fantasia.
+    Retorna (cliente_cod, cliente_fantasia_label) — cod None se 'Todos'.
+    """
+    if clientes_df.empty:
+        st.caption("💡 Importe 'Devolução - Monitoramento' para filtrar por cliente")
+        return None, None
+
+    fantasia_opts = ["Todos"] + sorted(
+        clientes_df["cliente_fantasia"].dropna().unique().tolist()
+    )
+    sel = st.selectbox("Cliente / 客户", fantasia_opts, key=key)
+
+    if sel == "Todos":
+        return None, None
+
+    cod_match = clientes_df[clientes_df["cliente_fantasia"] == sel]["cliente_cod"].tolist()
+    return (cod_match[0] if cod_match else None), sel
 
 
 def render():
@@ -51,6 +73,8 @@ def render():
         "📊 WBR — Cliente",
         "📊 Semanal — Interno"
     ])
+
+    df_clientes = buscar_clientes_fantasia()
 
     # ════════════════════════════════════════
     # TAB 1 — RESUMO
@@ -89,9 +113,13 @@ def render():
         st.subheader("📊 P90 — Tempo de Devolução (Percentil 90)")
         st.caption("Dias corridos da criação do pedido até recebimento da devolução, para 90% dos casos")
 
+        col_f1, col_f2 = st.columns(2)
         ano_atual = pd.Timestamp.now().year
-        ano_p90 = st.selectbox("Ano / 年份", [ano_atual, ano_atual - 1], index=0, key="ano_p90")
-        df_p90 = buscar_p90(ano=ano_p90)
+        ano_p90 = col_f1.selectbox("Ano / 年份", [ano_atual, ano_atual - 1], index=0, key="ano_p90")
+
+        cliente_cod_p90, _ = _cliente_selectbox("cliente_p90", df_clientes)
+
+        df_p90 = buscar_p90(ano=ano_p90, cliente=cliente_cod_p90)
 
         if df_p90.empty:
             st.warning("Sem dados de P90. Importe um arquivo 'Devolução - P90'.")
@@ -126,9 +154,12 @@ def render():
     with tab3:
         st.subheader("📊 WBR — Relatório ao Cliente")
 
-        # ── SLA (Monitoramento — diário) ──────────────────────────────
+        # ── Filtro de cliente ─────────────────────────────────────
+        cliente_cod_wbr, _ = _cliente_selectbox("cliente_wbr", df_clientes)
+
+        # ── SLA (Monitoramento — diário) ──────────────────────────
         st.subheader("📈 SLA — Entregas no Prazo")
-        df_sla = buscar_dev_sla_semanal()
+        df_sla = buscar_dev_sla_semanal(cliente=cliente_cod_wbr)
 
         if not df_sla.empty:
             df_sla["data_referencia"] = pd.to_datetime(df_sla["data_referencia"]).dt.date
@@ -154,7 +185,7 @@ def render():
 
         st.divider()
 
-        # ── Backlog e Estados (Devolução — semanal) ───────────────────
+        # ── Backlog e Estados (Devolução — semanal) ───────────────
         df_semanas_wbr = buscar_semanas_disponiveis_dev()
 
         if df_semanas_wbr.empty:
@@ -164,7 +195,11 @@ def render():
             sel_wbr = st.selectbox("Semana (Devolução) / 周", opcoes_wbr, key="semana_wbr")
             semana_wbr, ano_wbr = _parse_semana(sel_wbr)
 
-            df_status = buscar_dev_status_semanal(semana=semana_wbr, ano=ano_wbr)
+            from utils.semana import semana_para_datas, datas_para_label
+            data_ini_wbr, data_fim_wbr = semana_para_datas(semana_wbr, ano_wbr)
+            st.caption(f"Período: **{datas_para_label(data_ini_wbr, data_fim_wbr)}**")
+
+            df_status = buscar_dev_status_semanal(semana=semana_wbr, ano=ano_wbr, cliente=cliente_cod_wbr)
 
             if not df_status.empty:
                 st.subheader("📦 Backlog — Status Atual")
@@ -191,7 +226,7 @@ def render():
 
         st.divider()
 
-        # ── Motivos (Monitoramento — diário) ─────────────────────────
+        # ── Motivos (Monitoramento — diário) ─────────────────────
         st.subheader("❌ Motivos de Falha de Entrega")
         df_datas_mon_wbr = buscar_datas_disponiveis_mon()
 
@@ -201,7 +236,7 @@ def render():
             datas_mon_wbr = pd.to_datetime(df_datas_mon_wbr["data_referencia"]).dt.date.tolist()
             data_mon_wbr = st.selectbox("Data (Monitoramento) / 日期", datas_mon_wbr, key="data_mon_wbr")
 
-            df_motivos = buscar_dev_motivos(data_ref=data_mon_wbr)
+            df_motivos = buscar_dev_motivos(data_ref=data_mon_wbr, cliente=cliente_cod_wbr)
             if not df_motivos.empty:
                 cores = [COR_AZUL] + [COR_VERDE] * (len(df_motivos) - 1)
                 fig_mot = grafico_barra(df_motivos, x="qtd", y="motivo", text="qtd")
@@ -217,7 +252,10 @@ def render():
     with tab4:
         st.subheader("📊 Relatório Semanal — Interno")
 
-        # ── Seletor Devolução (semanal) ───────────────────────────────
+        # ── Filtro de cliente ─────────────────────────────────────
+        cliente_cod_int, _ = _cliente_selectbox("cliente_int", df_clientes)
+
+        # ── Seletor Devolução (semanal) ───────────────────────────
         df_semanas_int = buscar_semanas_disponiveis_dev()
 
         if df_semanas_int.empty:
@@ -229,9 +267,14 @@ def render():
             opcoes_int = _opcoes_semana(df_semanas_int)
             sel_int = st.selectbox("Semana (Devolução) / 周", opcoes_int, key="semana_int")
             semana_int, ano_int = _parse_semana(sel_int)
-            df_st_int = buscar_dev_status_semanal(semana=semana_int, ano=ano_int)
 
-        # ── Seletor Monitoramento (diário) ────────────────────────────
+            from utils.semana import semana_para_datas, datas_para_label
+            data_ini_int, data_fim_int = semana_para_datas(semana_int, ano_int)
+            st.caption(f"Período: **{datas_para_label(data_ini_int, data_fim_int)}**")
+
+            df_st_int = buscar_dev_status_semanal(semana=semana_int, ano=ano_int, cliente=cliente_cod_int)
+
+        # ── Seletor Monitoramento (diário) ────────────────────────
         df_datas_mon_int = buscar_datas_disponiveis_mon()
 
         if df_datas_mon_int.empty:
@@ -242,7 +285,7 @@ def render():
 
         st.divider()
 
-        # ── Pizza — Total processado (Devolução) ──────────────────────
+        # ── Pizza — Total processado (Devolução) ──────────────────
         st.subheader("🥧 Total Processado")
 
         if not df_st_int.empty:
@@ -279,10 +322,10 @@ def render():
 
         st.divider()
 
-        # ── Motivos (Monitoramento — diário) ─────────────────────────
+        # ── Motivos (Monitoramento — diário) ─────────────────────
         st.subheader("❌ Principais Motivos")
         if data_mon_int:
-            df_mot_int = buscar_dev_motivos(data_ref=data_mon_int)
+            df_mot_int = buscar_dev_motivos(data_ref=data_mon_int, cliente=cliente_cod_int)
             if not df_mot_int.empty:
                 cores_mot = [COR_AZUL] + [COR_VERDE] * (len(df_mot_int) - 1)
                 fig_mot_int = grafico_barra(df_mot_int, x="qtd", y="motivo", text="qtd")
@@ -296,10 +339,10 @@ def render():
 
         st.divider()
 
-        # ── Interceptados (Monitoramento — diário) ────────────────────
+        # ── Interceptados (Monitoramento — diário) ────────────────
         st.subheader("🚨 Interceptados por Iata")
         if data_mon_int:
-            df_inter = buscar_dev_interceptados(data_ref=data_mon_int)
+            df_inter = buscar_dev_interceptados(data_ref=data_mon_int, cliente=cliente_cod_int)
             if not df_inter.empty:
                 tabela_padrao(df_inter.rename(columns={
                     "ponto_entrada": "Iata",
@@ -313,7 +356,7 @@ def render():
 
         st.divider()
 
-        # ── Principais Estados (Devolução — semanal) ──────────────────
+        # ── Principais Estados (Devolução — semanal) ──────────────
         st.subheader("🗺️ Principais Estados com Devoluções")
         if not df_st_int.empty:
             df_est_int = df_st_int.groupby("estado")["qtd"].sum().reset_index()
@@ -322,35 +365,51 @@ def render():
 
         st.divider()
 
-        # ── Top Iatas por Estado (Devolução — semanal) ────────────────
+        # ── Top 5 Iatas por Estado (DINÂMICO) ────────────────────
         st.subheader("📍 Top 5 Iatas por Estado")
-        estados_principais = ["SP", "MG", "PR", "RJ"]
-        cols_iata = st.columns(2)
+        st.caption("Estados calculados dinamicamente com base no volume da semana")
 
-        for idx, estado_sel in enumerate(estados_principais):
-            df_iata = buscar_dev_iatas_semanal(semana=semana_int, ano=ano_int, estado=estado_sel)
-            with cols_iata[idx % 2]:
-                st.markdown(f"**{estado_sel}**")
-                if not df_iata.empty:
-                    df_top5 = df_iata.head(5)
-                    cores_i = [COR_AZUL] + [COR_VERDE] * (len(df_top5) - 1)
-                    fig_i = grafico_barra(df_top5, x="qtd", y="ponto_operacao", text="qtd")
-                    fig_i.update_traces(marker_color=cores_i)
-                    fig_i.update_layout(
-                        yaxis=dict(autorange="reversed"),
-                        height=250,
-                        margin=dict(l=0, r=0, t=20, b=0)
-                    )
-                    st.plotly_chart(fig_i, use_container_width=True, key=f"fig_iata_{estado_sel}")
-                else:
-                    st.info(f"Sem dados para {estado_sel}")
+        df_iatas_todos = buscar_dev_iatas_semanal(semana=semana_int, ano=ano_int)
+
+        if df_iatas_todos.empty:
+            st.info("Sem dados de iatas para a semana selecionada.")
+        else:
+            top_estados_semana = (
+                df_iatas_todos.groupby("estado")["qtd"]
+                .sum()
+                .sort_values(ascending=False)
+                .head(4)
+                .index.tolist()
+            )
+
+            cols_iata = st.columns(2)
+            for idx, estado_sel in enumerate(top_estados_semana):
+                df_iata_est = df_iatas_todos[
+                    df_iatas_todos["estado"] == estado_sel
+                ].sort_values("qtd", ascending=False).head(5)
+
+                with cols_iata[idx % 2]:
+                    total_est = int(df_iata_est["qtd"].sum())
+                    st.markdown(f"**{estado_sel}** — {total_est:,} devoluções")
+                    if not df_iata_est.empty:
+                        cores_i = [COR_AZUL] + [COR_VERDE] * (len(df_iata_est) - 1)
+                        fig_i = grafico_barra(
+                            df_iata_est, x="qtd", y="ponto_operacao", text="qtd"
+                        )
+                        fig_i.update_traces(marker_color=cores_i)
+                        fig_i.update_layout(
+                            yaxis=dict(autorange="reversed"),
+                            height=260,
+                            margin=dict(l=0, r=0, t=20, b=0)
+                        )
+                        st.plotly_chart(fig_i, use_container_width=True, key=f"fig_iata_{estado_sel}")
 
         st.divider()
 
-        # ── DSPs sem 3 tentativas (Monitoramento — diário) ────────────
+        # ── DSPs sem 3 tentativas (Monitoramento — diário) ────────
         st.subheader("⚠️ DSPs que Devolvem sem 3 Tentativas")
         if data_mon_int:
-            df_dsp = buscar_dev_dsp_sem3tent(data_ref=data_mon_int)
+            df_dsp = buscar_dev_dsp_sem3tent(data_ref=data_mon_int, cliente=cliente_cod_int)
             if not df_dsp.empty:
                 col1, col2 = st.columns(2)
                 with col1:

@@ -480,9 +480,9 @@ def buscar_devolucoes(limit=1000):
 # 📊 P90 DEVOLUÇÕES
 # ================================
 @st.cache_data(ttl=600)
-def buscar_p90(ano=None):
+def buscar_p90(ano=None, cliente=None):
     query = """
-        SELECT estado, semana, ano, p90_dias, qtd_pedidos
+        SELECT estado, semana, ano, cliente, p90_dias, qtd_pedidos
         FROM p90_semanal
         WHERE 1=1
     """
@@ -491,6 +491,10 @@ def buscar_p90(ano=None):
     if ano:
         query += " AND ano = %s"
         params.append(ano)
+
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
 
     query += " ORDER BY estado, ano, semana"
 
@@ -519,8 +523,8 @@ def buscar_datas_disponiveis_mon():
     """)
 
 
-def buscar_dev_status_semanal(semana=None, ano=None):
-    query = "SELECT estado, status, semana, ano, data_referencia, cliente, qtd FROM dev_status_semanal WHERE 1=1"
+def buscar_dev_status_semanal(semana=None, ano=None, cliente=None):
+    query = "SELECT estado, status, semana, ano, data_referencia, cliente, cliente_fantasia, qtd FROM dev_status_semanal WHERE 1=1"
     params = []
     if semana:
         query += " AND semana = %s"
@@ -528,10 +532,13 @@ def buscar_dev_status_semanal(semana=None, ano=None):
     if ano:
         query += " AND ano = %s"
         params.append(ano)
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
     return consultar_devolucoes(query, params if params else None)
 
 
-def buscar_dev_iatas_semanal(semana=None, ano=None, estado=None):
+def buscar_dev_iatas_semanal(semana=None, ano=None, estado=None, cliente=None):
     query = "SELECT ponto_operacao, estado, semana, ano, qtd FROM dev_iatas_semanal WHERE 1=1"
     params = []
     if semana:
@@ -543,22 +550,30 @@ def buscar_dev_iatas_semanal(semana=None, ano=None, estado=None):
     if estado:
         query += " AND estado = %s"
         params.append(estado)
+    if cliente:
+        query += " AND cliente_fantasia ILIKE %s"
+        params.append(f"%{cliente}%")
     query += " ORDER BY qtd DESC"
     return consultar_devolucoes(query, params if params else None)
 
 
-def buscar_dev_sla_semanal():
-    return consultar_devolucoes("""
-        SELECT data_referencia, cliente,
+def buscar_dev_sla_semanal(cliente=None):
+    query = """
+        SELECT data_referencia, cliente, cliente_fantasia,
                SUM(qtd_total) as qtd_total,
                SUM(qtd_no_prazo) as qtd_no_prazo
         FROM dev_sla_semanal
-        GROUP BY data_referencia, cliente
-        ORDER BY data_referencia
-    """)
+        WHERE 1=1
+    """
+    params = []
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
+    query += " GROUP BY data_referencia, cliente, cliente_fantasia ORDER BY data_referencia"
+    return consultar_devolucoes(query, params if params else None)
 
 
-def buscar_dev_motivos(data_ref=None):
+def buscar_dev_motivos(data_ref=None, cliente=None):
     query = """
         SELECT motivo, SUM(qtd) as qtd
         FROM dev_motivos_semanal
@@ -568,11 +583,14 @@ def buscar_dev_motivos(data_ref=None):
     if data_ref:
         query += " AND data_referencia = %s"
         params.append(data_ref)
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
     query += " GROUP BY motivo ORDER BY qtd DESC"
     return consultar_devolucoes(query, params if params else None)
 
 
-def buscar_dev_interceptados(data_ref=None):
+def buscar_dev_interceptados(data_ref=None, cliente=None):
     query = """
         SELECT ponto_entrada, estado, SUM(qtd) as qtd
         FROM dev_dsp_sem3tent
@@ -582,11 +600,14 @@ def buscar_dev_interceptados(data_ref=None):
     if data_ref:
         query += " AND data_referencia = %s"
         params.append(data_ref)
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
     query += " GROUP BY ponto_entrada, estado ORDER BY qtd DESC"
     return consultar_devolucoes(query, params if params else None)
 
 
-def buscar_dev_dsp_sem3tent(data_ref=None):
+def buscar_dev_dsp_sem3tent(data_ref=None, cliente=None):
     query = """
         SELECT ponto_entrada, estado, SUM(qtd) as qtd
         FROM dev_dsp_sem3tent
@@ -596,6 +617,9 @@ def buscar_dev_dsp_sem3tent(data_ref=None):
     if data_ref:
         query += " AND data_referencia = %s"
         params.append(data_ref)
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
     query += " GROUP BY ponto_entrada, estado ORDER BY qtd DESC"
     return consultar_devolucoes(query, params if params else None)
 
@@ -717,3 +741,82 @@ def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
     df["total_geral"] = df["total_perus"] + df["total_tfk"]
 
     return df.sort_values("data", ascending=False)
+
+
+# ================================
+# 👥 CLIENTES — mapeamento código → fantasia
+# ================================
+@st.cache_data(ttl=3600)
+def buscar_clientes_fantasia():
+    """
+    Retorna mapeamento unico de cliente_cod → cliente_fantasia.
+    Fonte: dev_sla_semanal (alimentada pelo monitoramento).
+    """
+    return consultar_devolucoes("""
+        SELECT DISTINCT
+            cliente         AS cliente_cod,
+            cliente_fantasia
+        FROM dev_sla_semanal
+        WHERE cliente_fantasia IS NOT NULL
+          AND cliente_fantasia != ''
+        ORDER BY cliente_fantasia
+    """)
+
+
+@st.cache_data(ttl=600)
+def buscar_dev_por_cliente_fantasia(cliente_fantasia, semana=None, ano=None):
+    """
+    Busca dados de SLA filtrados pelo nome fantasia do cliente.
+    """
+    query = """
+        SELECT estado, semana, ano, SUM(qtd_total) as qtd_total,
+               SUM(qtd_no_prazo) as qtd_no_prazo
+        FROM dev_sla_semanal
+        WHERE cliente_fantasia ILIKE %s
+    """
+    params = [f"%{cliente_fantasia}%"]
+    if semana:
+        query += " AND semana = %s"
+        params.append(semana)
+    if ano:
+        query += " AND ano = %s"
+        params.append(ano)
+    query += " GROUP BY estado, semana, ano ORDER BY semana"
+    return consultar_devolucoes(query, params)
+
+
+# ================================
+# 📦 PACOTES GRANDES
+# ================================
+@st.cache_data(ttl=600)
+def buscar_pacotes_grandes(semana=None, ano=None):
+    from core.database import consultar_operacional
+
+    query = """
+        SELECT
+            waybill_mae, waybill, cliente, status,
+            estado, cidade, pre_entrega, produto,
+            peso_kg, volume_m3, semana, ano
+        FROM pacotes_grandes
+        WHERE 1=1
+    """
+    params = []
+    if semana:
+        query += " AND semana = %s"
+        params.append(semana)
+    if ano:
+        query += " AND ano = %s"
+        params.append(ano)
+    query += " ORDER BY peso_kg DESC"
+
+    return consultar_operacional(query, params if params else None)
+
+
+@st.cache_data(ttl=600)
+def buscar_semanas_pacotes_grandes():
+    from core.database import consultar_operacional
+    return consultar_operacional("""
+        SELECT DISTINCT semana, ano
+        FROM pacotes_grandes
+        ORDER BY ano DESC, semana DESC
+    """)

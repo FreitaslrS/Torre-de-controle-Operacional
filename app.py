@@ -15,6 +15,7 @@ import pages.produtividade as produtividade
 import pages.devolucoes as devolucoes
 import pages.importacao as importacao
 import pages.tempo_processamento as tempo_processamento
+import pages.health_check as health_check
 
 st.markdown("""
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -87,6 +88,7 @@ nav("Backlog Atual / 当前积压", "backlog", "📦")
 nav("Backlog Histórico / 历史积压", "historico", "📊")
 nav("Produtividade / 生产效率", "produtividade", "⚡")
 nav("Tempo / 处理时效", "tempo", "⏱️")
+nav("Health Check / 运营健康", "health_check", "🏥")
 nav("Devoluções / 退货", "devolucoes", "🔁")
 nav("Importação / 数据导入", "importacao", "📥")
 
@@ -107,6 +109,9 @@ elif page == "produtividade":
 
 elif page == "tempo":
     tempo_processamento.render()
+
+elif page == "health_check":
+    health_check.render()
 
 elif page == "devolucoes":
     devolucoes.render()
