@@ -762,11 +762,6 @@ def importar_devolucoes(arquivo, data_ref):
         "ponto_operacao", "estado", "regiao"
     ]
 
-    # Deriva semana e ano a partir da data de referência
-    data_ref_ts = pd.Timestamp(data_ref)
-    semana = data_ref_ts.strftime("w%V")
-    ano    = int(data_ref_ts.year)
-
     conn = conectar_devolucoes()
     cur  = conn.cursor()
 
@@ -780,14 +775,12 @@ def importar_devolucoes(arquivo, data_ref):
         .size()
         .reset_index(name="qtd")
     )
-    status_agg["semana"]         = semana
-    status_agg["ano"]            = ano
     status_agg["data_referencia"] = data_ref
     status_agg["nome_arquivo"]    = arquivo.name
     status_agg["data_importacao"] = agora
 
     colunas_status = [
-        "estado", "status", "semana", "ano", "data_referencia", "cliente",
+        "estado", "status", "data_referencia", "cliente",
         "qtd", "nome_arquivo", "data_importacao"
     ]
     execute_values(cur,
@@ -801,14 +794,12 @@ def importar_devolucoes(arquivo, data_ref):
         .size()
         .reset_index(name="qtd")
     )
-    iata_agg["semana"]         = semana
-    iata_agg["ano"]            = ano
     iata_agg["data_referencia"] = data_ref
     iata_agg["nome_arquivo"]    = arquivo.name
     iata_agg["data_importacao"] = agora
 
     colunas_iata = [
-        "ponto_operacao", "estado", "semana", "ano", "data_referencia",
+        "ponto_operacao", "estado", "data_referencia",
         "qtd", "nome_arquivo", "data_importacao"
     ]
     execute_values(cur,

@@ -178,32 +178,8 @@ def render():
     # ===========================
     st.subheader("📊 Backlog Atual por Estado (SLA)")
 
-    df_detalhe_full = buscar_backlog_paginado(limit=100000)
-
-    df_detalhe_full["faixa"] = df_detalhe_full["horas_backlog_snapshot"].apply(
-        lambda x: (
-            "0-24h" if x <= 24 else
-            "24-48h" if x <= 48 else
-            "48-72h" if x <= 72 else
-            ">72h"
-        )
-    )
-
-    tabela_estado = (
-        df_detalhe_full.groupby(["estado", "faixa"])
-        .size()
-        .unstack(fill_value=0)
-        .reset_index()
-    )
-
-    for col in ["0-24h", "24-48h", "48-72h", ">72h"]:
-        if col not in tabela_estado.columns:
-            tabela_estado[col] = 0
-
-    tabela_estado["Total"] = tabela_estado[
-        ["0-24h", "24-48h", "48-72h", ">72h"]
-    ].sum(axis=1)
-
+    from core.repository import buscar_sla_por_estado
+    tabela_estado = buscar_sla_por_estado()
     tabela_padrao(tabela_estado)
 
     st.divider()
@@ -212,6 +188,8 @@ def render():
     # ⬇️ DOWNLOAD WAYBILLS
     # =========================
     st.subheader("⬇️ Download Waybills em Backlog / 下载积压运单")
+
+    df_detalhe_full = buscar_backlog_paginado(limit=100000)
 
     def formatar_tempo(h):
         if pd.isna(h):

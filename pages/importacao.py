@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 import pandas as pd
+from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.database import executar_backlog
@@ -67,11 +68,15 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao):
 
         elif tipo_importacao == "Devolução":
             from core.processar_arquivo import importar_devolucoes
-            qtd = importar_devolucoes(arquivo)
+            qtd = importar_devolucoes(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução - P90":
             from core.processar_arquivo import importar_p90
-            qtd = importar_p90(arquivo)
+            qtd = importar_p90(arquivo, data_ref)
+
+        elif tipo_importacao == "Devolução - Monitoramento":
+            from core.processar_arquivo import importar_devolucao_monitoramento
+            qtd = importar_devolucao_monitoramento(arquivo, data_ref)
 
         else:
             raise Exception("Tipo de importação inválido")
@@ -101,8 +106,6 @@ def render():
 
     st.markdown("## <i class='fas fa-upload'></i> Importação de Dados / 数据导入", unsafe_allow_html=True)
 
-    data_ref = st.date_input("Data de referência / 参考日期")
-
     arquivos = st.file_uploader(
         "Selecione arquivos Excel / 选择Excel文件",
         type=["xlsx", "xls"],
@@ -115,8 +118,38 @@ def render():
 
     tipo_importacao = st.selectbox(
         "Tipo de Importação / 导入类型",
-        ["Backlog", "Produtividade", "Tempo de Processamento", "Devolução", "Devolução - P90"]
+        ["Backlog", "Produtividade", "Tempo de Processamento", "Devolução", "Devolução - P90", "Devolução - Monitoramento"]
     )
+
+    # ========================
+    # 📅 SELETOR DE DATA / SEMANA
+    # ========================
+    TIPOS_SEMANAIS = {"Devolução", "Devolução - P90"}
+
+    if tipo_importacao in TIPOS_SEMANAIS:
+        # Gera as últimas 52 semanas (segunda-feira de cada semana)
+        hoje   = date.today()
+        segunda_atual = hoje - timedelta(days=hoje.weekday())
+        opcoes_sem = []
+        for i in range(52):
+            seg = segunda_atual - timedelta(weeks=i)
+            dom = seg + timedelta(days=6)
+            num = int(seg.strftime("%V"))
+            ano = seg.year
+            label = f"Semana {num:02d} / {ano}  ({seg.strftime('%d/%m')} – {dom.strftime('%d/%m')})"
+            opcoes_sem.append((label, seg))
+
+        labels_sem = [o[0] for o in opcoes_sem]
+        idx_sel = st.selectbox(
+            "Semana de referência / 参考周",
+            range(len(labels_sem)),
+            format_func=lambda i: labels_sem[i],
+            key="sel_semana_ref"
+        )
+        data_ref = opcoes_sem[idx_sel][1]   # segunda-feira da semana selecionada
+        st.caption(f"Semana {int(data_ref.strftime('%V')):02d} / {data_ref.year} — de {data_ref.strftime('%d/%m/%Y')} a {(data_ref + timedelta(days=6)).strftime('%d/%m/%Y')}")
+    else:
+        data_ref = st.date_input("Data de referência / 参考日期")
 
     # ========================
     # 🚀 IMPORTAR
@@ -200,13 +233,13 @@ def render():
     from core.database import consultar_backlog as consultar
 
     df_hist_backlog = consultar_historico("""
-        SELECT 
+        SELECT
             nome_arquivo,
-            COUNT(*) as registros,
+            SUM(qtd) as registros,
             MAX(data_importacao) as data_importacao,
             MAX(data_referencia) as data_referencia,
             'Backlog' as tipo
-        FROM pedidos
+        FROM pedidos_resumo
         GROUP BY nome_arquivo
     """)
 
@@ -232,8 +265,43 @@ def render():
         GROUP BY nome_arquivo
     """)
 
+    from core.database import consultar_devolucoes
+
+    df_hist_dev = consultar_devolucoes("""
+        SELECT
+            nome_arquivo,
+            SUM(qtd) as registros,
+            MAX(data_importacao) as data_importacao,
+            MAX(data_importacao) as data_referencia,
+            'Devolução' as tipo
+        FROM dev_status_semanal
+        GROUP BY nome_arquivo
+    """)
+
+    df_hist_p90 = consultar_devolucoes("""
+        SELECT
+            nome_arquivo,
+            SUM(qtd_pedidos) as registros,
+            MAX(data_importacao) as data_importacao,
+            MAX(data_importacao) as data_referencia,
+            'Devolução - P90' as tipo
+        FROM p90_semanal
+        GROUP BY nome_arquivo
+    """)
+
+    df_hist_mon = consultar_devolucoes("""
+        SELECT
+            nome_arquivo,
+            SUM(qtd_total) as registros,
+            MAX(data_importacao) as data_importacao,
+            MAX(data_importacao) as data_referencia,
+            'Devolução - Monitoramento' as tipo
+        FROM dev_sla_semanal
+        GROUP BY nome_arquivo
+    """)
+
     df_hist = pd.concat(
-        [df_hist_backlog, df_hist_prod, df_hist_proc],
+        [df_hist_backlog, df_hist_prod, df_hist_proc, df_hist_dev, df_hist_p90, df_hist_mon],
         ignore_index=True
     )
 
@@ -310,12 +378,18 @@ def excluir_arquivo(nome_arquivo):
         [nome_arquivo]
     )
 
-    # 🔥 ADICIONA ISSO AQUI
-    from core.database import executar_processamento
+    from core.database import executar_processamento, executar_devolucoes
 
     executar_processamento(
         "DELETE FROM tempo_processamento WHERE nome_arquivo = %s",
         [nome_arquivo]
     )
+
+    for tabela in ["dev_status_semanal", "dev_iatas_semanal", "dev_sla_semanal",
+                   "dev_motivos_semanal", "dev_dsp_sem3tent", "p90_semanal"]:
+        executar_devolucoes(
+            f"DELETE FROM {tabela} WHERE nome_arquivo = %s",
+            [nome_arquivo]
+        )
 
     st.cache_data.clear()

@@ -649,7 +649,7 @@ def importar_tempo_processamento(arquivo):
 # ================================
 # 📊 DEVOLUÇÃO — P90
 # ================================
-def importar_p90(arquivo, data_ref):
+def importar_p90(arquivo):
     import pandas as pd
     import numpy as np
     from datetime import datetime
@@ -711,7 +711,6 @@ def importar_p90(arquivo, data_ref):
         .reset_index()
     )
 
-    agg["data_referencia"] = data_ref
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now()
 
@@ -721,7 +720,7 @@ def importar_p90(arquivo, data_ref):
 
     colunas = [
         "estado", "semana", "ano", "p90_dias",
-        "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
+        "qtd_pedidos", "nome_arquivo", "data_importacao"
     ]
     values = [
         tuple(None if pd.isna(v) else v for v in row)
@@ -762,11 +761,6 @@ def importar_devolucoes(arquivo, data_ref):
         "ponto_operacao", "estado", "regiao"
     ]
 
-    # Deriva semana e ano a partir da data de referência
-    data_ref_ts = pd.Timestamp(data_ref)
-    semana = data_ref_ts.strftime("w%V")
-    ano    = int(data_ref_ts.year)
-
     conn = conectar_devolucoes()
     cur  = conn.cursor()
 
@@ -780,14 +774,12 @@ def importar_devolucoes(arquivo, data_ref):
         .size()
         .reset_index(name="qtd")
     )
-    status_agg["semana"]         = semana
-    status_agg["ano"]            = ano
     status_agg["data_referencia"] = data_ref
     status_agg["nome_arquivo"]    = arquivo.name
     status_agg["data_importacao"] = agora
 
     colunas_status = [
-        "estado", "status", "semana", "ano", "data_referencia", "cliente",
+        "estado", "status", "data_referencia", "cliente",
         "qtd", "nome_arquivo", "data_importacao"
     ]
     execute_values(cur,
@@ -801,14 +793,12 @@ def importar_devolucoes(arquivo, data_ref):
         .size()
         .reset_index(name="qtd")
     )
-    iata_agg["semana"]         = semana
-    iata_agg["ano"]            = ano
     iata_agg["data_referencia"] = data_ref
     iata_agg["nome_arquivo"]    = arquivo.name
     iata_agg["data_importacao"] = agora
 
     colunas_iata = [
-        "ponto_operacao", "estado", "semana", "ano", "data_referencia",
+        "ponto_operacao", "estado", "data_referencia",
         "qtd", "nome_arquivo", "data_importacao"
     ]
     execute_values(cur,
@@ -828,7 +818,7 @@ def importar_devolucoes(arquivo, data_ref):
 # ================================
 # 📊 DEVOLUÇÃO - MONITORAMENTO (arquivo monitoramento_da_pontualidade)
 # ================================
-def importar_devolucao_monitoramento(arquivo, data_ref):
+def importar_devolucao_monitoramento(arquivo):
     import pandas as pd
     from datetime import datetime
     from psycopg2.extras import execute_values
@@ -851,63 +841,63 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
     for col in ["tent1", "tent2", "tent3", "assinatura", "data_criacao"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
+    df["semana"] = df["data_criacao"].dt.strftime("w%V")
+    df["ano"]    = df["data_criacao"].dt.year
+
     conn = conectar_devolucoes()
     cur  = conn.cursor()
 
     for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
         cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
 
-    agora       = datetime.now()
     sla_agg     = pd.DataFrame()
     motivos_agg = pd.DataFrame()
     dsp_agg     = pd.DataFrame()
 
-    # ── SLA ───────────────────────────────────────────────────────────
+    # ── SLA semanal ────────────────────────────────────────────────────
     df_entregues = df[df["assinatura"].notna()].copy()
     if not df_entregues.empty:
         df_entregues["dias"] = (
             (df_entregues["assinatura"] - df_entregues["data_criacao"])
             .dt.total_seconds() / 86400
         )
-        df_entregues["prazo"]    = df_entregues["prazo_dias"].fillna(7)
+        df_entregues["prazo"] = df_entregues["prazo_dias"].fillna(7)
         df_entregues["no_prazo"] = df_entregues["dias"] <= df_entregues["prazo"]
 
         sla_agg = (
-            df_entregues.groupby(["estado", "cliente"])
+            df_entregues.groupby(["estado", "semana", "ano", "cliente"])
             .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
             .reset_index()
         )
-        sla_agg["data_referencia"] = data_ref
         sla_agg["nome_arquivo"]    = arquivo.name
-        sla_agg["data_importacao"] = agora
+        sla_agg["data_importacao"] = datetime.now()
 
-        colunas_sla = ["estado", "data_referencia", "cliente", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
+        colunas_sla = ["estado", "semana", "ano", "cliente", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
         execute_values(cur,
             f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
             [tuple(None if pd.isna(v) else v for v in row)
              for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
         )
 
-    # ── Motivos ───────────────────────────────────────────────────────
+    # ── Motivos semanal ────────────────────────────────────────────────
     df_motivos = df[df["motivo"].notna()].copy()
     if not df_motivos.empty:
         motivos_agg = (
-            df_motivos.groupby(["estado", "motivo"])
+            df_motivos.groupby(["estado", "motivo", "semana", "ano"])
             .size()
             .reset_index(name="qtd")
         )
-        motivos_agg["data_referencia"] = data_ref
         motivos_agg["nome_arquivo"]    = arquivo.name
-        motivos_agg["data_importacao"] = agora
+        motivos_agg["data_importacao"] = datetime.now()
 
-        colunas_mot = ["estado", "motivo", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+        colunas_mot = ["estado", "motivo", "semana", "ano", "qtd", "nome_arquivo", "data_importacao"]
         execute_values(cur,
             f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
             [tuple(None if pd.isna(v) else v for v in row)
              for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
         )
 
-    # ── DSPs sem 3 tentativas ─────────────────────────────────────────
+    # ── DSPs sem 3 tentativas ──────────────────────────────────────────
     dsp_sem3 = df[
         df["motivo"].notna() &
         df["tent1"].notna() &
@@ -917,15 +907,14 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
 
     if not dsp_sem3.empty:
         dsp_agg = (
-            dsp_sem3.groupby(["ponto_entrada", "estado", "motivo"])
+            dsp_sem3.groupby(["ponto_entrada", "estado", "semana", "ano", "motivo"])
             .size()
             .reset_index(name="qtd")
         )
-        dsp_agg["data_referencia"] = data_ref
         dsp_agg["nome_arquivo"]    = arquivo.name
-        dsp_agg["data_importacao"] = agora
+        dsp_agg["data_importacao"] = datetime.now()
 
-        colunas_dsp = ["ponto_entrada", "estado", "data_referencia", "motivo", "qtd", "nome_arquivo", "data_importacao"]
+        colunas_dsp = ["ponto_entrada", "estado", "semana", "ano", "motivo", "qtd", "nome_arquivo", "data_importacao"]
         execute_values(cur,
             f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
             [tuple(None if pd.isna(v) else v for v in row)
