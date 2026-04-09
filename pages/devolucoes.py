@@ -80,6 +80,16 @@ def render():
         df_tabela.index.name = "Estado"
         df_tabela = df_tabela.join(df_ytd)
         df_tabela = df_tabela.join(pivot)
+        # Formata colunas numéricas antes do fillna
+        if "YTD" in df_tabela.columns:
+            df_tabela["YTD"] = df_tabela["YTD"].apply(
+                lambda x: f"{x:.1f}" if pd.notna(x) else "-"
+            )
+        for col in semanas:
+            if col in df_tabela.columns:
+                df_tabela[col] = df_tabela[col].apply(
+                    lambda x: f"{x:.1f}" if pd.notna(x) else "-"
+                )
         df_tabela = df_tabela.fillna("-")
         df_tabela = df_tabela.reset_index()
 

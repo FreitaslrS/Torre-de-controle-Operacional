@@ -540,11 +540,11 @@ def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
     """
 
     query_tfk = """
-        SELECT 
+        SELECT
             data,
-            COUNT(*) as total_tfk
+            SUM(qtd_total) as total_tfk
         FROM tempo_processamento
-        WHERE hiata IN (
+        WHERE UPPER(TRIM(hiata)) IN (
             'ES-W-H001',
             'MG-W-H001',
             'PR-W-H001',
@@ -568,10 +568,7 @@ def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
         query_prod += """
         """
         query_tfk += """
-            AND data_snapshot = (
-                SELECT MAX(data_snapshot)
-                FROM tempo_processamento
-            )
+            AND data >= CURRENT_DATE - INTERVAL '30 days'
         """
 
     query_prod += " GROUP BY data"

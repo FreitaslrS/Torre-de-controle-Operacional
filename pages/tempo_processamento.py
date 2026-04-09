@@ -242,6 +242,8 @@ def render():
         col2.metric("🚚 TFK Direto", f"{media_tfk:.0f}/dia")
         col3.metric("🔥 Total", f"{media_total:.0f}/dia")
 
+        for col in ["total_perus", "total_tfk", "total_geral"]:
+            df_cons[col] = df_cons[col].fillna(0).astype(int)
         tabela_padrao(df_cons)
     else:
         st.warning("Sem dados para o período")
