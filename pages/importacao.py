@@ -304,8 +304,19 @@ def render():
         GROUP BY nome_arquivo
     """)
 
+    df_hist_pg = consultar_operacional("""
+        SELECT
+            nome_arquivo,
+            COUNT(*) as registros,
+            MAX(data_importacao) as data_importacao,
+            MAX(data_importacao) as data_referencia,
+            'Pacotes Grandes' as tipo
+        FROM pacotes_grandes
+        GROUP BY nome_arquivo
+    """)
+
     df_hist = pd.concat(
-        [df_hist_backlog, df_hist_prod, df_hist_proc, df_hist_dev, df_hist_p90, df_hist_mon],
+        [df_hist_backlog, df_hist_prod, df_hist_proc, df_hist_dev, df_hist_p90, df_hist_mon, df_hist_pg],
         ignore_index=True
     )
 
@@ -379,6 +390,11 @@ def excluir_arquivo(nome_arquivo):
 
     executar_operacional(
         "DELETE FROM produtividade WHERE nome_arquivo = %s",
+        [nome_arquivo]
+    )
+
+    executar_operacional(
+        "DELETE FROM pacotes_grandes WHERE nome_arquivo = %s",
         [nome_arquivo]
     )
 
