@@ -209,7 +209,11 @@ def render():
         if df_sem_pg.empty:
             st.warning("Sem dados. Importe um arquivo do tipo 'Pacotes Grandes'.")
         else:
-            semanas_pg = [f"{r['semana']}/{r['ano']}" for _, r in df_sem_pg.iterrows()]
+            semanas_pg = [
+                f"{r['semana']}/{int(float(r['ano']))}"
+                for _, r in df_sem_pg.iterrows()
+                if pd.notna(r['ano']) and pd.notna(r['semana'])
+            ]
             sem_pg_sel = st.selectbox("Semana", semanas_pg, key="sem_pacotes_grandes")
             sem_pg, ano_pg = sem_pg_sel.split("/")
             ano_pg = int(ano_pg)
