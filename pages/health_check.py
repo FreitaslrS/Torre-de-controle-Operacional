@@ -6,9 +6,16 @@ from core.database import consultar_backlog, consultar_processamento, consultar_
 from utils.theme import grafico_barra, aplicar_layout_padrao
 from utils.style import tabela_padrao, aplicar_css_global
 
-COR_VERDE = "#16A34A"
-COR_AZUL  = "#0F172A"
-COR_GELO  = "#CBD5E1"
+# ── Paleta Health Check ───────────────────────────────────────────────
+COR_PRINCIPAL  = "#DE121C"   # Vermelho Anjun — cor dominante desta página
+COR_SECUNDARIA = "#009640"   # Verde Anjun — complementar (positivo)
+COR_APOIO      = "#2B2D42"   # Navy — neutro
+PALETA_PAGINA  = [COR_PRINCIPAL, COR_SECUNDARIA, COR_APOIO]
+
+# Aliases mantidos para compatibilidade
+COR_VERDE = COR_SECUNDARIA
+COR_AZUL  = "#053B31"
+COR_GELO  = COR_APOIO
 
 
 @st.cache_data(ttl=600)
@@ -66,9 +73,17 @@ def render():
     aplicar_css_global()
 
     st.markdown("""
-    ## 🏥 Health Check Operacional / 运营健康检查
-    <p style='opacity:0.7'>Visão consolidada semanal — Performance de SLAs, Backlog e Produtividade</p>
-    """, unsafe_allow_html=True)
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </svg>
+    <div>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Health Check Operacional</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Visão consolidada semanal — Performance de SLAs, Backlog e Produtividade</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
     # ── Seletor de semana ────────────────────────────────────────
     df_sems = _semanas_disponiveis_hc()
@@ -90,7 +105,12 @@ def render():
     # ════════════════════════════════════════════════════════
     # SLIDE 2 — Performance de Saídas e Lead Time
     # ════════════════════════════════════════════════════════
-    st.subheader("📤 Performance de Saídas e Lead Time / 出库绩效与交付周期")
+    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Performance de Saídas e Lead Time</span>
+</div>""", unsafe_allow_html=True)
 
     df_sla = _sla_hub(data_inicio, data_fim)
 
@@ -132,7 +152,7 @@ def render():
         ])
         fig_sla = px.pie(
             df_pizza_sla, names="status", values="qtd",
-            color_discrete_sequence=[COR_VERDE, COR_AZUL, COR_GELO]
+            color_discrete_sequence=[COR_SECUNDARIA, COR_PRINCIPAL, COR_APOIO]
         )
         fig_sla = aplicar_layout_padrao(fig_sla)
         st.plotly_chart(fig_sla, use_container_width=True, key="fig_sla_hc")
@@ -142,7 +162,12 @@ def render():
     # ════════════════════════════════════════════════════════
     # SLIDE 3 — Backlog 24h
     # ════════════════════════════════════════════════════════
-    st.subheader("📦 Backlog 24h / 24小时积压")
+    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Backlog 24h</span>
+</div>""", unsafe_allow_html=True)
     st.caption("Snapshot atual — pacotes com mais de 24h no hub sem saída")
 
     df_24 = _backlog_faixa(24)
@@ -156,7 +181,7 @@ def render():
             st.markdown("**Top 5 Estados / 前5州**")
             df_est_24 = df_24.groupby("estado")["total"].sum().reset_index()
             df_est_24 = df_est_24.sort_values("total", ascending=False).head(5)
-            cores_24 = [COR_AZUL] + [COR_VERDE] * 4
+            cores_24 = [COR_PRINCIPAL] + [COR_APOIO] * 4
             fig_est_24 = grafico_barra(df_est_24, x="estado", y="total", text="total")
             fig_est_24.update_traces(marker_color=cores_24)
             st.plotly_chart(fig_est_24, use_container_width=True, key="fig_est24_hc")
@@ -165,7 +190,7 @@ def render():
             st.markdown("**Top 5 Pré-entregas / 前5预派送点**")
             df_pre_24 = df_24.groupby("pre_entrega")["total"].sum().reset_index()
             df_pre_24 = df_pre_24.sort_values("total", ascending=False).head(5)
-            cores_pre24 = [COR_AZUL] + [COR_VERDE] * 4
+            cores_pre24 = [COR_PRINCIPAL] + [COR_APOIO] * 4
             fig_pre_24 = grafico_barra(df_pre_24, x="total", y="pre_entrega", text="total")
             fig_pre_24.update_traces(marker_color=cores_pre24)
             fig_pre_24.update_layout(yaxis=dict(autorange="reversed"))
@@ -176,7 +201,12 @@ def render():
     # ════════════════════════════════════════════════════════
     # SLIDE 4 — Backlog 48h
     # ════════════════════════════════════════════════════════
-    st.subheader("📦 Backlog 48h / 48小时积压")
+    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Backlog 48h</span>
+</div>""", unsafe_allow_html=True)
     st.caption("Snapshot atual — pacotes com mais de 48h no hub sem saída")
 
     df_48 = _backlog_faixa(48)
@@ -190,7 +220,7 @@ def render():
             st.markdown("**Top 5 Estados / 前5州**")
             df_est_48 = df_48.groupby("estado")["total"].sum().reset_index()
             df_est_48 = df_est_48.sort_values("total", ascending=False).head(5)
-            cores_48 = [COR_AZUL] + [COR_VERDE] * 4
+            cores_48 = [COR_PRINCIPAL] + [COR_APOIO] * 4
             fig_est_48 = grafico_barra(df_est_48, x="estado", y="total", text="total")
             fig_est_48.update_traces(marker_color=cores_48)
             st.plotly_chart(fig_est_48, use_container_width=True, key="fig_est48_hc")
@@ -199,7 +229,7 @@ def render():
             st.markdown("**Top 5 Pré-entregas / 前5预派送点**")
             df_pre_48 = df_48.groupby("pre_entrega")["total"].sum().reset_index()
             df_pre_48 = df_pre_48.sort_values("total", ascending=False).head(5)
-            cores_pre48 = [COR_AZUL] + [COR_VERDE] * 4
+            cores_pre48 = [COR_PRINCIPAL] + [COR_APOIO] * 4
             fig_pre_48 = grafico_barra(df_pre_48, x="total", y="pre_entrega", text="total")
             fig_pre_48.update_traces(marker_color=cores_pre48)
             fig_pre_48.update_layout(yaxis=dict(autorange="reversed"))
@@ -210,7 +240,12 @@ def render():
     # ════════════════════════════════════════════════════════
     # SLIDE 5 — Produtividade por Turno
     # ════════════════════════════════════════════════════════
-    st.subheader("⚡ Produtividade por Turno / 班次生产力")
+    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produtividade por Turno</span>
+</div>""", unsafe_allow_html=True)
 
     df_turno = _produtividade_turno(data_inicio, data_fim)
 
@@ -230,7 +265,7 @@ def render():
         col_t2.metric("🔵 Turno 2", f"{t2:,}", f"{t2/total_prod*100:.1f}%" if total_prod else "")
         col_t3.metric("⚪ Turno 3", f"{t3:,}", f"{t3/total_prod*100:.1f}%" if total_prod else "")
 
-        color_map = {"T1": COR_VERDE, "T2": COR_AZUL, "T3": COR_GELO}
+        color_map = {"T1": COR_SECUNDARIA, "T2": COR_APOIO, "T3": COR_PRINCIPAL}
         fig_turno = px.pie(
             df_turno, names="turno", values="volumes",
             color="turno", color_discrete_map=color_map

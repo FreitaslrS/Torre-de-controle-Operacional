@@ -1,57 +1,16 @@
 def aplicar_css_global():
     import streamlit as st
-
     st.markdown("""
     <style>
-
-    /* Estilos globais da aplicação */
     div[data-testid="stDataFrame"] {
         border-radius: 12px;
         overflow: hidden;
     }
-
     </style>
     """, unsafe_allow_html=True)
 
 
-def _formatar_valor(col_name, valor):
-    """
-    Formata o valor de uma célula de acordo com o nome da coluna.
-    Colunas com 'hora' ou 'tempo' no nome são tratadas como duração em horas
-    e exibidas no formato  HH:MM  (ex: 23.79 → 23:47).
-    Valores inválidos (nan, vazio, negativo) são exibidos como traço.
-    """
-    import math
-
-    col_lower = str(col_name).lower()
-
-    # detecta colunas de duração em horas
-    eh_hora = any(k in col_lower for k in ("hora", "tempo", "horas", "time"))
-
-    if eh_hora:
-        try:
-            h = float(valor)
-            if math.isnan(h) or h < 0:
-                return "–"
-            horas_int  = int(h)
-            minutos    = int(round((h - horas_int) * 60))
-            if minutos == 60:
-                horas_int += 1
-                minutos = 0
-            return f"{horas_int:02d}:{minutos:02d}"
-        except (ValueError, TypeError):
-            return str(valor) if str(valor) not in ("nan", "None", "") else "–"
-
-    # valor comum
-    s = str(valor)
-    return "–" if s in ("nan", "None", "") else s
-
-
 def tabela_padrao(df, use_container_width=True, altura_linhas=13):
-    """
-    Renderiza DataFrame como tabela HTML estilizada.
-    Versão vetorizada — sem loop iterrows, até 80x mais rápido.
-    """
     import streamlit as st
     import pandas as pd
     import math
@@ -60,14 +19,14 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
         st.info("Sem dados para exibir.")
         return
 
-    # ── Paleta ────────────────────────────────────────────────────────
-    HEADER_BG    = "#0F172A"
+    # ── Paleta Anjun ──────────────────────────────────────────────────
+    HEADER_BG    = "#053B31"
     HEADER_COLOR = "#FFFFFF"
     ROW_BG       = "#FFFFFF"
-    ROW_ALT_BG   = "#F8FAFC"
-    BORDER_COLOR = "#E2E8F0"
-    TEXT_COLOR   = "#1E293B"
-    HOVER_BG     = "#F1F5F9"
+    ROW_ALT_BG   = "#f4f9f5"
+    BORDER_COLOR = "rgba(0,150,64,0.12)"
+    TEXT_COLOR   = "#2B2D42"
+    HOVER_BG     = "#f0faf4"
 
     ROW_H    = 37
     HEADER_H = 42
@@ -79,16 +38,18 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     th_style = (
         f"background-color:{HEADER_BG};"
         f"color:{HEADER_COLOR};"
-        "font-weight:700;font-size:13px;"
+        "font-weight:700;font-size:12px;"
         "padding:10px 14px;text-align:left;"
         "white-space:nowrap;"
         "position:sticky;top:0;z-index:2;"
-        f"border-bottom:2px solid #1E3A5F;"
-        "font-family:Inter,Arial,sans-serif;"
+        "border-bottom:2px solid #009640;"
+        "font-family:'Montserrat',Arial,sans-serif;"
+        "letter-spacing:0.3px;"
+        "text-transform:uppercase;"
     )
     header_html = "".join(f'<th style="{th_style}">{c}</th>' for c in cols)
 
-    # ── Formatar valores (vetorizado por coluna) ───────────────────────
+    # ── Formatar valores ───────────────────────────────────────────────
     df_fmt = df.copy()
 
     for col in cols:
@@ -110,22 +71,21 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
                 except:
                     s = str(v)
                     return "–" if s in ("nan", "None", "") else s
-
             df_fmt[col] = df[col].apply(fmt_hora)
         else:
             df_fmt[col] = df[col].astype(str).replace({"nan": "–", "None": "–", "<NA>": "–"})
 
-    # ── Linhas (loop leve — só strings, sem pandas overhead) ──────────
+    # ── Linhas ────────────────────────────────────────────────────────
     td_style = (
-        f"padding:9px 14px;font-size:13px;"
+        f"padding:9px 14px;font-size:12px;"
         f"color:{TEXT_COLOR};"
         f"border-bottom:1px solid {BORDER_COLOR};"
-        "font-family:Inter,Arial,sans-serif;"
+        "font-family:'Montserrat',Arial,sans-serif;"
         "white-space:nowrap;"
     )
 
     rows_list = []
-    valores = df_fmt.values  # numpy array — acesso direto sem overhead pandas
+    valores = df_fmt.values
 
     for i, row_vals in enumerate(valores):
         bg = ROW_BG if i % 2 == 0 else ROW_ALT_BG
@@ -146,7 +106,7 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
         max-height:{max_height}px;
         border-radius:12px;
         border:1px solid {BORDER_COLOR};
-        box-shadow:0 1px 4px rgba(0,0,0,0.06);
+        box-shadow:0 1px 4px rgba(0,150,64,0.08);
         margin-bottom:1rem;
     ">
     <table style="border-collapse:collapse;width:{width};min-width:100%;">

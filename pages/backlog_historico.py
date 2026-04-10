@@ -11,6 +11,12 @@ from core.repository import (
 from utils.theme import grafico_barra, aplicar_layout_padrao
 from utils.style import tabela_padrao
 
+# ── Paleta Backlog Histórico ──────────────────────────────────────────
+COR_PRINCIPAL  = "#053B31"   # Verde escuro — cor dominante desta página
+COR_SECUNDARIA = "#009640"   # Verde Anjun — complementar
+COR_APOIO      = "#2B2D42"   # Navy — elementos neutros
+PALETA_PAGINA  = [COR_PRINCIPAL, COR_SECUNDARIA, COR_APOIO]
+
 FAIXAS_ORDEM = ["1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"]
 
 def gerar_download(df, key_prefix):
@@ -33,9 +39,17 @@ def render():
     aplicar_css_global()
 
     st.markdown("""
-    ## Backlog Histórico / 历史积压
-    <p style='opacity:0.7'>Visão completa histórica da operação</p>
-    """, unsafe_allow_html=True)
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+    </svg>
+    <div>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Backlog Histórico</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Visão completa histórica da operação</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
     # =========================
     # 📅 DATA
@@ -61,7 +75,11 @@ def render():
         # =========================
         # 🎛️ FILTROS
         # =========================
-        st.subheader("🎛️ Filtros")
+        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Filtros</span>
+</div>""", unsafe_allow_html=True)
         col_f1, col_f2, col_f3 = st.columns(3)
 
         remover_estados  = col_f1.multiselect("Remover Estados",  options=sorted(df["estado"].unique()),  key="hist_rem_est")
@@ -118,11 +136,11 @@ def render():
                 )
 
                 fig = go.Figure()
-                fig.add_bar(x=df_tempo["data_referencia"], y=df_tempo["qtd"], name="Volume", marker_color="#CBD5E1")
+                fig.add_bar(x=df_tempo["data_referencia"], y=df_tempo["qtd"], name="Volume", marker_color=COR_PRINCIPAL)
                 fig.add_trace(go.Scatter(
                     x=df_tempo["data_referencia"], y=df_tempo["qtd"],
                     mode="lines+markers+text", name="Tendência",
-                    line=dict(color="#16A34A", width=3),
+                    line=dict(color=COR_SECUNDARIA, width=3),
                     text=df_tempo["pct_label"], textposition="top center"
                 ))
                 fig = aplicar_layout_padrao(fig)
@@ -140,17 +158,27 @@ def render():
             col_g1, col_g2 = st.columns(2)
 
             with col_g1:
-                st.subheader("📊 Estado")
+                st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Estado</span>
+</div>""", unsafe_allow_html=True)
                 df_e = df_estado.sort_values("qtd", ascending=False)
-                cores = ["#0F172A"] + ["#16A34A"] * (len(df_e) - 1)
+                cores = [COR_PRINCIPAL] + [COR_SECUNDARIA] * (len(df_e) - 1)
                 fig_e = grafico_barra(df_e, x="estado", y="qtd", text="qtd")
                 fig_e.update_traces(marker_color=cores)
                 st.plotly_chart(fig_e, use_container_width=True)
 
             with col_g2:
-                st.subheader("📊 Cliente")
+                st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Cliente</span>
+</div>""", unsafe_allow_html=True)
                 df_c = df_cliente.sort_values("qtd", ascending=False)
-                cores = ["#0F172A"] + ["#16A34A"] * (len(df_c) - 1)
+                cores = [COR_PRINCIPAL] + [COR_SECUNDARIA] * (len(df_c) - 1)
                 fig_c = grafico_barra(df_c, x="cliente", y="qtd", text="qtd")
                 fig_c.update_traces(marker_color=cores)
                 st.plotly_chart(fig_c, use_container_width=True)
@@ -164,16 +192,27 @@ def render():
 
             with col_pp1:
                 if "proximo_ponto" in df_t1.columns:
-                    st.subheader("📋 Próximo Ponto / 下一站")
+                    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Próximo Ponto</span>
+</div>""", unsafe_allow_html=True)
                     df_proximo = df_t1.groupby("proximo_ponto")["qtd"].sum().reset_index()
                     df_proximo = df_proximo.sort_values("qtd", ascending=False).reset_index(drop=True)
                     df_proximo.columns = ["Próximo Ponto / 下一站", "Qtd / 数量"]
                     tabela_padrao(df_proximo)
 
             with col_pp2:
-                st.subheader("📊 Top 10 Pré-entrega")
+                st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+<path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 10 Pré-entrega</span>
+</div>""", unsafe_allow_html=True)
                 df_pre_top10 = df_pre.sort_values("qtd", ascending=False).head(10)
-                fig_pre = grafico_barra(df_pre_top10, x="qtd", y="pre_entrega", text="qtd", cor="#CBD5E1")
+                fig_pre = grafico_barra(df_pre_top10, x="qtd", y="pre_entrega", text="qtd", cor=COR_SECUNDARIA)
                 st.plotly_chart(fig_pre, use_container_width=True)
 
             st.divider()
@@ -181,7 +220,12 @@ def render():
             # =========================
             # 📊 BACKLOG POR ESTADO × FAIXA
             # =========================
-            st.subheader("📊 Backlog por Estado (Faixa de Tempo)")
+            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Backlog por Estado (Faixa de Tempo)</span>
+</div>""", unsafe_allow_html=True)
 
             tabela_estado = (
                 df_t1.groupby(["estado", "faixa_backlog_snapshot"])["qtd"]
@@ -199,7 +243,12 @@ def render():
         # =========================
         # ⏱️ DRILL SLA (backlog_atual)
         # =========================
-        st.subheader("⏱️ Drill SLA")
+        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Drill SLA</span>
+</div>""", unsafe_allow_html=True)
 
         faixa_tempo = st.selectbox("Tempo backlog", ["24h+", "48h+", "72h+"], key="drill_faixa")
 

@@ -1,168 +1,126 @@
 import streamlit as st
 from utils.style import aplicar_css_global
-aplicar_css_global()
-from core.database import consultar_backlog as consultar
 
-st.markdown("""
-<link rel="stylesheet"
-href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-""", unsafe_allow_html=True)
+# SVGs inline — sem dependência de CDN
+CARD_SVGS = {
+    "backlog":       '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
+    "historico":     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    "produtividade": '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    "tempo":         '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    "health_check":  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+    "devolucoes":    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.13"/></svg>',
+    "importacao":    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+}
 
-@st.cache_data(ttl=600)
-def carregar():
-    return consultar("SELECT COUNT(*) as total FROM backlog_atual")
+CARDS = [
+    ("backlog",       "Backlog Atual",     "Visão operacional em tempo real"),
+    ("historico",     "Backlog Histórico", "Análise e evolução histórica"),
+    ("produtividade", "Produtividade",     "Volume por turno e dispositivo"),
+    ("tempo",         "Tempo",             "SLA e tempo de processamento"),
+    ("health_check",  "Health Check",      "Saúde operacional consolidada"),
+    ("devolucoes",    "Devoluções",        "Pedidos devolvidos e P90"),
+    ("importacao",    "Importação",        "Upload de planilhas"),
+]
+
+CARD_H = 160  # altura do card em px
+
+
+def _card_html(pagina, titulo, subtitulo):
+    svg = CARD_SVGS[pagina]
+    return f"""
+    <div style="
+        background:#ffffff;
+        border:1px solid rgba(0,150,64,0.15);
+        border-top:3px solid #009640;
+        border-radius:14px;
+        padding:24px 20px 20px;
+        text-align:center;
+        height:{CARD_H}px;
+        box-sizing:border-box;
+        pointer-events:none;
+    ">
+        <div style="width:50px;height:50px;background:rgba(0,150,64,0.08);
+                    border-radius:12px;display:flex;align-items:center;
+                    justify-content:center;margin:0 auto 12px;">{svg}</div>
+        <div style="font-size:14px;font-weight:700;color:#053B31;
+                    margin-bottom:4px;font-family:'Montserrat',sans-serif;">{titulo}</div>
+        <div style="font-size:11px;color:#6b7280;
+                    font-family:'Montserrat',sans-serif;">{subtitulo}</div>
+    </div>
+    """
+
+
+def _render_card(pagina, titulo, subtitulo):
+    """Renderiza card visual + botão transparente por cima (opacity:0, mesmo tamanho)."""
+    # 1. Card visual
+    st.markdown(_card_html(pagina, titulo, subtitulo), unsafe_allow_html=True)
+    # 2. Botão invisível (opacity:0) com mesma altura, puxado para cima para sobrepor o card
+    clicked = st.button(titulo, key=f"card_{pagina}", use_container_width=True)
+    if clicked:
+        st.session_state.page = pagina
+        st.rerun()
+
 
 def render():
+    aplicar_css_global()
 
-    # =========================
-    # 🎨 CSS GLOBAL
-    # =========================
-    st.markdown("""
+    # CSS scoped via :has(.anjun-home-cards) — só aplica quando o marcador da home está no DOM
+    # Impede conflito com outras páginas ao navegar
+    st.markdown(f"""
     <style>
-
-    .card {
-        padding: 25px;
-        border-radius: 15px;
-        text-align: center;
-        transition: 0.3s;
-        cursor: pointer;
-    }
-
-    /* 🌙 DARK MODE */
-    body[data-theme="dark"] .card {
-        background: linear-gradient(145deg, #111827, #1f2937);
-        border: 1px solid #374151;
-        color: #e5e7eb;
-    }
-
-    /* ☀️ LIGHT MODE */
-    body[data-theme="light"] .card {
-        background: #ffffff;
-        border: 1px solid rgba(0,0,0,0.05);
-        color: #111827;
-    }
-
-    .card:hover {
-        transform: scale(1.05);
-        border: 1px solid #16A34A;
-        box-shadow: 0 0 15px rgba(22,163,74,0.4);
-    }
-
-    .icon {
-        font-size: 40px;
-        margin-bottom: 10px;
-        color: #16A34A;
-    }
-
-    .title {
-        font-size: 18px;
-        font-weight: 600;
-    }
-
-    .subtitle {
-        font-size: 14px;
-        opacity: 0.7;
-    }
-
+    /* Botões de card: invisíveis mas clicáveis — APENAS quando marcador home está no DOM */
+    :has(.anjun-home-cards) div[data-testid="column"] div[data-testid="stButton"] > button {{
+        opacity: 0 !important;
+        height: {CARD_H}px !important;
+        min-height: {CARD_H}px !important;
+        margin-top: -{CARD_H}px !important;
+        position: relative !important;
+        z-index: 10 !important;
+        cursor: pointer !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+    }}
+    :has(.anjun-home-cards) div[data-testid="column"] div[data-testid="stButton"] > button:focus {{
+        outline: none !important;
+        box-shadow: none !important;
+    }}
+    /* Remove gap entre card HTML e botão */
+    :has(.anjun-home-cards) div[data-testid="column"] div[data-testid="stMarkdownContainer"] {{
+        margin-bottom: 0 !important;
+    }}
+    :has(.anjun-home-cards) div[data-testid="column"] div[data-testid="stButton"] {{
+        margin-top: 0 !important;
+    }}
     </style>
+    <div class="anjun-home-cards" style="display:none"></div>
     """, unsafe_allow_html=True)
 
-    # =========================
-    # 🧠 HEADER
-    # =========================
     st.markdown("""
-    <h2 style='text-align:center;'>Anjun Express - BI de Operações</h2>
-    <p style='text-align:center; opacity:0.7;'>运营BI</p>
+    <div style="text-align:center;margin-bottom:2rem;">
+        <h2 style="color:#053B31;font-size:22px;font-weight:700;margin-bottom:4px;
+                   font-family:'Montserrat',sans-serif;">
+            Anjun Express — BI de Operações
+        </h2>
+        <p style="color:#6b7280;font-size:13px;font-family:'Montserrat',sans-serif;">
+            Selecione um módulo para começar
+        </p>
+    </div>
     """, unsafe_allow_html=True)
 
-    st.divider()
+    # Linha 1: 3 cards
+    cols1 = st.columns(3)
+    for i in range(3):
+        pagina, titulo, subtitulo = CARDS[i]
+        with cols1[i]:
+            _render_card(pagina, titulo, subtitulo)
 
-    # =========================
-    # 🔥 FUNÇÃO CARD
-    # =========================
-    def card(icon, titulo, subtitulo, pagina):
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-        if st.button(
-            f"{titulo}\n{subtitulo}",
-            key=pagina,
-            use_container_width=True
-        ):
-            st.session_state.page = pagina
-            st.rerun()
-
-        st.markdown(f"""
-        <style>
-        div[data-testid="stButton"][key="{pagina}"] button {{
-            height: 160px;
-            border-radius: 15px;
-            border: none;
-            font-size: 0px;
-            position: relative;
-        }}
-
-        div[data-testid="stButton"][key="{pagina}"] button::before {{
-            content: "{titulo}";
-            display: block;
-            font-size: 18px;
-            font-weight: 600;
-            margin-top: 20px;
-            color: inherit;
-        }}
-
-        div[data-testid="stButton"][key="{pagina}"] button::after {{
-            content: "{subtitulo}";
-            display: block;
-            font-size: 13px;
-            opacity: 0.7;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
-
-        st.markdown(f"""
-        <div style="position: relative; top: -130px; text-align:center;">
-            <i class="{icon}" style="font-size:40px; color:#16A34A;"></i>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # =========================
-    # 🧱 GRID
-    # =========================
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        card("fas fa-box",
-            "Backlog Atual / 当前积压",
-            "Visão operacional atual",
-            "backlog")
-
-    with col2:
-        card("fas fa-chart-line",
-            "Backlog Histórico / 历史积压",
-            "Análise histórica",
-            "historico")
-
-    with col3:
-        card("fas fa-bolt",
-            "Produtividade / 生产效率",
-            "Volume por turno e cliente",
-            "produtividade")
-
-    col4, col5, col6 = st.columns(3)
-
-    with col4:
-        card("fas fa-clock",
-            "Tempo de Processamento / 处理时效",
-            "Tempo entre entrada e saída",
-            "tempo")
-
-    with col5:
-        card("fas fa-undo",
-            "Devoluções / 退货",
-            "Pedidos devolvidos",
-            "devolucoes")
-
-    with col6:
-        card("fas fa-file-upload",
-            "Importação / 数据导入",
-            "Upload de planilhas",
-            "importacao")
+    # Linha 2: 4 cards centralizados
+    _, c1, c2, c3, c4, _ = st.columns([0.5, 1, 1, 1, 1, 0.5])
+    for i, col in enumerate([c1, c2, c3, c4]):
+        pagina, titulo, subtitulo = CARDS[3 + i]
+        with col:
+            _render_card(pagina, titulo, subtitulo)

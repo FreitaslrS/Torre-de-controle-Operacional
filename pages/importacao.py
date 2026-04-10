@@ -276,7 +276,7 @@ def render():
             nome_arquivo,
             SUM(qtd) as registros,
             MAX(data_importacao) as data_importacao,
-            MAX(data_importacao) as data_referencia,
+            MAX(data_referencia) as data_referencia,
             'Devolução' as tipo
         FROM dev_status_semanal
         GROUP BY nome_arquivo
@@ -287,7 +287,7 @@ def render():
             nome_arquivo,
             SUM(qtd_pedidos) as registros,
             MAX(data_importacao) as data_importacao,
-            MAX(data_importacao) as data_referencia,
+            MAX(data_referencia) as data_referencia,
             'Devolução - P90' as tipo
         FROM p90_semanal
         GROUP BY nome_arquivo
@@ -298,7 +298,7 @@ def render():
             nome_arquivo,
             SUM(qtd_total) as registros,
             MAX(data_importacao) as data_importacao,
-            MAX(data_importacao) as data_referencia,
+            MAX(data_referencia) as data_referencia,
             'Devolução - Monitoramento' as tipo
         FROM dev_sla_semanal
         GROUP BY nome_arquivo
@@ -309,7 +309,7 @@ def render():
             nome_arquivo,
             COUNT(*) as registros,
             MAX(data_importacao) as data_importacao,
-            MAX(data_importacao) as data_referencia,
+            CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia,
             'Pacotes Grandes' as tipo
         FROM pacotes_grandes
         GROUP BY nome_arquivo
@@ -325,14 +325,27 @@ def render():
     if df_hist.empty:
         st.info("Nenhum arquivo importado ainda / 暂无导入记录")
     else:
+        # Formatar datas para exibição
+        def fmt_ref(val):
+            try:
+                return pd.to_datetime(val).strftime("%d/%m/%Y")
+            except Exception:
+                return str(val) if pd.notna(val) else ""
+
+        def fmt_import(val):
+            try:
+                return pd.to_datetime(val).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                return str(val) if pd.notna(val) else ""
+
         for _, row in df_hist.iterrows():
             col1, col2, col3, col4, col5, col6 = st.columns([4,2,2,3,3,1])
 
             col1.write(row["nome_arquivo"])
             col2.write(row["registros"])
-            col3.write(row["tipo"])  # 🔥 novo
-            col4.write(f"📅: {row['data_referencia']}")
-            col5.write(f"⏱️ {row['data_importacao']}")
+            col3.write(row["tipo"])
+            col4.write(f"📅 {fmt_ref(row['data_referencia'])}")
+            col5.write(f"⏱️ {fmt_import(row['data_importacao'])}")
 
             if col6.button("🗑️", key=f"{row['nome_arquivo']}_{row['data_importacao']}"):
                 excluir_arquivo(row["nome_arquivo"])

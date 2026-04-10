@@ -10,10 +10,17 @@ from core.repository import (
 from utils.theme import grafico_barra, grafico_pizza
 from utils.style import tabela_padrao
 
+# ── Paleta Tempo de Processamento ────────────────────────────────────
+COR_PRINCIPAL  = "#F0A202"   # Amarelo Anjun — cor dominante desta página
+COR_SECUNDARIA = "#053B31"   # Verde escuro — complementar
+COR_POSITIVO   = "#009640"   # Verde — dentro do SLA
+COR_APOIO      = "#2B2D42"   # Navy — sem saída/neutro
+PALETA_PAGINA  = [COR_PRINCIPAL, COR_SECUNDARIA, COR_POSITIVO, COR_APOIO]
+
 cores_pizza = {
-    "Até 24h": "#16A34A",
-    "> 24h": "#0F172A",
-    "Sem saída": "#CBD5E1"
+    "Até 24h":   COR_POSITIVO,
+    "> 24h":     COR_PRINCIPAL,
+    "Sem saída": COR_APOIO
 }
 
 traducao_status = {
@@ -25,6 +32,19 @@ traducao_status = {
 def render():
     from utils.style import aplicar_css_global
     aplicar_css_global()
+
+    st.markdown("""
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    </svg>
+    <div>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Tempo de Processamento</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">SLA e tempo entre entrada e saída no hub</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
     # =========================
     # 📅 FILTRO
@@ -94,7 +114,12 @@ def render():
         col_s1, col_s2 = st.columns(2)
 
         with col_s1:
-            st.subheader("📊 Distribuição por Status / 各状态分布")
+            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Distribuição por Status</span>
+</div>""", unsafe_allow_html=True)
             df_pizza = pd.DataFrame([
                 {"status": "Até 24h",   "qtd": int(df["qtd_dentro_sla"].sum())},
                 {"status": "> 24h",     "qtd": int(df["qtd_fora_sla"].sum())},
@@ -111,7 +136,12 @@ def render():
             st.plotly_chart(fig_pizza, use_container_width=True)
 
         with col_s2:
-            st.subheader("📊 Evolução por Dia / 每日时效分布")
+            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Evolução por Dia</span>
+</div>""", unsafe_allow_html=True)
             tabela_dia = (
                 df.groupby("data").agg(
                     dentro_sla  = ("qtd_dentro_sla", "sum"),
@@ -147,7 +177,13 @@ def render():
         col_r1, col_r2 = st.columns(2)
 
         with col_r1:
-            st.subheader("🏆 Top 5 Estados com Maior Atraso / 延误最多的州")
+            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+<path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 5 Estados com Maior Atraso</span>
+</div>""", unsafe_allow_html=True)
             ranking = (
                 df.groupby("estado")["qtd_fora_sla"]
                 .sum()
@@ -156,13 +192,18 @@ def render():
                 .head(5)
             )
             if not ranking.empty:
-                cores = ["#0F172A"] + ["#16A34A"] * (len(ranking) - 1)
+                cores = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(ranking) - 1)
                 fig_rank = grafico_barra(ranking, x="estado", y="qtd_atrasos", text="qtd_atrasos")
                 fig_rank.update_traces(marker_color=cores)
                 st.plotly_chart(fig_rank, use_container_width=True)
 
         with col_r2:
-            st.subheader("📦 Top 10 Pontos de Entrada com Atraso / 入库点延误TOP10")
+            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 10 Pontos de Entrada com Atraso</span>
+</div>""", unsafe_allow_html=True)
             ranking_pre = (
                 df.groupby("ponto_entrada")["qtd_fora_sla"]
                 .sum()
@@ -171,7 +212,7 @@ def render():
                 .head(10)
             )
             if not ranking_pre.empty:
-                cores_pre = ["#0F172A"] + ["#16A34A"] * (len(ranking_pre) - 1)
+                cores_pre = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(ranking_pre) - 1)
                 fig_pre = grafico_barra(ranking_pre, x="ponto_entrada", y="qtd_atrasos", text="qtd_atrasos")
                 fig_pre.update_traces(marker_color=cores_pre)
                 st.plotly_chart(fig_pre, use_container_width=True)
@@ -183,7 +224,12 @@ def render():
         # =========================
         # 📊 TABELA POR ESTADO
         # =========================
-        st.subheader("📊 Tempo por Estado / 各州时效")
+        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Tempo por Estado</span>
+</div>""", unsafe_allow_html=True)
 
         tabela_estado = (
             df.groupby("estado").agg(

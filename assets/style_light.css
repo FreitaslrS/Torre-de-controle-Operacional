@@ -1,90 +1,257 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap");
+/* ===== ANJUN EXPRESS — TORRE DE CONTROLE ===== */
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap");
 
-/* ===== FONTE ===== */
-html,
-body,
-[class*="css"] {
-    font-family: "Inter", sans-serif;
+/* ===== RESET GLOBAL ===== */
+html, body, [class*="css"] {
+    font-family: 'Montserrat', sans-serif !important;
 }
 
-/* ===== FUNDO ===== */
-html,
-body,
-.stApp {
-    background: #f9fafb;
+/* ===== FUNDO PRINCIPAL ===== */
+html, body, .stApp {
+    background: #f4f6f4;
 }
 
-/* ===== TEXTO ===== */
-h1,
-h2,
-h3 {
-    color: #111827;
-    font-weight: 600;
+/* ===== BLOCO CENTRAL ===== */
+.block-container {
+    padding-top: 1.5rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
 }
 
-p,
-span,
-label {
+/* ===== SIDEBAR ===== */
+section[data-testid="stSidebar"] {
+    background: #053B31 !important;
+    border-right: none !important;
+    width: 220px !important;
+}
+
+section[data-testid="stSidebar"] * {
+    color: rgba(255,255,255,0.85) !important;
+    font-family: 'Montserrat', sans-serif !important;
+}
+
+section[data-testid="stSidebar"] hr {
+    border-color: rgba(255,255,255,0.12) !important;
+}
+
+/* ===== BOTÕES DO SIDEBAR ===== */
+section[data-testid="stSidebar"] .stButton button {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255,255,255,0.75) !important;
+    text-align: left !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    padding: 8px 12px !important;
+    border-radius: 8px !important;
+    transition: all 0.15s ease !important;
+    font-family: 'Montserrat', sans-serif !important;
+    letter-spacing: 0.2px !important;
+}
+
+section[data-testid="stSidebar"] .stButton button:hover {
+    background: rgba(0,150,64,0.25) !important;
+    color: #ffffff !important;
+    transform: none !important;
+}
+
+section[data-testid="stSidebar"] button[kind="secondary"] {
+    background: rgba(0,150,64,0.35) !important;
+    color: #ffffff !important;
+    border-left: 3px solid #009640 !important;
+}
+
+section[data-testid="stSidebar"] .stToggle label {
+    font-size: 12px !important;
+    color: rgba(255,255,255,0.6) !important;
+}
+
+/* ===== TÍTULOS ===== */
+h1, h2, h3, h4 {
+    font-family: 'Montserrat', sans-serif !important;
+    font-weight: 700 !important;
+    color: #053B31 !important;
+}
+
+h2 { font-size: 20px !important; }
+h3 { font-size: 16px !important; }
+
+p, span, label {
+    font-family: 'Montserrat', sans-serif !important;
     color: #374151;
 }
 
-/* ===== TEXTO SECUNDÁRIO ===== */
-small {
-    color: #6b7280;
+small, .stCaption {
+    color: #6b7280 !important;
+    font-size: 11px !important;
 }
 
-/* ===== KPI ===== */
+/* ===== MÉTRICAS (KPI CARDS) ===== */
 [data-testid="metric-container"] {
-    background: white;
-    padding: 18px;
-    border-radius: 14px;
-    border: 1px solid #e5e7eb;
+    background: #ffffff !important;
+    padding: 16px 18px !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(0,150,64,0.15) !important;
+    border-top: 3px solid #009640 !important;
+    transition: box-shadow 0.2s !important;
 }
 
-/* ===== BOTÕES ===== */
+[data-testid="metric-container"]:hover {
+    box-shadow: 0 4px 16px rgba(0,150,64,0.1) !important;
+}
+
+[data-testid="stMetricLabel"] {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.8px !important;
+    color: #6b7280 !important;
+}
+
+[data-testid="stMetricValue"] {
+    font-size: 22px !important;
+    font-weight: 700 !important;
+    color: #053B31 !important;
+}
+
+[data-testid="stMetricDelta"] {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+}
+
+/* ===== BOTÕES GERAIS ===== */
 .stButton button {
-    background: #16a34a;
-    color: white;
-    border-radius: 10px;
-    border: none;
-}
-
-/* ===== INPUT ===== */
-.stTextInput input,
-.stSelectbox div {
-    background-color: white;
-    color: #111827;
-    border-radius: 10px;
-}
-
-/* ===== SCROLL ===== */
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #d1d5db;
-    border-radius: 10px;
-}
-
-/* ===== SIDEBAR ATIVO ===== */
-button[kind="secondary"] {
-    background-color: #16a34a !important;
+    background: #009640 !important;
     color: white !important;
+    border-radius: 8px !important;
+    border: none !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    font-family: 'Montserrat', sans-serif !important;
+    letter-spacing: 0.3px !important;
+    transition: background 0.2s !important;
+    padding: 8px 16px !important;
 }
 
-/* ===== BOTÃO SUAVE ===== */
-.stButton button {
-    background: #16a34a;
-    color: white;
+.stButton button:hover {
+    background: #007a33 !important;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
-/* ===== CARDS ===== */
-div[data-testid="stButton"] button {
-    background: white;
-    border: 1px solid #e5e7eb;
+[data-testid="stDownloadButton"] button {
+    background: #053B31 !important;
+    color: white !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    font-family: 'Montserrat', sans-serif !important;
 }
 
-button i {
-    margin-right: 8px;
+/* ===== INPUTS / SELECTS ===== */
+.stTextInput input,
+.stSelectbox div[data-baseweb="select"],
+.stMultiSelect div[data-baseweb="select"],
+.stDateInput input {
+    background: #ffffff !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(0,150,64,0.25) !important;
+    font-family: 'Montserrat', sans-serif !important;
+    font-size: 12px !important;
+    color: #2B2D42 !important;
+}
+
+.stTextInput input:focus,
+.stSelectbox div[data-baseweb="select"]:focus-within {
+    border-color: #009640 !important;
+    box-shadow: 0 0 0 2px rgba(0,150,64,0.12) !important;
+}
+
+.stSelectbox label,
+.stMultiSelect label,
+.stDateInput label,
+.stTextInput label,
+.stFileUploader label {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #374151 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+}
+
+/* ===== ABAS (TABS) ===== */
+.stTabs [data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom: 2px solid rgba(0,150,64,0.15) !important;
+    gap: 4px !important;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    color: #6b7280 !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    font-family: 'Montserrat', sans-serif !important;
+    border-radius: 6px 6px 0 0 !important;
+    padding: 8px 16px !important;
+    border: none !important;
+}
+
+.stTabs [aria-selected="true"] {
+    background: transparent !important;
+    color: #009640 !important;
+    border-bottom: 2px solid #009640 !important;
+}
+
+/* ===== DIVIDER ===== */
+hr {
+    border: none !important;
+    border-top: 1px solid rgba(0,150,64,0.12) !important;
+    margin: 1.2rem 0 !important;
+}
+
+/* ===== ALERTAS ===== */
+[data-testid="stAlert"] {
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    font-family: 'Montserrat', sans-serif !important;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f4f6f4; }
+::-webkit-scrollbar-thumb { background: rgba(0,150,64,0.3); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #009640; }
+
+/* ===== CHECKBOX ===== */
+.stCheckbox label {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    font-family: 'Montserrat', sans-serif !important;
+}
+
+/* ===== FILE UPLOADER ===== */
+[data-testid="stFileUploader"] {
+    border: 2px dashed rgba(0,150,64,0.3) !important;
+    border-radius: 10px !important;
+    background: rgba(0,150,64,0.03) !important;
+}
+
+/* ===== PLOTLY FUNDO ===== */
+.js-plotly-plot, .plotly {
+    background: transparent !important;
+}
+
+section[data-testid="stSidebar"] > div:first-child {
+    padding-top: 1.5rem !important;
+}
+
+header[data-testid="stHeader"] {
+    background: transparent !important;
+}
+
+[data-testid="stToast"] {
+    font-family: 'Montserrat', sans-serif !important;
+    font-size: 12px !important;
 }

@@ -6,20 +6,27 @@ from core.repository import buscar_produtividade, buscar_pacotes_grandes, buscar
 from utils.theme import grafico_barra, aplicar_layout_padrao
 from utils.style import tabela_padrao
 
-COR_VERDE     = "#16A34A"
-COR_AZUL      = "#0F172A"
-COR_AZUL_GELO = "#CBD5E1"
+# ── Paleta Produtividade ──────────────────────────────────────────────
+COR_PRINCIPAL  = "#009640"   # Verde Anjun — cor dominante desta página
+COR_SECUNDARIA = "#2B2D42"   # Navy — complementar
+COR_APOIO      = "#053B31"   # Verde escuro — terciário
+PALETA_PAGINA  = [COR_PRINCIPAL, COR_SECUNDARIA, COR_APOIO]
+
+# Aliases mantidos para compatibilidade com o restante do código
+COR_VERDE     = COR_PRINCIPAL
+COR_AZUL      = COR_SECUNDARIA
+COR_AZUL_GELO = COR_APOIO
 
 color_dispositivo = {
-    "Sorter Oval":   COR_VERDE,
-    "Sorter Linear": COR_AZUL,
-    "Cubometro":     COR_AZUL_GELO
+    "Sorter Oval":   "#009640",
+    "Sorter Linear": "#2B2D42",
+    "Cubometro":     "#053B31"
 }
 
 color_turno = {
-    "T1": COR_VERDE,
-    "T2": COR_AZUL,
-    "T3": COR_AZUL_GELO
+    "T1": "#009640",
+    "T2": "#2B2D42",
+    "T3": "#053B31"
 }
 
 map_traducao = {
@@ -38,7 +45,18 @@ def render():
     from utils.style import aplicar_css_global
     aplicar_css_global()
 
-    st.markdown("## ⚡ Produtividade / 生产效率")
+    st.markdown("""
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </svg>
+    <div>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produtividade</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Volume por turno e dispositivo</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["⚡ Produtividade", "📦 Pacotes Grandes"])
 
@@ -94,7 +112,12 @@ def render():
         col_p1, col_p2 = st.columns(2)
 
         with col_p1:
-            st.subheader("🥧 Por Turno / 按班次")
+            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Por Turno</span>
+</div>""", unsafe_allow_html=True)
             df_turno = df.groupby("turno")["volumes"].sum().reset_index()
             fig_pizza_turno = px.pie(
                 df_turno, names="turno", values="volumes",
@@ -104,7 +127,12 @@ def render():
             st.plotly_chart(fig_pizza_turno, use_container_width=True)
 
         with col_p2:
-            st.subheader("🥧 Por Dispositivo / 按设备")
+            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Por Dispositivo</span>
+</div>""", unsafe_allow_html=True)
             df_disp = df.groupby("dispositivo")["volumes"].sum().reset_index()
             df_disp["nome"] = df_disp["dispositivo"].map(map_traducao).fillna(df_disp["dispositivo"])
             fig_pizza_disp = px.pie(
@@ -119,7 +147,12 @@ def render():
         # =========================
         # 📊 BARRA — HORA × DISPOSITIVO
         # =========================
-        st.subheader("📊 Produtividade por Hora (Dispositivos) / 按小时设备效率")
+        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produtividade por Hora (Dispositivos)</span>
+</div>""", unsafe_allow_html=True)
 
         dispositivos = ["Sorter Oval", "Sorter Linear", "Cubometro"]
 
@@ -151,7 +184,12 @@ def render():
         # =========================
         # 📋 TABELA HORA × DISPOSITIVO
         # =========================
-        st.subheader("📋 Resumo por Hora / 每小时汇总")
+        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Resumo por Hora</span>
+</div>""", unsafe_allow_html=True)
 
         df_tabela = (
             df.groupby(["hora", "dispositivo"])["volumes"]
@@ -185,8 +223,14 @@ def render():
         col_c1, col_c2 = st.columns(2)
 
         with col_c1:
-            st.subheader("🧑‍💼 Top 10 Clientes / 前10客户")
-            cores = ["#0F172A"] + ["#16A34A"] * (len(df_top10) - 1)
+            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+<path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 10 Clientes</span>
+</div>""", unsafe_allow_html=True)
+            cores = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_top10) - 1)
             fig_cliente = px.bar(
                 df_top10, x="volumes", y="cliente", orientation="h", text="volumes",
                 labels={"volumes": "Volumes / 数量", "cliente": "Cliente / 客户"}
@@ -196,13 +240,30 @@ def render():
             st.plotly_chart(fig_cliente, use_container_width=True)
 
         with col_c2:
-            st.subheader("📋 Produção por Cliente (Completo) / 客户完整列表")
+            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produção por Cliente</span>
+</div>""", unsafe_allow_html=True)
             df_cliente_fmt = df_cliente.copy()
             df_cliente_fmt.columns = ["Cliente / 客户", "Volumes / 数量"]
             tabela_padrao(df_cliente_fmt)
 
     with tab2:
-        st.subheader("📦 Pacotes Grandes / 大件包裹")
+        st.markdown("""
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+    </svg>
+    <div>
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Pacotes Grandes</h3>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Encomendas com prefixo AJG</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
         st.caption("Encomendas com prefixo AJG — itens de grande volume e peso")
 
         df_sem_pg = buscar_semanas_pacotes_grandes()
@@ -238,7 +299,7 @@ def render():
                     st.markdown("**Por Status**")
                     df_st_pg = df_pg.groupby("status").size().reset_index(name="qtd")
                     df_st_pg = df_st_pg.sort_values("qtd", ascending=False)
-                    cores_pg = ["#0F172A"] + ["#16A34A"] * (len(df_st_pg) - 1)
+                    cores_pg  = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_st_pg) - 1)
                     fig_st = grafico_barra(df_st_pg, x="qtd", y="status", text="qtd")
                     fig_st.update_traces(marker_color=cores_pg)
                     fig_st.update_layout(yaxis=dict(autorange="reversed"))
@@ -248,7 +309,7 @@ def render():
                     st.markdown("**Por Estado**")
                     df_est_pg = df_pg.groupby("estado").size().reset_index(name="qtd")
                     df_est_pg = df_est_pg.sort_values("qtd", ascending=False)
-                    cores_est = ["#0F172A"] + ["#16A34A"] * (len(df_est_pg) - 1)
+                    cores_est = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_est_pg) - 1)
                     fig_est_pg = grafico_barra(df_est_pg, x="estado", y="qtd", text="qtd")
                     fig_est_pg.update_traces(marker_color=cores_est)
                     st.plotly_chart(fig_est_pg, use_container_width=True, key="pg_estado")
