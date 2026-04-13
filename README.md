@@ -6,15 +6,15 @@ Dashboard operacional em tempo real para monitoramento logístico. Desenvolvido 
 
 ## Módulos
 
-| Módulo | Descrição |
-|---|---|
-| **Backlog Atual** | Visão em tempo real do backlog por estado, cliente e faixa de tempo (24h / 48h / 72h+). Inclui mapa geográfico e download de waybills |
-| **Backlog Histórico** | Evolução histórica do backlog com drill por faixa de SLA |
-| **Produtividade** | Volume processado por turno e dispositivo; análise de pacotes grandes |
-| **Tempo de Processamento** | SLA operacional, tempo médio por IATA e consolidação Perus + TFK |
-| **Health Check** | Saúde operacional consolidada com indicadores por semana |
-| **Devoluções** | Análise de pedidos devolvidos, P90, motivos e DSPs sem 3 tentativas |
-| **Importação** | Upload de planilhas Excel para atualização das bases de dados |
+| Módulo                     | Descrição                                                                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Backlog Atual**          | Visão em tempo real do backlog por estado, cliente e faixa de tempo (24h / 48h / 72h+). Inclui mapa geográfico e download de waybills |
+| **Backlog Histórico**      | Evolução histórica do backlog com drill por faixa de SLA                                                                              |
+| **Produtividade**          | Volume processado por turno e dispositivo; análise de pacotes grandes                                                                 |
+| **Tempo de Processamento** | SLA operacional, tempo médio por IATA e consolidação Perus + TFK                                                                      |
+| **Health Check**           | Saúde operacional consolidada com indicadores por semana                                                                              |
+| **Devoluções**             | Análise de pedidos devolvidos, P90, motivos e DSPs sem 3 tentativas                                                                   |
+| **Importação**             | Upload de planilhas Excel para atualização das bases de dados                                                                         |
 
 ---
 
@@ -121,4 +121,4 @@ Por segurança e tamanho, os seguintes arquivos/pastas estão no `.gitignore`:
 ## Autor
 
 Desenvolvido por **Samuel Freitas**  
-© 2025 — Torre de Controle. Todos os direitos reservados.
+© 2026 — Torre de Controle. Todos os direitos reservados.
