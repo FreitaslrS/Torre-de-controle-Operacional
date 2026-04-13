@@ -121,4 +121,4 @@ Por segurança e tamanho, os seguintes arquivos/pastas estão no `.gitignore`:
 ## Autor
 
 Desenvolvido por **Samuel Freitas**  
-© 2025 — Torre de Controle. Todos os direitos reservados.
+© 2026 — Torre de Controle. Todos os direitos reservados.
