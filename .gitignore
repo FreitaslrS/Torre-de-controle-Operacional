@@ -61,4 +61,6 @@ build/
 *.bak
 *.orig
 
-echo "" >> .gitignore && echo "# ── Claude Code (local) ─────────────────────────────────────────────" >> .gitignore && echo ".claude/" >> .gitignore
+
+# ── Claude Code (local) ──────────────────────────────────────────────
+.claude/
