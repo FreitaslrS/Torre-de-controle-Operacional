@@ -1,17 +1,22 @@
+import math
+import os
+import streamlit as st
+import pandas as pd
+
+
 def aplicar_css_global():
-    import streamlit as st
+    css_path = os.path.join(os.path.dirname(__file__), "..", "assets", "style_light.css")
+    with open(css_path, encoding="utf-8") as f:
+        css = f.read()
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
     st.markdown("""
     <style>
-    div[data-testid="stDataFrame"] {
-        border-radius: 12px;
-        overflow: hidden;
-    }
+    div[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
     </style>
     """, unsafe_allow_html=True)
 
 
 def rodape_autoria():
-    import streamlit as st
     st.markdown("""
     <div style="
         margin-top: 3rem;
@@ -28,16 +33,58 @@ def rodape_autoria():
     """, unsafe_allow_html=True)
 
 
-def tabela_padrao(df, use_container_width=True, altura_linhas=13):
-    import streamlit as st
-    import pandas as pd
-    import math
+def _fmt_celula(v, col_lower):
+    """Formata um valor de célula para exibição na tabela."""
+    eh_hora = any(k in col_lower for k in ("hora", "tempo", "horas", "time"))
 
+    if eh_hora:
+        try:
+            h = float(v)
+            if math.isnan(h) or h < 0:
+                return "–"
+            hi = int(h)
+            mi = int(round((h - hi) * 60))
+            if mi == 60:
+                hi += 1
+                mi = 0
+            return f"{hi:02d}:{mi:02d}"
+        except Exception:
+            s = str(v)
+            return "–" if s in ("nan", "None", "") else s
+
+    # Nulo
+    try:
+        if pd.isna(v):
+            return "–"
+    except Exception:
+        pass
+
+    s = str(v)
+    if s in ("nan", "None", "<NA>", ""):
+        return "–"
+
+    # Tenta formatar como número
+    try:
+        f = float(s)
+        if math.isnan(f):
+            return "–"
+        # Inteiro (ex: 497598 → 497.598)
+        if f == int(f):
+            return f"{int(f):,}".replace(",", ".")
+        # Float com 1 casa decimal (ex: P90 50.0 → 50, 12.3 → 12,3)
+        rounded = round(f, 1)
+        if rounded == int(rounded):
+            return f"{int(rounded):,}".replace(",", ".")
+        return f"{rounded:.1f}".replace(".", ",")
+    except (ValueError, OverflowError):
+        return s
+
+
+def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     if df is None or df.empty:
         st.info("Sem dados para exibir.")
         return
 
-    # ── Paleta Anjun ──────────────────────────────────────────────────
     HEADER_BG    = "#053B31"
     HEADER_COLOR = "#FFFFFF"
     ROW_BG       = "#FFFFFF"
@@ -46,13 +93,12 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     TEXT_COLOR   = "#2B2D42"
     HOVER_BG     = "#f0faf4"
 
-    ROW_H    = 37
-    HEADER_H = 42
+    ROW_H      = 37
+    HEADER_H   = 42
     max_height = HEADER_H + altura_linhas * ROW_H
 
     cols = df.columns.tolist()
 
-    # ── Cabeçalho ─────────────────────────────────────────────────────
     th_style = (
         f"background-color:{HEADER_BG};"
         f"color:{HEADER_COLOR};"
@@ -67,35 +113,8 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     )
     header_html = "".join(f'<th style="{th_style}">{c}</th>' for c in cols)
 
-    # ── Formatar valores ───────────────────────────────────────────────
-    df_fmt = df.copy()
-
-    for col in cols:
-        col_lower = str(col).lower()
-        eh_hora = any(k in col_lower for k in ("hora", "tempo", "horas", "time"))
-
-        if eh_hora:
-            def fmt_hora(v):
-                try:
-                    h = float(v)
-                    if math.isnan(h) or h < 0:
-                        return "–"
-                    hi = int(h)
-                    mi = int(round((h - hi) * 60))
-                    if mi == 60:
-                        hi += 1
-                        mi = 0
-                    return f"{hi:02d}:{mi:02d}"
-                except:
-                    s = str(v)
-                    return "–" if s in ("nan", "None", "") else s
-            df_fmt[col] = df[col].apply(fmt_hora)
-        else:
-            df_fmt[col] = df[col].astype(str).replace({"nan": "–", "None": "–", "<NA>": "–"})
-
-    # ── Linhas ────────────────────────────────────────────────────────
     td_style = (
-        f"padding:9px 14px;font-size:12px;"
+        "padding:9px 14px;font-size:12px;"
         f"color:{TEXT_COLOR};"
         f"border-bottom:1px solid {BORDER_COLOR};"
         "font-family:'Montserrat',Arial,sans-serif;"
@@ -103,11 +122,12 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     )
 
     rows_list = []
-    valores = df_fmt.values
-
-    for i, row_vals in enumerate(valores):
-        bg = ROW_BG if i % 2 == 0 else ROW_ALT_BG
-        cells = "".join(f'<td style="{td_style}">{v}</td>' for v in row_vals)
+    for i, row in enumerate(df.itertuples(index=False, name=None)):
+        bg    = ROW_BG if i % 2 == 0 else ROW_ALT_BG
+        cells = "".join(
+            f'<td style="{td_style}">{_fmt_celula(v, str(cols[j]).lower())}</td>'
+            for j, v in enumerate(row)
+        )
         rows_list.append(
             f'<tr style="background-color:{bg};" '
             f'onmouseover="this.style.backgroundColor=\'{HOVER_BG}\'" '
@@ -116,7 +136,7 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
         )
 
     body_html = "".join(rows_list)
-    width = "100%" if use_container_width else "auto"
+    width     = "100%" if use_container_width else "auto"
 
     html = f"""
     <div style="

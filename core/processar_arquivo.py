@@ -983,13 +983,13 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
 # ================================
 def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     import io
+    import numpy as np
     from core.database import conectar_devolucoes
 
     # ── Lê folha de devolução ──────────────────────────────────────
     df_dev = pd.read_excel(io.BytesIO(arquivo_folha.read()), engine="openpyxl")
     arquivo_folha.seek(0)
 
-    # Normaliza colunas: pega as primeiras 10
     df_dev = df_dev.iloc[:, :10]
     df_dev.columns = [
         "waybill", "status", "tipo_operacao", "cliente",
@@ -1000,13 +1000,27 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     df_dev["waybill"] = df_dev["waybill"].astype(str).str.strip()
 
     # ── Lê monitoramento ──────────────────────────────────────────
-    df_mon = pd.read_excel(io.BytesIO(arquivo_monitor.read()), engine="openpyxl")
+    df_mon_raw = pd.read_excel(io.BytesIO(arquivo_monitor.read()), engine="openpyxl")
     arquivo_monitor.seek(0)
 
-    # Seleciona colunas por posição (índices 0,4,8,11,12,21,24,25,33)
+    # Colunas completas do monitoramento (igual a importar_devolucao_monitoramento)
+    cols_mon_full = [0, 4, 8, 11, 21, 22, 25, 33, 66, 67, 68, 71, 73]
+    cols_mon_full = [c for c in cols_mon_full if c < len(df_mon_raw.columns)]
+    df_mon_full = df_mon_raw.iloc[:, cols_mon_full].copy()
+    df_mon_full.columns = [
+        "waybill", "status_mon", "motivo", "estado_dest",
+        "cliente_mon", "cliente_fantasia", "ponto_entrada", "data_criacao",
+        "tent1", "tent2", "tent3", "assinatura", "prazo_dias"
+    ][:len(cols_mon_full)]
+    for col in ["tent1", "tent2", "tent3", "assinatura", "data_criacao"]:
+        if col in df_mon_full.columns:
+            df_mon_full[col] = pd.to_datetime(df_mon_full[col], errors="coerce")
+    df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
+
+    # Colunas reduzidas para o merge com dev (estado_dest, cidade_dest, pre_entrega, ponto_entrada, motivo, data_criacao)
     cols_idx = [0, 4, 8, 11, 12, 21, 24, 25, 33]
-    cols_idx = [c for c in cols_idx if c < len(df_mon.columns)]
-    df_mon = df_mon.iloc[:, cols_idx]
+    cols_idx = [c for c in cols_idx if c < len(df_mon_raw.columns)]
+    df_mon = df_mon_raw.iloc[:, cols_idx].copy()
     df_mon.columns = [
         "waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
         "cliente_mon", "pre_entrega", "ponto_entrada", "data_criacao"
@@ -1014,67 +1028,239 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     df_mon["data_criacao"] = pd.to_datetime(df_mon["data_criacao"], errors="coerce")
     df_mon["waybill"] = df_mon["waybill"].astype(str).str.strip()
 
-    # ── Merge ──────────────────────────────────────────────────────
+    # ── Merge para dev_detalhado ───────────────────────────────────
     df = df_dev.merge(df_mon, on="waybill", how="left")
-
     df["dias_dev"] = (df["data_operacao"] - df["data_criacao"]).dt.days
-    df = df[df["dias_dev"] >= 0]
 
-    ref_ts  = pd.Timestamp(data_ref)
-    semana  = ref_ts.strftime("w%V")
-    ano     = int(ref_ts.year)
+    # Para pedidos sem match no monitoramento (ex: Shein Nacional),
+    # extrai data_criacao do waybill (formato AJ AAMMDD...)
+    def _data_do_waybill(waybill):
+        try:
+            w = str(waybill).strip()
+            return pd.Timestamp(int("20" + w[2:4]), int(w[4:6]), int(w[6:8]))
+        except Exception:
+            return pd.NaT
+
+    sem_criacao = df["data_criacao"].isna()
+    if sem_criacao.any():
+        df.loc[sem_criacao, "data_criacao"] = df.loc[sem_criacao, "waybill"].apply(_data_do_waybill)
+        df.loc[sem_criacao, "dias_dev"] = (
+            (df.loc[sem_criacao, "data_operacao"] - df.loc[sem_criacao, "data_criacao"])
+            .dt.days
+        )
+
+    # Descarta apenas dias_dev negativos (dados inconsistentes)
+    df = df[df["dias_dev"].isna() | (df["dias_dev"] >= 0)]
+
+    ref_ts   = pd.Timestamp(data_ref)
+    semana   = ref_ts.strftime("w%V")
+    ano      = int(ref_ts.year)
     nome_arq = f"{arquivo_folha.name}+{arquivo_monitor.name}"
+    agora    = datetime.now()
 
     df["semana"]          = semana
     df["ano"]             = ano
     df["data_referencia"] = data_ref
     df["nome_arquivo"]    = nome_arq
-    df["data_importacao"] = datetime.now()
+    df["data_importacao"] = agora
 
-    colunas = [
+    colunas_det = [
         "waybill", "status", "tipo_operacao", "cliente", "data_operacao",
         "ponto_operacao", "estado_dest", "cidade_dest", "pre_entrega",
         "ponto_entrada", "motivo", "data_criacao", "dias_dev",
         "semana", "ano", "data_referencia", "nome_arquivo", "data_importacao"
     ]
-
-    # Garante que todas as colunas existam
-    for col in colunas:
+    for col in colunas_det:
         if col not in df.columns:
             df[col] = None
 
-    df_save = df[colunas].copy()
+    df_save = df[colunas_det].copy()
 
-    values = [
-        tuple(None if (hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType')
-              else (None if pd.isna(v) else v)
-              for v in row)
-        for row in df_save.itertuples(index=False, name=None)
-    ]
+    def _val(v):
+        if hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType':
+            return None
+        try:
+            return None if pd.isna(v) else v
+        except Exception:
+            return v
 
     conn = conectar_devolucoes()
     cur  = conn.cursor()
+
+    # ── Salva dev_detalhado ────────────────────────────────────────
     cur.execute("DELETE FROM dev_detalhado WHERE data_referencia = %s", [data_ref])
-    execute_values(cur, f"INSERT INTO dev_detalhado ({','.join(colunas)}) VALUES %s", values)
+    execute_values(cur,
+        f"INSERT INTO dev_detalhado ({','.join(colunas_det)}) VALUES %s",
+        [tuple(_val(v) for v in row) for row in df_save.itertuples(index=False, name=None)]
+    )
+
+    # ── Salva dev_status_semanal (Resumo / WBR / Semanal Interno) ─
+    for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
+        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+
+    status_agg = (
+        df.groupby(["status", "estado_dest", "cliente"])
+        .size().reset_index(name="qtd")
+    )
+    status_agg["semana"]           = semana
+    status_agg["ano"]              = ano
+    status_agg["data_referencia"]  = data_ref
+    status_agg["nome_arquivo"]     = nome_arq
+    status_agg["data_importacao"]  = agora
+    status_agg["cliente_fantasia"] = None
+    status_agg = status_agg.rename(columns={"estado_dest": "estado"})
+
+    colunas_status = [
+        "estado", "status", "semana", "ano", "data_referencia", "cliente",
+        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+    ]
+    execute_values(cur,
+        f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
+        [tuple(_val(v) for v in row)
+         for row in status_agg[colunas_status].itertuples(index=False, name=None)]
+    )
+
+    # iata_agg: usa pre_entrega (col Y do monitoramento) + estado_dest (col L do monitoramento)
+    iata_agg = (
+        df[df["pre_entrega"].notna()]
+        .groupby(["pre_entrega", "estado_dest"])
+        .size().reset_index(name="qtd")
+    )
+    iata_agg["semana"]           = semana
+    iata_agg["ano"]              = ano
+    iata_agg["data_referencia"]  = data_ref
+    iata_agg["nome_arquivo"]     = nome_arq
+    iata_agg["data_importacao"]  = agora
+    iata_agg["cliente_fantasia"] = None
+    iata_agg = iata_agg.rename(columns={"pre_entrega": "ponto_operacao", "estado_dest": "estado"})
+
+    colunas_iata = [
+        "ponto_operacao", "estado", "semana", "ano", "data_referencia",
+        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+    ]
+    execute_values(cur,
+        f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
+        [tuple(_val(v) for v in row)
+         for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
+    )
+
+    # ── Salva p90_semanal (tab P90) ────────────────────────────────
+    cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [nome_arq])
+
+    df_p90_src = df[df["status"] == "Recebido de devolução"].copy()
+    if not df_p90_src.empty:
+        # Fallback: pedidos sem estado_dest (sem match no monitoramento) usam estado da folha
+        df_p90_src["estado_p90"] = df_p90_src["estado_dest"].fillna(df_p90_src["estado"])
+        df_p90_src = df_p90_src[df_p90_src["dias_dev"] >= 0].dropna(subset=["estado_p90", "dias_dev"])
+        if not df_p90_src.empty:
+            p90_agg = (
+                df_p90_src.groupby(["estado_p90", "cliente"])
+                .agg(
+                    p90_dias    = ("dias_dev", lambda x: round(float(np.percentile(x, 90)), 1)),
+                    qtd_pedidos = ("dias_dev", "count")
+                )
+                .reset_index()
+                .rename(columns={"estado_p90": "estado"})
+            )
+            p90_agg["semana"]          = semana
+            p90_agg["ano"]             = ano
+            p90_agg["data_referencia"] = data_ref
+            p90_agg["nome_arquivo"]    = nome_arq
+            p90_agg["data_importacao"] = agora
+
+            colunas_p90 = [
+                "estado", "semana", "ano", "cliente", "p90_dias",
+                "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
+            ]
+            execute_values(cur,
+                f"INSERT INTO p90_semanal ({','.join(colunas_p90)}) VALUES %s",
+                [tuple(_val(v) for v in row)
+                 for row in p90_agg[colunas_p90].itertuples(index=False, name=None)]
+            )
+
+    # ── Salva dev_sla_semanal, dev_motivos_semanal, dev_dsp_sem3tent ─
+    for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
+        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+
+    df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
+
+    df_entregues = df_mon_full[df_mon_full["assinatura"].notna()].copy() if "assinatura" in df_mon_full.columns else pd.DataFrame()
+    if not df_entregues.empty:
+        df_entregues["dias"] = (
+            (df_entregues["assinatura"] - df_entregues["data_criacao"]).dt.total_seconds() / 86400
+        )
+        df_entregues["prazo"]    = df_entregues["prazo_dias"].fillna(7) if "prazo_dias" in df_entregues.columns else 7
+        df_entregues["no_prazo"] = df_entregues["dias"] <= df_entregues["prazo"]
+        sla_agg = (
+            df_entregues.groupby(["estado_dest", "cliente_mon", "cliente_fantasia"])
+            .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
+            .reset_index()
+            .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
+        )
+        sla_agg["data_referencia"] = data_ref
+        sla_agg["nome_arquivo"]    = nome_arq
+        sla_agg["data_importacao"] = agora
+        colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
+        execute_values(cur,
+            f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
+            [tuple(_val(v) for v in row)
+             for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
+        )
+
+    df_motivos = df_mon_full[df_mon_full["motivo"].notna()].copy() if "motivo" in df_mon_full.columns else pd.DataFrame()
+    if not df_motivos.empty:
+        motivos_agg = (
+            df_motivos.groupby(["estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
+            .size().reset_index(name="qtd")
+            .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
+        )
+        motivos_agg["data_referencia"] = data_ref
+        motivos_agg["nome_arquivo"]    = nome_arq
+        motivos_agg["data_importacao"] = agora
+        colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+        execute_values(cur,
+            f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
+            [tuple(_val(v) for v in row)
+             for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
+        )
+
+    cols_dsp = ["motivo", "tent1", "tent3", "assinatura"]
+    if all(c in df_mon_full.columns for c in cols_dsp):
+        dsp_sem3 = df_mon_full[
+            df_mon_full["motivo"].notna() &
+            df_mon_full["tent1"].notna() &
+            df_mon_full["tent3"].isna() &
+            df_mon_full["assinatura"].isna()
+        ].copy()
+        if not dsp_sem3.empty:
+            dsp_agg = (
+                dsp_sem3.groupby(["ponto_entrada", "estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
+                .size().reset_index(name="qtd")
+                .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
+            )
+            dsp_agg["data_referencia"] = data_ref
+            dsp_agg["nome_arquivo"]    = nome_arq
+            dsp_agg["data_importacao"] = agora
+            colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+            execute_values(cur,
+                f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
+                [tuple(_val(v) for v in row)
+                 for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
+            )
+
     conn.commit()
     cur.close()
     conn.close()
 
+    limpar_historico_antigo()
     return len(df_save)
 
 
 # ================================
 # 🚛 COLETAS — CARREGAMENTO/DESCARREGAMENTO
 # ================================
-def importar_coletas(arquivo, data_ref):
-    from core.database import conectar_operacional as _conectar_op
-
-    df = pd.read_excel(arquivo, engine="openpyxl")
-
-    if df.empty:
-        return 0
-
-    # Pega as primeiras 19 colunas
+def _coletas_colunas_base(df):
+    """Renomeia colunas e converte tipos comuns para importações de coletas."""
     df = df.iloc[:, :19]
     df.columns = [
         "num_registro", "placa", "carregador", "rede_carregador",
@@ -1084,14 +1270,17 @@ def importar_coletas(arquivo, data_ref):
         "dif_sacos", "pacotes_carregados", "pacotes_descarregados",
         "dif_pacotes", "modo_operacao", "tipo_veiculo"
     ]
-
     df["tempo_carga"]    = pd.to_datetime(df["tempo_carga"],    errors="coerce")
     df["tempo_descarga"] = pd.to_datetime(df["tempo_descarga"], errors="coerce")
-
     for col in ["sacos_carregados", "sacos_descarregados", "dif_sacos",
                 "pacotes_carregados", "pacotes_descarregados", "dif_pacotes"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+    return df
 
+
+def _salvar_coletas(df, arquivo, data_ref, tipo):
+    from core.database import conectar_coletas
+    df["tipo"]            = tipo
     df["data_referencia"] = data_ref
     df["nome_arquivo"]    = arquivo.name
     df["data_importacao"] = datetime.now()
@@ -1101,23 +1290,213 @@ def importar_coletas(arquivo, data_ref):
         "tempo_carga", "secao_destino", "descarregador", "rede_descarregador",
         "tempo_descarga", "sacos_carregados", "sacos_descarregados", "dif_sacos",
         "pacotes_carregados", "pacotes_descarregados", "dif_pacotes",
-        "modo_operacao", "tipo_veiculo", "data_referencia", "nome_arquivo", "data_importacao"
+        "modo_operacao", "tipo_veiculo", "tipo",
+        "data_referencia", "nome_arquivo", "data_importacao"
     ]
 
-    conn = _conectar_op()
+    conn = conectar_coletas()
     cur  = conn.cursor()
-    cur.execute("DELETE FROM coletas WHERE nome_arquivo = %s", [arquivo.name])
-
+    cur.execute(
+        "DELETE FROM coletas WHERE nome_arquivo = %s AND tipo = %s",
+        [arquivo.name, tipo]
+    )
     values = [
-        tuple(None if (hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType')
-              else (None if pd.isna(v) else v)
-              for v in row)
+        tuple(None if pd.isna(v) else v for v in row)
         for row in df[colunas].itertuples(index=False, name=None)
     ]
-
     execute_values(cur, f"INSERT INTO coletas ({','.join(colunas)}) VALUES %s", values)
     conn.commit()
     cur.close()
     conn.close()
-
     return len(df)
+
+
+def importar_coletas(arquivo, data_ref):
+    """Importa descarregamentos recebidos em SP-RR-001 (Perus)."""
+    df = pd.read_excel(arquivo, engine="openpyxl")
+    if df.empty:
+        return 0
+
+    df = _coletas_colunas_base(df)
+
+    # Filtro: descarregado em SP-RR-001
+    df = df[
+        (df["rede_descarregador"] == "SP-RR-001") &
+        (df["descarregador"].notna()) &
+        (df["endereco_descarga"].notna()) &
+        (df["tempo_descarga"].notna())
+    ]
+
+    if df.empty:
+        return 0
+
+    return _salvar_coletas(df, arquivo, data_ref, "descarregamento")
+
+
+def importar_coletas_saida(arquivo, data_ref):
+    """Importa carregamentos que saem de SP-RR-001 (Perus) para outras bases."""
+    df = pd.read_excel(arquivo, engine="openpyxl")
+    if df.empty:
+        return 0
+
+    df = _coletas_colunas_base(df)
+
+    # Filtro: carregado em SP-RR-001, destino ≠ SP-RR-001
+    df = df[
+        (df["rede_carregador"] == "SP-RR-001") &
+        (df["secao_destino"] != "SP-RR-001") &
+        (df["secao_destino"].notna()) &
+        (df["tempo_carga"].notna())
+    ]
+
+    if df.empty:
+        return 0
+
+    return _salvar_coletas(df, arquivo, data_ref, "saida")
+
+
+# ================================
+# 👥 PRESENÇA / DIÁRIO DE BORDO
+# ================================
+def importar_presenca(arquivo):
+    """
+    Lê planilha de acompanhamento operacional com merged cells.
+    Layout esperado: grupos de 3 linhas por dia (T1, T2, T3).
+    Índices de coluna fixos (A=0 até AH=33).
+
+    Mapeamento (ajuste conforme layout real da planilha):
+      0  = data (merged — só aparece na linha T1)
+      1  = turno (T1 / T2 / T3)
+      2  = produzido no turno
+      3  = Anjun presentes
+      4  = temporários presentes
+      5  = diaristas presenciais
+      6  = presença total no turno
+      7  = faltas Anjun
+      8  = faltas temporários
+      9  = % falta (0.0–1.0)
+     10  = custo diaristas (R$)
+     11  = custo por pedido (R$)
+     12  = presença total do dia    (só linha T3)
+     13  = vol TFK                  (só linha T3)
+     14  = vol Shein                (só linha T3)
+     15  = vol D2D                  (só linha T3)
+     16  = vol Kwai                 (só linha T3)
+     17  = vol B2C                  (só linha T3)
+    """
+    from core.database import conectar_operacional
+
+    df_raw = pd.read_excel(arquivo, engine="openpyxl", header=None)
+
+    if df_raw.empty:
+        return 0
+
+    nome_arquivo = arquivo.name
+    data_importacao = datetime.now()
+
+    rows_turno  = []
+    rows_diario = []
+
+    data_atual = None
+
+    for _, row in df_raw.iterrows():
+        # Coluna 0 é a data (merged cell — só vem preenchida na linha T1)
+        val_data = row.iloc[0] if len(row) > 0 else None
+        if pd.notna(val_data) and val_data != "":
+            try:
+                data_atual = pd.to_datetime(val_data).date()
+            except Exception:
+                continue  # linha de cabeçalho ou inválida
+
+        if data_atual is None:
+            continue
+
+        turno = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
+        if turno not in ("T1", "T2", "T3"):
+            continue
+
+        def _int(idx):
+            v = row.iloc[idx] if len(row) > idx else None
+            try:
+                return int(float(v)) if pd.notna(v) else None
+            except Exception:
+                return None
+
+        def _float(idx):
+            v = row.iloc[idx] if len(row) > idx else None
+            try:
+                return float(v) if pd.notna(v) else None
+            except Exception:
+                return None
+
+        semana = str(pd.Timestamp(data_atual).isocalendar()[1]).zfill(2)
+        ano    = int(pd.Timestamp(data_atual).year)
+
+        rows_turno.append((
+            data_atual,
+            semana,
+            ano,
+            turno,
+            _int(2),    # produzido_turno
+            _int(6),    # presenca_turno
+            _int(12),   # presenca_total (só T3, None nos outros — OK)
+            _int(3),    # anjun
+            _int(4),    # temporarios
+            _int(5),    # diaristas_presenciais
+            _int(7),    # faltas_anjun
+            _int(8),    # faltas_temporarios
+            _float(9),  # perc_falta
+            _float(10), # custo_diaristas
+            _float(11), # custo_por_pedido
+            nome_arquivo,
+            data_importacao,
+        ))
+
+        if turno == "T3":
+            rows_diario.append((
+                data_atual,
+                semana,
+                ano,
+                _int(13),  # vol_tfk
+                _int(14),  # vol_shein
+                _int(15),  # vol_d2d
+                _int(16),  # vol_kwai
+                _int(17),  # vol_b2c
+                nome_arquivo,
+                data_importacao,
+            ))
+
+    if not rows_turno:
+        return 0
+
+    conn = conectar_operacional()
+    cur  = conn.cursor()
+
+    cur.execute("DELETE FROM presenca_turno  WHERE nome_arquivo = %s", [nome_arquivo])
+    cur.execute("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
+
+    execute_values(cur, """
+        INSERT INTO presenca_turno (
+            data, semana, ano, turno,
+            produzido_turno, presenca_turno, presenca_total,
+            anjun, temporarios, diaristas_presenciais,
+            faltas_anjun, faltas_temporarios, perc_falta,
+            custo_diaristas, custo_por_pedido,
+            nome_arquivo, data_importacao
+        ) VALUES %s
+    """, rows_turno)
+
+    if rows_diario:
+        execute_values(cur, """
+            INSERT INTO presenca_diaria (
+                data, semana, ano,
+                vol_tfk, vol_shein, vol_d2d, vol_kwai, vol_b2c,
+                nome_arquivo, data_importacao
+            ) VALUES %s
+        """, rows_diario)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return len(rows_turno)

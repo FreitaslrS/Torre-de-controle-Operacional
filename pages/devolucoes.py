@@ -1,11 +1,8 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 
 from core.repository import (
-    buscar_p90,
-    buscar_semanas_disponiveis_dev,
     buscar_datas_disponiveis_mon,
     buscar_dev_status_semanal,
     buscar_dev_iatas_semanal,
@@ -19,6 +16,7 @@ from core.repository import (
 )
 from utils.theme import grafico_barra, grafico_pizza, aplicar_layout_padrao
 from utils.style import tabela_padrao, aplicar_css_global, rodape_autoria
+from utils.semana import semana_para_datas, datas_para_label
 
 TODOS_ESTADOS = [
     "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO",
@@ -86,9 +84,8 @@ def render():
 </div>
 """, unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "📋 Resumo",
-        "📊 P90",
         "📊 WBR — Cliente",
         "📊 Semanal — Interno",
         "🗺️ P90 por Estado (Detalhado)"
@@ -100,10 +97,10 @@ def render():
     # TAB 1 — RESUMO
     # ════════════════════════════════════════
     with tab1:
-        df_semanas = buscar_semanas_disponiveis_dev()
+        df_semanas = buscar_semanas_dev_detalhado()
 
         if df_semanas.empty:
-            st.warning("Sem dados. Importe os arquivos 'Devolução'.")
+            st.warning("Sem dados. Importe usando 'Devolução + Monitoramento'.")
         else:
             opcoes = _opcoes_semana(df_semanas)
             sel = st.selectbox("Semana / 周", opcoes, key="semana_resumo")
@@ -127,56 +124,9 @@ def render():
                 tabela_padrao(df_status_res)
 
     # ════════════════════════════════════════
-    # TAB 2 — P90
+    # TAB 2 — WBR CLIENTE
     # ════════════════════════════════════════
     with tab2:
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-</svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">P90 — Tempo de Devolução (Percentil 90)</span>
-</div>""", unsafe_allow_html=True)
-        st.caption("Dias corridos da criação do pedido até recebimento da devolução, para 90% dos casos")
-
-        col_f1, col_f2 = st.columns(2)
-        ano_atual = pd.Timestamp.now().year
-        ano_p90 = col_f1.selectbox("Ano / 年份", [ano_atual, ano_atual - 1], index=0, key="ano_p90")
-
-        clientes_p90 = _cliente_multiselect("cliente_p90", df_clientes)
-
-        df_p90 = buscar_p90(ano=ano_p90, cliente=clientes_p90 if clientes_p90 else None)
-
-        if df_p90.empty:
-            st.warning("Sem dados de P90. Importe um arquivo 'Devolução - P90'.")
-        else:
-            semanas = sorted(df_p90["semana"].unique())
-            pivot = df_p90.pivot_table(
-                index="estado", columns="semana", values="p90_dias", aggfunc="mean"
-            ).round(1)
-
-            ytd_list = []
-            for estado, grupo in df_p90.groupby("estado"):
-                todos_dias = grupo["p90_dias"].repeat(grupo["qtd_pedidos"].astype(int))
-                ytd_val = round(float(np.percentile(todos_dias, 90)), 1) if len(todos_dias) > 0 else None
-                ytd_list.append({"estado": estado, "YTD": ytd_val})
-
-            df_ytd = pd.DataFrame(ytd_list).set_index("estado")
-            df_tabela = pd.DataFrame(index=TODOS_ESTADOS)
-            df_tabela.index.name = "Estado"
-            df_tabela = df_tabela.join(df_ytd).join(pivot).fillna("-").reset_index()
-
-            col1, col2, col3 = st.columns(3)
-            col1.metric("📦 Total pedidos", int(df_p90["qtd_pedidos"].sum()))
-            col2.metric("🗺️ Estados com dados", df_p90["estado"].nunique())
-            col3.metric("📊 P90 Geral (YTD)", f"{round(float(np.percentile(df_p90['p90_dias'].repeat(df_p90['qtd_pedidos'].astype(int)), 90)), 1)} dias")
-
-            st.divider()
-            tabela_padrao(df_tabela, altura_linhas=27)
-
-    # ════════════════════════════════════════
-    # TAB 3 — WBR CLIENTE
-    # ════════════════════════════════════════
-    with tab3:
         st.subheader("📊 WBR — Relatório ao Cliente")
 
         # ── Filtro de cliente ─────────────────────────────────────
@@ -217,16 +167,15 @@ def render():
         st.divider()
 
         # ── Backlog e Estados (Devolução — semanal) ───────────────
-        df_semanas_wbr = buscar_semanas_disponiveis_dev()
+        df_semanas_wbr = buscar_semanas_dev_detalhado()
 
         if df_semanas_wbr.empty:
-            st.info("Sem dados de status. Importe 'Devolução'.")
+            st.info("Sem dados de status. Importe 'Devolução + Monitoramento'.")
         else:
             opcoes_wbr = _opcoes_semana(df_semanas_wbr)
             sel_wbr = st.selectbox("Semana (Devolução) / 周", opcoes_wbr, key="semana_wbr")
             semana_wbr, ano_wbr = _parse_semana(sel_wbr)
 
-            from utils.semana import semana_para_datas, datas_para_label
             data_ini_wbr, data_fim_wbr = semana_para_datas(semana_wbr, ano_wbr)
             st.caption(f"Período: **{datas_para_label(data_ini_wbr, data_fim_wbr)}**")
 
@@ -293,9 +242,9 @@ def render():
                 st.info("Sem dados de motivos para esta data.")
 
     # ════════════════════════════════════════
-    # TAB 4 — SEMANAL INTERNO
+    # TAB 3 — SEMANAL INTERNO
     # ════════════════════════════════════════
-    with tab4:
+    with tab3:
         st.subheader("📊 Relatório Semanal — Interno")
 
         # ── Filtro de cliente ─────────────────────────────────────
@@ -303,10 +252,10 @@ def render():
         cliente_cod_int = clientes_int if clientes_int else None
 
         # ── Seletor Devolução (semanal) ───────────────────────────
-        df_semanas_int = buscar_semanas_disponiveis_dev()
+        df_semanas_int = buscar_semanas_dev_detalhado()
 
         if df_semanas_int.empty:
-            st.warning("Sem dados. Importe os arquivos 'Devolução'.")
+            st.warning("Sem dados. Importe usando 'Devolução + Monitoramento'.")
             semana_int = None
             ano_int    = None
             df_st_int  = pd.DataFrame()
@@ -315,7 +264,6 @@ def render():
             sel_int = st.selectbox("Semana (Devolução) / 周", opcoes_int, key="semana_int")
             semana_int, ano_int = _parse_semana(sel_int)
 
-            from utils.semana import semana_para_datas, datas_para_label
             data_ini_int, data_fim_int = semana_para_datas(semana_int, ano_int)
             st.caption(f"Período: **{datas_para_label(data_ini_int, data_fim_int)}**")
 
@@ -370,7 +318,7 @@ def render():
             with col_p2:
                 tabela_padrao(df_pizza_int.rename(columns={"categoria": "Categoria", "qtd": "Qtd"}))
         else:
-            st.info("Sem dados de status. Importe 'Devolução'.")
+            st.info("Sem dados de status. Importe 'Devolução + Monitoramento'.")
 
         st.divider()
 
@@ -434,19 +382,19 @@ def render():
 
         st.divider()
 
-        # ── Top 5 Iatas por Estado (DINÂMICO) ────────────────────
+        # ── Top 5 Pré-entregas por Estado (DINÂMICO) ─────────────
         st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 5 Iatas por Estado</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 5 Pré-entregas por Estado</span>
 </div>""", unsafe_allow_html=True)
-        st.caption("Estados calculados dinamicamente com base no volume da semana")
+        st.caption("Estados e pré-entregas calculados a partir do monitoramento de pontualidade")
 
         df_iatas_todos = buscar_dev_iatas_semanal(semana=semana_int, ano=ano_int)
 
         if df_iatas_todos.empty:
-            st.info("Sem dados de iatas para a semana selecionada.")
+            st.info("Sem dados de pré-entregas para a semana selecionada.")
         else:
             top_estados_semana = (
                 df_iatas_todos.groupby("estado")["qtd"]
@@ -511,9 +459,9 @@ def render():
             st.info("Sem dados de DSPs. Importe 'Devolução - Monitoramento'.")
 
     # ════════════════════════════════════════
-    # TAB 5 — P90 POR ESTADO DETALHADO
+    # TAB 4 — P90 POR ESTADO DETALHADO
     # ════════════════════════════════════════
-    with tab5:
+    with tab4:
         st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2">
 <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>

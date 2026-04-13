@@ -5,6 +5,7 @@ import plotly.express as px
 from core.database import consultar_backlog, consultar_processamento, consultar_operacional
 from utils.theme import grafico_barra, aplicar_layout_padrao
 from utils.style import tabela_padrao, aplicar_css_global, rodape_autoria
+from utils.semana import semana_para_datas, datas_para_label
 
 # ── Paleta Health Check ───────────────────────────────────────────────
 COR_PRINCIPAL  = "#DE121C"   # Vermelho Anjun — cor dominante desta página
@@ -47,13 +48,17 @@ def _sla_hub(data_inicio, data_fim):
 
 
 @st.cache_data(ttl=600)
-def _backlog_faixa(horas):
-    return consultar_backlog(f"""
-        SELECT estado, COUNT(*) AS total, pre_entrega
+def _backlog_faixas():
+    """Retorna backlog 24h e 48h em uma única query."""
+    return consultar_backlog("""
+        SELECT
+            estado,
+            pre_entrega,
+            SUM(CASE WHEN horas_backlog_snapshot > 24 THEN 1 ELSE 0 END) AS total_24,
+            SUM(CASE WHEN horas_backlog_snapshot > 48 THEN 1 ELSE 0 END) AS total_48
         FROM backlog_atual
-        WHERE horas_backlog_snapshot > {horas}
         GROUP BY estado, pre_entrega
-        ORDER BY total DESC
+        ORDER BY total_24 DESC
     """)
 
 
@@ -69,7 +74,6 @@ def _produtividade_turno(data_inicio, data_fim):
 
 
 def render():
-    from utils.semana import semana_para_datas, datas_para_label
     aplicar_css_global()
 
     st.markdown("""
@@ -201,7 +205,9 @@ def render():
 </div>""", unsafe_allow_html=True)
     st.caption("Snapshot atual — pacotes com mais de 24h no hub sem saída")
 
-    df_24 = _backlog_faixa(24)
+    df_faixas = _backlog_faixas()
+    df_24 = df_faixas[["estado", "pre_entrega", "total_24"]].rename(columns={"total_24": "total"})
+    df_24 = df_24[df_24["total"] > 0]
 
     if df_24.empty:
         st.info("Sem dados de backlog. Importe o arquivo de backlog.")
@@ -240,7 +246,8 @@ def render():
 </div>""", unsafe_allow_html=True)
     st.caption("Snapshot atual — pacotes com mais de 48h no hub sem saída")
 
-    df_48 = _backlog_faixa(48)
+    df_48 = df_faixas[["estado", "pre_entrega", "total_48"]].rename(columns={"total_48": "total"})
+    df_48 = df_48[df_48["total"] > 0]
 
     if df_48.empty:
         st.info("Sem dados de backlog 48h.")

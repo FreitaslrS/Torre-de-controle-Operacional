@@ -88,13 +88,21 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
                 raise Exception("Arquivo de Monitoramento não selecionado")
             qtd = importar_devolucao_enriquecida(arquivo, arquivo_secundario, data_ref)
 
-        elif tipo_importacao == "Coletas":
+        elif tipo_importacao == "Coletas — Descarregamento em Perus":
             from core.processar_arquivo import importar_coletas
             qtd = importar_coletas(arquivo, data_ref)
+
+        elif tipo_importacao == "Coletas — Saída para Bases":
+            from core.processar_arquivo import importar_coletas_saida
+            qtd = importar_coletas_saida(arquivo, data_ref)
 
         elif tipo_importacao == "Pacotes Grandes":
             from core.processar_arquivo import importar_pacotes_grandes
             qtd = importar_pacotes_grandes(arquivo, data_ref)
+
+        elif tipo_importacao == "Presença / Diário de Bordo":
+            from core.processar_arquivo import importar_presenca
+            qtd = importar_presenca(arquivo)
 
         else:
             raise Exception("Tipo de importação inválido")
@@ -136,9 +144,17 @@ def render():
 
     tipo_importacao = st.selectbox(
         "Tipo de Importação",
-        ["Backlog", "Produtividade", "Tempo de Processamento",
-         "Devolução", "Devolução - P90", "Devolução - Monitoramento",
-         "Devolução + Monitoramento", "Coletas", "Pacotes Grandes"]
+        [
+            "Backlog",
+            "Produtividade",
+            "Tempo de Processamento",
+            "Devolução + Monitoramento",
+            "Devolução - Monitoramento",
+            "Coletas — Descarregamento em Perus",
+            "Coletas — Saída para Bases",
+            "Pacotes Grandes",
+            "Presença / Diário de Bordo",
+        ]
     )
 
     # Uploader secundário para "Devolução + Monitoramento"
@@ -154,7 +170,10 @@ def render():
     # ========================
     # 📅 SELETOR DE DATA / SEMANA
     # ========================
-    TIPOS_SEMANAIS = {"Devolução", "Devolução - P90", "Devolução + Monitoramento", "Pacotes Grandes"}
+    TIPOS_SEMANAIS = {
+        "Devolução", "Devolução - P90", "Devolução + Monitoramento",
+        "Pacotes Grandes",
+    }
 
     if tipo_importacao in TIPOS_SEMANAIS:
         # Gera as últimas 52 semanas (segunda-feira de cada semana)
@@ -348,8 +367,44 @@ def render():
         GROUP BY nome_arquivo
     """)
 
+    from core.database import consultar_coletas
+
+    df_hist_col = consultar_coletas("""
+        SELECT
+            nome_arquivo,
+            COUNT(*) as registros,
+            MAX(data_importacao) as data_importacao,
+            MAX(data_referencia) as data_referencia,
+            CONCAT('Coletas — ', MAX(tipo)) as tipo
+        FROM coletas
+        GROUP BY nome_arquivo
+    """)
+
+    df_hist_det = consultar_devolucoes("""
+        SELECT
+            nome_arquivo,
+            COUNT(*) as registros,
+            MAX(data_importacao) as data_importacao,
+            MAX(data_referencia) as data_referencia,
+            'Devolução + Monitoramento' as tipo
+        FROM dev_detalhado
+        GROUP BY nome_arquivo
+    """)
+
+    df_hist_pres = consultar_operacional("""
+        SELECT
+            nome_arquivo,
+            COUNT(*) as registros,
+            MAX(data_importacao) as data_importacao,
+            CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia,
+            'Presença / Diário de Bordo' as tipo
+        FROM presenca_turno
+        GROUP BY nome_arquivo
+    """)
+
     df_hist = pd.concat(
-        [df_hist_backlog, df_hist_prod, df_hist_proc, df_hist_dev, df_hist_p90, df_hist_mon, df_hist_pg],
+        [df_hist_backlog, df_hist_prod, df_hist_proc, df_hist_dev, df_hist_p90,
+         df_hist_mon, df_hist_pg, df_hist_col, df_hist_det, df_hist_pres],
         ignore_index=True
     )
 
@@ -371,7 +426,7 @@ def render():
             except Exception:
                 return str(val) if pd.notna(val) else ""
 
-        for _, row in df_hist.iterrows():
+        for i, (_, row) in enumerate(df_hist.iterrows()):
             col1, col2, col3, col4, col5, col6 = st.columns([4,2,2,3,3,1])
 
             col1.write(row["nome_arquivo"])
@@ -380,7 +435,7 @@ def render():
             col4.write(f"📅 {fmt_ref(row['data_referencia'])}")
             col5.write(f"⏱️ {fmt_import(row['data_importacao'])}")
 
-            if col6.button("🗑️", key=f"{row['nome_arquivo']}_{row['data_importacao']}"):
+            if col6.button("🗑️", key=f"del_{i}"):
                 excluir_arquivo(row["nome_arquivo"])
                 st.success(f"{row['nome_arquivo']} excluído")
                 st.rerun()
@@ -455,10 +510,25 @@ def excluir_arquivo(nome_arquivo):
     )
 
     for tabela in ["dev_status_semanal", "dev_iatas_semanal", "dev_sla_semanal",
-                   "dev_motivos_semanal", "dev_dsp_sem3tent", "p90_semanal"]:
+                   "dev_motivos_semanal", "dev_dsp_sem3tent", "p90_semanal", "dev_detalhado"]:
         executar_devolucoes(
             f"DELETE FROM {tabela} WHERE nome_arquivo = %s",
             [nome_arquivo]
         )
+
+    from core.database import executar_coletas
+    executar_coletas(
+        "DELETE FROM coletas WHERE nome_arquivo = %s",
+        [nome_arquivo]
+    )
+
+    executar_operacional(
+        "DELETE FROM presenca_turno WHERE nome_arquivo = %s",
+        [nome_arquivo]
+    )
+    executar_operacional(
+        "DELETE FROM presenca_diaria WHERE nome_arquivo = %s",
+        [nome_arquivo]
+    )
 
     st.cache_data.clear()

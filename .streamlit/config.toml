@@ -3,9 +3,5 @@ headless = true
 port = 8501
 address = "localhost"
 
-[theme]
-base="light"
-
 [client]
 showSidebarNavigation = false
-

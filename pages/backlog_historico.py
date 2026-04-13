@@ -9,7 +9,8 @@ from core.repository import (
 )
 
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao, rodape_autoria
+from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global
+from utils.semana import semana_para_datas, datas_para_label
 
 # ── Paleta Backlog Histórico ──────────────────────────────────────────
 COR_PRINCIPAL  = "#053B31"   # Verde escuro — cor dominante desta página
@@ -35,7 +36,6 @@ def gerar_download(df, key_prefix):
 
 
 def render():
-    from utils.style import aplicar_css_global
     aplicar_css_global()
 
     st.markdown("""

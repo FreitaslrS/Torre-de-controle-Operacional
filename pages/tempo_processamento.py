@@ -8,7 +8,7 @@ from core.repository import (
 )
 
 from utils.theme import grafico_barra, grafico_pizza
-from utils.style import tabela_padrao, rodape_autoria
+from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global
 
 # ── Paleta Tempo de Processamento ────────────────────────────────────
 COR_PRINCIPAL  = "#F0A202"   # Amarelo Anjun — cor dominante desta página
@@ -30,7 +30,6 @@ traducao_status = {
 }
 
 def render():
-    from utils.style import aplicar_css_global
     aplicar_css_global()
 
     st.markdown("""

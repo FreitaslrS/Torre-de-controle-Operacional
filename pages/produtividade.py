@@ -2,9 +2,16 @@ import streamlit as st
 import plotly.express as px
 import pandas as pd
 
-from core.repository import buscar_produtividade, buscar_pacotes_grandes, buscar_semanas_pacotes_grandes
+from core.repository import (
+    buscar_produtividade,
+    buscar_pacotes_grandes,
+    buscar_semanas_pacotes_grandes,
+    buscar_semanas_presenca,
+    buscar_presenca_turno,
+    buscar_presenca_diaria,
+)
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao, rodape_autoria
+from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global
 
 # ── Paleta Produtividade ──────────────────────────────────────────────
 COR_PRINCIPAL  = "#009640"   # Verde Anjun — cor dominante desta página
@@ -36,13 +43,7 @@ map_traducao = {
 }
 
 
-@st.cache_data(ttl=300)
-def carregar_dados(data_inicio=None, data_fim=None):
-    return buscar_produtividade(data_inicio, data_fim)
-
-
 def render():
-    from utils.style import aplicar_css_global
     aplicar_css_global()
 
     st.markdown("""
@@ -58,7 +59,7 @@ def render():
 </div>
 """, unsafe_allow_html=True)
 
-    tab1, tab2 = st.tabs(["⚡ Produtividade", "📦 Pacotes Grandes"])
+    tab1, tab2, tab3 = st.tabs(["⚡ Produtividade", "📦 Pacotes Grandes", "👥 Presença e Eficiência"])
 
     with tab1:
         # =========================
@@ -70,9 +71,9 @@ def render():
         data_fim    = col2.date_input("Data fim",    value=None, key="prod_df")
 
         if data_inicio and data_fim:
-            df = carregar_dados(data_inicio, data_fim)
+            df = buscar_produtividade(data_inicio, data_fim)
         else:
-            df = carregar_dados()
+            df = buscar_produtividade()
 
         if df.empty:
             st.warning("Sem dados")
@@ -329,5 +330,155 @@ def render():
                     "peso_kg":     "Peso (kg)",
                     "volume_m3":   "Volume (m³)"
                 }))
+
+    # ════════════════════════════════════════
+    # TAB 3 — PRESENÇA E EFICIÊNCIA
+    # ════════════════════════════════════════
+    with tab3:
+        st.markdown("""<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#009640"
+     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+<circle cx="9" cy="7" r="4"/>
+<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+<path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Presença e Eficiência Operacional</span>
+</div>""", unsafe_allow_html=True)
+
+        df_sem_pres = buscar_semanas_presenca()
+
+        if df_sem_pres.empty:
+            st.warning("Sem dados. Importe a planilha de Presença na página de Importação.")
+        else:
+            col_f1, col_f2 = st.columns(2)
+            opcoes_pres = [f"{r['semana']}/{int(r['ano'])}" for _, r in df_sem_pres.iterrows()]
+            sem_pres = col_f1.selectbox("Semana", opcoes_pres, key="sem_pres")
+            s_pres, a_pres = sem_pres.split("/")
+            a_pres = int(a_pres)
+
+            turno_pres = col_f2.selectbox("Turno", ["Todos", "T1", "T2", "T3"], key="turno_pres")
+
+            df_turno  = buscar_presenca_turno(semana=s_pres, ano=a_pres)
+            df_diario = buscar_presenca_diaria(semana=s_pres, ano=a_pres)
+
+            if df_turno.empty:
+                st.warning("Sem dados para a semana selecionada.")
+            else:
+                df_turno_f = df_turno[df_turno["turno"] == turno_pres] if turno_pres != "Todos" else df_turno.copy()
+
+                # KPIs
+                total_prod         = int(df_turno_f["produzido_turno"].sum())
+                media_presenca     = round(df_turno_f["presenca_total"].mean(), 0)
+                total_faltas_anjun = int(df_turno_f["faltas_anjun"].sum())
+                total_faltas_temp  = int(df_turno_f["faltas_temporarios"].sum())
+                perc_falta_med     = round(df_turno_f["perc_falta"].mean() * 100, 1) if df_turno_f["perc_falta"].notna().any() else 0
+
+                col1, col2, col3, col4, col5 = st.columns(5)
+                col1.metric("Produzido na semana",  f"{total_prod:,}")
+                col2.metric("Presença média/dia",   int(media_presenca) if pd.notna(media_presenca) else 0)
+                col3.metric("Faltas Anjun",          total_faltas_anjun)
+                col4.metric("Faltas Temporários",    total_faltas_temp)
+                col5.metric("% Absenteísmo médio",  f"{perc_falta_med}%")
+
+                st.divider()
+
+                col_g1, col_g2 = st.columns(2)
+
+                with col_g1:
+                    st.markdown("**Produção por Turno**")
+                    df_prod_turno = (
+                        df_turno_f.groupby("turno")["produzido_turno"]
+                        .sum().reset_index()
+                        .sort_values("produzido_turno", ascending=False)
+                    )
+                    cores_t = {"T1": COR_PRINCIPAL, "T2": COR_SECUNDARIA, "T3": COR_APOIO}
+                    fig_pt = grafico_barra(df_prod_turno, x="turno", y="produzido_turno", text="produzido_turno")
+                    fig_pt.update_traces(
+                        marker_color=[cores_t.get(t, COR_PRINCIPAL) for t in df_prod_turno["turno"]],
+                        hovertemplate="<b>%{x}</b><br>Produzido: %{y}<extra></extra>"
+                    )
+                    st.plotly_chart(fig_pt, use_container_width=True, key="fig_prod_turno_pres")
+
+                with col_g2:
+                    st.markdown("**Eficiência por Turno (vol/pessoa)**")
+                    df_turno_f2 = df_turno_f.copy()
+                    df_turno_f2["eficiencia"] = (
+                        df_turno_f2["produzido_turno"] /
+                        df_turno_f2["presenca_turno"].replace(0, pd.NA)
+                    ).round(1)
+                    df_ef = df_turno_f2.groupby("turno")["eficiencia"].mean().round(1).reset_index()
+                    fig_ef = grafico_barra(df_ef, x="turno", y="eficiencia", text="eficiencia")
+                    fig_ef.update_traces(marker_color=COR_SECUNDARIA)
+                    fig_ef.update_layout(yaxis_title="Vol / pessoa")
+                    st.plotly_chart(fig_ef, use_container_width=True, key="fig_efic_pres")
+
+                st.divider()
+
+                if not df_diario.empty:
+                    st.markdown("**Evolução do Volume Diário por Cliente**")
+                    df_diario["data"] = pd.to_datetime(df_diario["data"])
+                    fig_vol = px.bar(
+                        df_diario.melt(
+                            id_vars=["data"],
+                            value_vars=["vol_tfk", "vol_shein", "vol_d2d", "vol_kwai", "vol_b2c"],
+                            var_name="cliente", value_name="volume"
+                        ),
+                        x="data", y="volume", color="cliente",
+                        color_discrete_map={
+                            "vol_tfk":   COR_PRINCIPAL,
+                            "vol_shein": COR_SECUNDARIA,
+                            "vol_d2d":   COR_APOIO,
+                            "vol_kwai":  "#F0A202",
+                            "vol_b2c":   "#DE121C",
+                        },
+                        labels={"data": "Data", "volume": "Volume", "cliente": "Cliente"}
+                    )
+                    fig_vol.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(t=10, b=0, l=0, r=0),
+                        legend=dict(orientation="h", y=-0.15),
+                        height=300
+                    )
+                    st.plotly_chart(fig_vol, use_container_width=True, key="fig_vol_cliente_pres")
+
+                st.divider()
+
+                st.markdown("**Custo de Diaristas por Dia**")
+                df_custo = (
+                    df_turno_f.groupby("data")["custo_diaristas"]
+                    .sum().reset_index().sort_values("data")
+                )
+                df_custo["data_fmt"] = pd.to_datetime(df_custo["data"]).dt.strftime("%d/%m")
+                fig_custo = grafico_barra(df_custo, x="data_fmt", y="custo_diaristas", text="custo_diaristas")
+                fig_custo.update_traces(
+                    marker_color=COR_PRINCIPAL,
+                    texttemplate="R$ %{text:,.0f}",
+                    hovertemplate="<b>%{x}</b><br>Custo: R$ %{y:,.0f}<extra></extra>"
+                )
+                fig_custo.update_layout(yaxis_title="R$")
+                st.plotly_chart(fig_custo, use_container_width=True, key="fig_custo_pres")
+
+                st.divider()
+
+                st.markdown("**Detalhamento por Turno**")
+                df_tab = df_turno_f[[
+                    "data", "turno", "produzido_turno", "presenca_turno",
+                    "anjun", "temporarios", "diaristas_presenciais",
+                    "faltas_anjun", "faltas_temporarios", "perc_falta",
+                    "custo_por_pedido", "custo_diaristas"
+                ]].copy()
+                df_tab["data"]             = pd.to_datetime(df_tab["data"]).dt.strftime("%d/%m/%Y")
+                df_tab["perc_falta"]       = (df_tab["perc_falta"] * 100).round(1).astype(str) + "%"
+                df_tab["custo_por_pedido"] = df_tab["custo_por_pedido"].apply(lambda x: f"R$ {x:.2f}" if pd.notna(x) else "-")
+                df_tab["custo_diaristas"]  = df_tab["custo_diaristas"].apply(lambda x: f"R$ {x:,.0f}" if pd.notna(x) else "-")
+                df_tab.columns = [
+                    "Data", "Turno", "Produzido", "Presença",
+                    "Anjun", "Temp.", "Diaristas",
+                    "Faltas Anjun", "Faltas Temp.", "% Falta",
+                    "Custo/Pedido", "Custo Diaristas"
+                ]
+                tabela_padrao(df_tab)
 
     rodape_autoria()

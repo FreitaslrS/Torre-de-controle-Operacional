@@ -1,5 +1,6 @@
 import streamlit as st
 import psycopg2
+import psycopg2.pool
 import os
 import pandas as pd
 from dotenv import load_dotenv
@@ -7,118 +8,95 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # =========================
-# 🔗 CONEXÕES COM CACHE (1 conexão reutilizada por sessão — leitura)
+# 🔗 POOLS DE CONEXÃO (thread-safe, 1–3 conexões por banco)
 # =========================
 
 @st.cache_resource
-def _conn_backlog():
-    return psycopg2.connect(os.getenv("DATABASE_URL_BACKLOG"), sslmode="require")
+def _pool_backlog():
+    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_BACKLOG"), sslmode="require")
 
 @st.cache_resource
-def _conn_operacional():
-    return psycopg2.connect(os.getenv("DATABASE_URL_OPERACIONAL"), sslmode="require")
+def _pool_operacional():
+    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_OPERACIONAL"), sslmode="require")
 
 @st.cache_resource
-def _conn_historico():
-    return psycopg2.connect(os.getenv("DATABASE_URL_HISTORICO"), sslmode="require")
+def _pool_historico():
+    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_HISTORICO"), sslmode="require")
 
 @st.cache_resource
-def _conn_devolucoes():
-    return psycopg2.connect(os.getenv("DATABASE_URL_DEVOLUCOES"), sslmode="require")
+def _pool_devolucoes():
+    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_DEVOLUCOES"), sslmode="require")
 
 @st.cache_resource
-def _conn_processamento():
-    return psycopg2.connect(os.getenv("DATABASE_URL_PROCESSAMENTO"), sslmode="require")
+def _pool_processamento():
+    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_PROCESSAMENTO"), sslmode="require")
+
+@st.cache_resource
+def _pool_coletas():
+    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_COLETAS"), sslmode="require")
 
 
-def _get_conn(fn):
-    """Retorna conexão cacheada; reconecta se caiu."""
-    conn = fn()
+def _consultar(pool_fn, query, params=None):
+    """Pega conexão do pool, executa query, devolve ao pool."""
+    pool = pool_fn()
+    conn = pool.getconn()
     try:
-        conn.cursor().execute("SELECT 1")
-    except Exception:
-        fn.clear()
-        conn = fn()
-    return conn
+        return pd.read_sql(query, conn, params=params)
+    finally:
+        pool.putconn(conn)
+
+
+def _executar_pool(pool_fn, query, params=None):
+    """Pega conexão do pool, executa write, devolve ao pool."""
+    pool = pool_fn()
+    conn = pool.getconn()
+    try:
+        cur = conn.cursor()
+        cur.execute(query, params or ())
+        conn.commit()
+        cur.close()
+    finally:
+        pool.putconn(conn)
 
 
 # =========================
-# 🔗 CONEXÕES DIRETAS (mantém compatibilidade com processar_arquivo.py)
+# 🔗 CONEXÕES DIRETAS (compatível com processar_arquivo.py que usa conn diretamente)
 # =========================
-def conectar_backlog():       return _get_conn(_conn_backlog)
-def conectar_operacional():   return _get_conn(_conn_operacional)
-def conectar_historico():     return _get_conn(_conn_historico)
-def conectar_devolucoes():    return _get_conn(_conn_devolucoes)
-def conectar_processamento(): return _get_conn(_conn_processamento)
-
-
-# =========================
-# 📊 CONSULTAR (usa conexão cacheada — sem overhead de reconexão)
-# =========================
-def consultar_backlog(query, params=None):
-    return pd.read_sql(query, _get_conn(_conn_backlog), params=params)
-
-def consultar_operacional(query, params=None):
-    return pd.read_sql(query, _get_conn(_conn_operacional), params=params)
-
-def consultar_historico(query, params=None):
-    return pd.read_sql(query, _get_conn(_conn_historico), params=params)
-
-def consultar_devolucoes(query, params=None):
-    return pd.read_sql(query, _get_conn(_conn_devolucoes), params=params)
-
-def consultar_processamento(query, params=None):
-    return pd.read_sql(query, _get_conn(_conn_processamento), params=params)
+def conectar_backlog():       return _pool_backlog().getconn()
+def conectar_operacional():   return _pool_operacional().getconn()
+def conectar_historico():     return _pool_historico().getconn()
+def conectar_devolucoes():    return _pool_devolucoes().getconn()
+def conectar_processamento(): return _pool_processamento().getconn()
+def conectar_coletas():       return _pool_coletas().getconn()
 
 
 # =========================
-# 🚀 EXECUTAR (abre conexão nova — correto para writes)
+# 📊 CONSULTAR
 # =========================
-def executar_backlog(query, params=None):
-    conn = psycopg2.connect(os.getenv("DATABASE_URL_BACKLOG"), sslmode="require")
-    cur = conn.cursor()
-    cur.execute(query, params or ())
-    conn.commit()
-    cur.close()
-    conn.close()
+def consultar_backlog(query, params=None):       return _consultar(_pool_backlog,       query, params)
+def consultar_operacional(query, params=None):   return _consultar(_pool_operacional,   query, params)
+def consultar_historico(query, params=None):     return _consultar(_pool_historico,     query, params)
+def consultar_devolucoes(query, params=None):    return _consultar(_pool_devolucoes,    query, params)
+def consultar_processamento(query, params=None): return _consultar(_pool_processamento, query, params)
+def consultar_coletas(query, params=None):       return _consultar(_pool_coletas,       query, params)
 
-def executar_operacional(query, params=None):
-    conn = psycopg2.connect(os.getenv("DATABASE_URL_OPERACIONAL"), sslmode="require")
-    cur = conn.cursor()
-    cur.execute(query, params or ())
-    conn.commit()
-    cur.close()
-    conn.close()
 
-def executar_historico(query, params=None):
-    conn = psycopg2.connect(os.getenv("DATABASE_URL_HISTORICO"), sslmode="require")
-    cur = conn.cursor()
-    cur.execute(query, params or ())
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def executar_devolucoes(query, params=None):
-    conn = psycopg2.connect(os.getenv("DATABASE_URL_DEVOLUCOES"), sslmode="require")
-    cur = conn.cursor()
-    cur.execute(query, params or ())
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def executar_processamento(query, params=None):
-    conn = psycopg2.connect(os.getenv("DATABASE_URL_PROCESSAMENTO"), sslmode="require")
-    cur = conn.cursor()
-    cur.execute(query, params or ())
-    conn.commit()
-    cur.close()
-    conn.close()
+# =========================
+# 🚀 EXECUTAR
+# =========================
+def executar_backlog(query, params=None):       _executar_pool(_pool_backlog,       query, params)
+def executar_operacional(query, params=None):   _executar_pool(_pool_operacional,   query, params)
+def executar_historico(query, params=None):     _executar_pool(_pool_historico,     query, params)
+def executar_devolucoes(query, params=None):    _executar_pool(_pool_devolucoes,    query, params)
+def executar_processamento(query, params=None): _executar_pool(_pool_processamento, query, params)
+def executar_coletas(query, params=None):       _executar_pool(_pool_coletas,       query, params)
 
 
 # =========================
 # 🧱 CRIAR TABELAS
 # =========================
 def inicializar_banco():
+    # ── BACKLOG ──────────────────────────────────────────────────────────
     executar_backlog("""
         CREATE TABLE IF NOT EXISTS pedidos (
             waybill TEXT,
@@ -151,6 +129,7 @@ def inicializar_banco():
         )
     """)
 
+    # ── HISTÓRICO ─────────────────────────────────────────────────────────
     executar_historico("""
         CREATE TABLE IF NOT EXISTS pedidos_resumo (
             data_referencia         DATE,
@@ -165,6 +144,7 @@ def inicializar_banco():
         )
     """)
 
+    # ── OPERACIONAL ───────────────────────────────────────────────────────
     executar_operacional("""
         CREATE TABLE IF NOT EXISTS produtividade (
             cliente         TEXT,
@@ -177,6 +157,63 @@ def inicializar_banco():
         )
     """)
 
+    executar_operacional("""
+        CREATE TABLE IF NOT EXISTS pacotes_grandes (
+            waybill_mae     TEXT,
+            waybill         TEXT,
+            cliente         TEXT,
+            status          TEXT,
+            estado          TEXT,
+            cidade          TEXT,
+            pre_entrega     TEXT,
+            produto         TEXT,
+            peso_kg         DOUBLE PRECISION,
+            volume_m3       DOUBLE PRECISION,
+            semana          TEXT,
+            ano             INTEGER,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
+    executar_operacional("""
+        CREATE TABLE IF NOT EXISTS presenca_turno (
+            data                    DATE,
+            semana                  TEXT,
+            ano                     INTEGER,
+            turno                   TEXT,
+            produzido_turno         INTEGER,
+            presenca_turno          INTEGER,
+            presenca_total          INTEGER,
+            anjun                   INTEGER,
+            temporarios             INTEGER,
+            diaristas_presenciais   INTEGER,
+            faltas_anjun            INTEGER,
+            faltas_temporarios      INTEGER,
+            perc_falta              DOUBLE PRECISION,
+            custo_diaristas         DOUBLE PRECISION,
+            custo_por_pedido        DOUBLE PRECISION,
+            nome_arquivo            TEXT,
+            data_importacao         TIMESTAMP
+        )
+    """)
+
+    executar_operacional("""
+        CREATE TABLE IF NOT EXISTS presenca_diaria (
+            data            DATE,
+            semana          TEXT,
+            ano             INTEGER,
+            vol_tfk         INTEGER,
+            vol_shein       INTEGER,
+            vol_d2d         INTEGER,
+            vol_kwai        INTEGER,
+            vol_b2c         INTEGER,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
+    # ── PROCESSAMENTO ─────────────────────────────────────────────────────
     executar_processamento("""
         CREATE TABLE IF NOT EXISTS tempo_processamento (
             estado          TEXT,
@@ -195,6 +232,7 @@ def inicializar_banco():
         )
     """)
 
+    # ── DEVOLUÇÕES ────────────────────────────────────────────────────────
     executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS dev_detalhado (
             waybill             TEXT,
@@ -218,7 +256,8 @@ def inicializar_banco():
         )
     """)
 
-    executar_operacional("""
+    # ── COLETAS (banco separado) ───────────────────────────────────────────
+    executar_coletas("""
         CREATE TABLE IF NOT EXISTS coletas (
             num_registro            TEXT,
             placa                   TEXT,
@@ -237,6 +276,7 @@ def inicializar_banco():
             dif_pacotes             INTEGER,
             modo_operacao           TEXT,
             tipo_veiculo            TEXT,
+            tipo                    TEXT,
             data_referencia         DATE,
             nome_arquivo            TEXT,
             data_importacao         TIMESTAMP
