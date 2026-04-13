@@ -9,7 +9,7 @@ from core.repository import (
 )
 
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao
+from utils.style import tabela_padrao, rodape_autoria
 
 # ── Paleta Backlog Histórico ──────────────────────────────────────────
 COR_PRINCIPAL  = "#053B31"   # Verde escuro — cor dominante desta página
@@ -274,3 +274,5 @@ def render():
 
         tabela_padrao(df_sla, use_container_width=True)
         gerar_download(df_sla, "drill_sla")
+
+    rodape_autoria()

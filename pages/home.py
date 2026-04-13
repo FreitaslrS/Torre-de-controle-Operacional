@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.style import aplicar_css_global
+from utils.style import aplicar_css_global, rodape_autoria
 
 # SVGs inline — sem dependência de CDN
 CARD_SVGS = {
@@ -125,3 +125,5 @@ def render():
             _render_card(pagina, titulo, subtitulo)
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+    rodape_autoria()

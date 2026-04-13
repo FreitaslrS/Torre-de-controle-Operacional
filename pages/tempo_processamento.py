@@ -8,7 +8,7 @@ from core.repository import (
 )
 
 from utils.theme import grafico_barra, grafico_pizza
-from utils.style import tabela_padrao
+from utils.style import tabela_padrao, rodape_autoria
 
 # ── Paleta Tempo de Processamento ────────────────────────────────────
 COR_PRINCIPAL  = "#F0A202"   # Amarelo Anjun — cor dominante desta página
@@ -297,3 +297,5 @@ def render():
             tabela_padrao(df_cons)
         else:
             st.warning("Sem dados para o período")
+
+    rodape_autoria()

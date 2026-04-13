@@ -8,7 +8,7 @@ from core.repository import (
     carregar_backlog_atual_completo,
 )
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao
+from utils.style import tabela_padrao, rodape_autoria
 
 # ── Paleta Backlog Atual ──────────────────────────────────────────────
 COR_PRINCIPAL  = "#009640"   # Verde Anjun — cor dominante desta página
@@ -337,6 +337,8 @@ def render():
         file_name="backlog_waybills.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+    rodape_autoria()
 
 
 # =========================

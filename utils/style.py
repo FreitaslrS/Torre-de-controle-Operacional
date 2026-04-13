@@ -10,6 +10,24 @@ def aplicar_css_global():
     """, unsafe_allow_html=True)
 
 
+def rodape_autoria():
+    import streamlit as st
+    st.markdown("""
+    <div style="
+        margin-top: 3rem;
+        padding-top: 0.8rem;
+        border-top: 1px solid rgba(0,0,0,0.08);
+        text-align: center;
+        font-family: 'Montserrat', sans-serif;
+        font-size: 10px;
+        color: #9CA3AF;
+        letter-spacing: 0.5px;
+    ">
+        © 2025 Samuel Freitas — Torre de Controle. Todos os direitos reservados.
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     import streamlit as st
     import pandas as pd

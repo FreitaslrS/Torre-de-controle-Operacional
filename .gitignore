@@ -1,17 +1,64 @@
-# ambiente
+# ── Ambiente virtual ──────────────────────────────────────────────────
 .venv/
 venv/
+env/
 
-# banco de dados
+# ── Variáveis de ambiente ─────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Streamlit ─────────────────────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ── Banco de dados local ──────────────────────────────────────────────
 *.db
 *.duckdb
+*.sqlite
+*.sqlite3
 
-# arquivos grandes
+# ── Dados operacionais (nunca subir) ─────────────────────────────────
+data/
+uploads/
+temp/
+
+# ── Arquivos de dados brutos ──────────────────────────────────────────
 *.xlsx
+*.xls
 *.csv
+*.parquet
 
-# cache
+# ── Cache Python ──────────────────────────────────────────────────────
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 
-.env
-.tmp
+# ── Logs ─────────────────────────────────────────────────────────────
+*.log
+*.log.*
+
+# ── Editores / IDEs ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Sistema operacional ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Build / dist ──────────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+
+# ── Temporários ──────────────────────────────────────────────────────
+*.tmp
+*.bak
+*.orig
+
+echo "" >> .gitignore && echo "# ── Claude Code (local) ─────────────────────────────────────────────" >> .gitignore && echo ".claude/" >> .gitignore

@@ -16,7 +16,7 @@ from core.repository import (
     buscar_clientes_fantasia,
 )
 from utils.theme import grafico_barra, grafico_pizza, aplicar_layout_padrao
-from utils.style import tabela_padrao, aplicar_css_global
+from utils.style import tabela_padrao, aplicar_css_global, rodape_autoria
 
 TODOS_ESTADOS = [
     "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO",
@@ -507,3 +507,5 @@ def render():
                 st.info("Sem dados de DSPs para esta data.")
         else:
             st.info("Sem dados de DSPs. Importe 'Devolução - Monitoramento'.")
+
+    rodape_autoria()

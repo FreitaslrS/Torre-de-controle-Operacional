@@ -4,7 +4,7 @@ import pandas as pd
 
 from core.repository import buscar_produtividade, buscar_pacotes_grandes, buscar_semanas_pacotes_grandes
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao
+from utils.style import tabela_padrao, rodape_autoria
 
 # ── Paleta Produtividade ──────────────────────────────────────────────
 COR_PRINCIPAL  = "#009640"   # Verde Anjun — cor dominante desta página
@@ -329,3 +329,5 @@ def render():
                     "peso_kg":     "Peso (kg)",
                     "volume_m3":   "Volume (m³)"
                 }))
+
+    rodape_autoria()

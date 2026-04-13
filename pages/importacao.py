@@ -394,6 +394,9 @@ def render():
                 st.cache_data.clear()
                 st.rerun()
 
+    from utils.style import rodape_autoria
+    rodape_autoria()
+
 
 # ========================
 # 🗑️ DELETE

@@ -4,7 +4,7 @@ import plotly.express as px
 
 from core.database import consultar_backlog, consultar_processamento, consultar_operacional
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao, aplicar_css_global
+from utils.style import tabela_padrao, aplicar_css_global, rodape_autoria
 
 # ── Paleta Health Check ───────────────────────────────────────────────
 COR_PRINCIPAL  = "#DE121C"   # Vermelho Anjun — cor dominante desta página
@@ -303,3 +303,5 @@ def render():
         )
         fig_turno = aplicar_layout_padrao(fig_turno)
         st.plotly_chart(fig_turno, use_container_width=True, key="fig_turno_hc")
+
+    rodape_autoria()

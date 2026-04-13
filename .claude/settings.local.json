@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(curl -sL \"https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson\" -o \"c:/Users/Samuel/OneDrive/Documentos/GitHub/torredecontrole/assets/brasil_estados.json\")",
-      "Bash(python -c \"import json; d=json.load\\(open\\('c:/Users/Samuel/OneDrive/Documentos/GitHub/torredecontrole/assets/brasil_estados.json',encoding='utf-8'\\)\\); f=d['features'][0]; print\\('Chaves properties:', list\\(f['properties'].keys\\(\\)\\)\\)\")"
+      "Bash(python -c \"import json; d=json.load\\(open\\('c:/Users/Samuel/OneDrive/Documentos/GitHub/torredecontrole/assets/brasil_estados.json',encoding='utf-8'\\)\\); f=d['features'][0]; print\\('Chaves properties:', list\\(f['properties'].keys\\(\\)\\)\\)\")",
+      "Bash(python -c ':*)"
     ]
   }
 }
