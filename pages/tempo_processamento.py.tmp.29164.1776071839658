@@ -278,7 +278,7 @@ def render():
         # =========================
         # 📊 CONSOLIDAÇÃO OPERACIONAL
         # =========================
-        st.subheader("📊 Consolidação Operacional (Perus + TFK)")
+        st.subheader("📊 Consolidação Operacional (Perus + TFK) - 运营整合（Perus + TFK）")
 
         df_cons = buscar_consolidado_por_dia(None, None)
 

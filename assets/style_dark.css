@@ -136,3 +136,12 @@ hr {
     font-family: 'Montserrat', sans-serif !important;
     font-size: 12px !important;
 }
+/* ── Protege ícone do expander ── */
+[data-testid="stExpander"] summary span[data-testid="stIconMaterial"] {
+    font-size: 14px !important;
+    color: inherit !important;
+    display: inline !important;
+}
+[data-testid="stExpander"] summary::after {
+    content: none !important;
+}

@@ -95,6 +95,7 @@ if page != "home":
     with col_back:
         if st.button("← Home", key="btn_voltar_home"):
             st.session_state.page = "home"
+            st.rerun()
 
 if page == "home":
     home.render()

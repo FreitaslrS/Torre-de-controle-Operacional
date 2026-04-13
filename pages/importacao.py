@@ -84,7 +84,7 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao):
 
         elif tipo_importacao == "Pacotes Grandes":
             from core.processar_arquivo import importar_pacotes_grandes
-            qtd = importar_pacotes_grandes(arquivo)
+            qtd = importar_pacotes_grandes(arquivo, data_ref)
 
         else:
             raise Exception("Tipo de importação inválido")

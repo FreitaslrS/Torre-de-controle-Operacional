@@ -256,7 +256,7 @@ def render():
         # =========================
         # 📊 HIATA H001 POR DIA
         # =========================
-        st.subheader("📊 Volume de Hiatas H001 por Dia")
+        st.subheader("📊 Volume de Hiatas H001 por Dia - 每日 H001 批次量")
 
         df_hiata = buscar_hiata_por_dia(data_inicio, data_fim)
 
@@ -278,7 +278,7 @@ def render():
         # =========================
         # 📊 CONSOLIDAÇÃO OPERACIONAL
         # =========================
-        st.subheader("📊 Consolidação Operacional (Perus + TFK)")
+        st.subheader("📊 Consolidação Operacional (Perus + TFK) - 运营整合（Perus + TFK）")
 
         df_cons = buscar_consolidado_por_dia(None, None)
 

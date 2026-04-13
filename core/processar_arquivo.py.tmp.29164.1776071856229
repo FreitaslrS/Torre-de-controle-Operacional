@@ -916,7 +916,7 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
 # ================================
 # 📦 PACOTES GRANDES (AJG)
 # ================================
-def importar_pacotes_grandes(arquivo, data_ref=None):
+def importar_pacotes_grandes(arquivo):
     import pandas as pd
     from datetime import datetime
     from psycopg2.extras import execute_values
@@ -940,15 +940,8 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
 
     df["data_status"]  = pd.to_datetime(df["data_status"],  errors="coerce")
     df["data_criacao"] = pd.to_datetime(df["data_criacao"], errors="coerce")
-
-    # Semana e ano forçados pela data de referência selecionada pelo usuário
-    if data_ref is not None:
-        ref_ts = pd.Timestamp(data_ref)
-        df["semana"] = ref_ts.strftime("w%V")
-        df["ano"]    = int(ref_ts.year)
-    else:
-        df["semana"] = df["data_criacao"].dt.strftime("w%V")
-        df["ano"]    = df["data_criacao"].dt.year
+    df["semana"]       = df["data_criacao"].dt.strftime("w%V")
+    df["ano"]          = df["data_criacao"].dt.year
     df["nome_arquivo"]    = arquivo.name
     df["data_importacao"] = datetime.now()
 
