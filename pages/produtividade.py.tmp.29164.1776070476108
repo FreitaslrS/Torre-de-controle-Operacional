@@ -233,7 +233,7 @@ def render():
             cores = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_top10) - 1)
             fig_cliente = px.bar(
                 df_top10, x="volumes", y="cliente", orientation="h", text="volumes",
-                labels={"volumes": "Volumes", "cliente": "Cliente"}
+                labels={"volumes": "Volumes", "cliente": "Cliente / 客户"}
             )
             fig_cliente.update_traces(marker_color=cores, textposition="outside")
             fig_cliente = aplicar_layout_padrao(fig_cliente)
@@ -247,7 +247,7 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produção por Cliente</span>
 </div>""", unsafe_allow_html=True)
             df_cliente_fmt = df_cliente.copy()
-            df_cliente_fmt.columns = ["Cliente", "Volumes"]
+            df_cliente_fmt.columns = ["Cliente / 客户", "Volumes"]
             tabela_padrao(df_cliente_fmt)
 
     with tab2:

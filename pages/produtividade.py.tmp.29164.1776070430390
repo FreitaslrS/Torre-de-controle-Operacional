@@ -66,8 +66,8 @@ def render():
         # =========================
         col1, col2, col3 = st.columns(3)
 
-        data_inicio = col1.date_input("Data início", value=None, key="prod_di")
-        data_fim    = col2.date_input("Data fim",    value=None, key="prod_df")
+        data_inicio = col1.date_input("📅 Data início / 开始日期", value=None, key="prod_di")
+        data_fim    = col2.date_input("📅 Data fim / 结束日期",    value=None, key="prod_df")
 
         if data_inicio and data_fim:
             df = carregar_dados(data_inicio, data_fim)
@@ -75,17 +75,17 @@ def render():
             df = carregar_dados()
 
         if df.empty:
-            st.warning("Sem dados")
+            st.warning("Sem dados / 暂无数据")
             return
 
         df["data"] = pd.to_datetime(df["data"]).dt.date
 
-        turno = col3.selectbox("Turno", ["Todos", "T1", "T2", "T3"])
+        turno = col3.selectbox("🕒 Turno / 班次", ["Todos", "T1", "T2", "T3"])
         if turno != "Todos":
             df = df[df["turno"] == turno]
 
         if df.empty:
-            st.warning("Sem dados após filtros")
+            st.warning("Sem dados após filtros / 筛选后无数据")
             return
 
         st.divider()
@@ -99,7 +99,7 @@ def render():
         t3    = int(df[df["turno"] == "T3"]["volumes"].sum())
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total", total)
+        col1.metric("📦 Total / 总量", total)
         col2.metric("🟢 T1", t1, f"{(t1/total*100):.1f}%" if total else "0%")
         col3.metric("🔵 T2", t2, f"{(t2/total*100):.1f}%" if total else "0%")
         col4.metric("⚪ T3", t3, f"{(t3/total*100):.1f}%" if total else "0%")
@@ -172,7 +172,7 @@ def render():
             df_bar, x="hora", y="volumes",
             color="dispositivo", barmode="stack",
             color_discrete_map=color_dispositivo,
-            labels={"hora": "Hora", "volumes": "Volumes", "dispositivo": "Dispositivo"}
+            labels={"hora": "Hora / 时间", "volumes": "Volumes / 数量", "dispositivo": "Dispositivo / 设备"}
         )
         fig_bar.for_each_trace(lambda t: t.update(name=map_traducao.get(t.name, t.name)))
         fig_bar.update_xaxes(dtick=1)
@@ -204,7 +204,7 @@ def render():
         cols_disp = [map_traducao[d] for d in dispositivos if map_traducao[d] in df_tabela.columns]
         df_tabela["Total"] = df_tabela[cols_disp].sum(axis=1)
         df_tabela["hora"] = df_tabela["hora"].apply(lambda x: f"{int(x):02d}:00")
-        df_tabela.rename(columns={"hora": "Hora"}, inplace=True)
+        df_tabela.rename(columns={"hora": "Hora / 时间"}, inplace=True)
         tabela_padrao(df_tabela)
 
         st.divider()
@@ -233,7 +233,7 @@ def render():
             cores = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_top10) - 1)
             fig_cliente = px.bar(
                 df_top10, x="volumes", y="cliente", orientation="h", text="volumes",
-                labels={"volumes": "Volumes", "cliente": "Cliente"}
+                labels={"volumes": "Volumes / 数量", "cliente": "Cliente / 客户"}
             )
             fig_cliente.update_traces(marker_color=cores, textposition="outside")
             fig_cliente = aplicar_layout_padrao(fig_cliente)
@@ -247,7 +247,7 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produção por Cliente</span>
 </div>""", unsafe_allow_html=True)
             df_cliente_fmt = df_cliente.copy()
-            df_cliente_fmt.columns = ["Cliente", "Volumes"]
+            df_cliente_fmt.columns = ["Cliente / 客户", "Volumes / 数量"]
             tabela_padrao(df_cliente_fmt)
 
     with tab2:

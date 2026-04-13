@@ -131,7 +131,7 @@ def render():
                      .sort_values("qtd", ascending=False)
                      .head(10))
 
-    _pp = df_base["proximo_ponto"].replace("", None).fillna("Sem informação")
+    _pp = df_base["proximo_ponto"].replace("", None).fillna("Sem informação / 无信息")
     df_proximo = (df_base.assign(proximo_ponto=_pp)
                          .groupby("proximo_ponto", as_index=False)["waybill"]
                          .count().rename(columns={"waybill": "qtd"}))
@@ -193,58 +193,6 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Cliente</span>
 </div>""", unsafe_allow_html=True)
         st.plotly_chart(fig_cliente, use_container_width=True)
-
-    st.divider()
-
-    # =========================
-    # 🗺️ MAPA GEOGRÁFICO
-    # =========================
-    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-</svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Distribuição Geográfica</span>
-</div>""", unsafe_allow_html=True)
-
-    import json, os as _os
-
-    _geojson_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "assets", "brasil_estados.json")
-
-    if _os.path.exists(_geojson_path):
-        with open(_geojson_path, encoding="utf-8") as _f:
-            _geojson_brasil = json.load(_f)
-
-        fig_mapa = px.choropleth(
-            df_estado,
-            geojson=_geojson_brasil,
-            locations="estado",
-            featureidkey="properties.sigla",
-            color="qtd",
-            color_continuous_scale=[
-                [0,   "#e8f5e9"],
-                [0.4, "#009640"],
-                [1,   "#053B31"]
-            ],
-            labels={"qtd": "Volume", "estado": "Estado"},
-            hover_name="estado",
-            hover_data={"qtd": True, "estado": False}
-        )
-        fig_mapa.update_geos(fitbounds="locations", visible=False)
-        fig_mapa.update_layout(
-            margin={"r": 0, "t": 0, "l": 0, "b": 0},
-            paper_bgcolor="rgba(0,0,0,0)",
-            coloraxis_colorbar=dict(
-                title="Volume",
-                thicknessmode="pixels", thickness=14,
-                lenmode="fraction", len=0.6,
-                tickfont=dict(family="Montserrat", size=11)
-            ),
-            height=420
-        )
-        st.plotly_chart(fig_mapa, use_container_width=True, key="mapa_backlog")
-    else:
-        st.info("GeoJSON não encontrado em assets/brasil_estados.json")
 
     st.divider()
 

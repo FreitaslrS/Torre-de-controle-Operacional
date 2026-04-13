@@ -1,3 +1,4 @@
+import streamlit as st
 import psycopg2
 import os
 import pandas as pd
@@ -6,45 +7,75 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # =========================
-# 🔗 CONEXÕES
+# 🔗 CONEXÕES COM CACHE (1 conexão reutilizada por sessão — leitura)
 # =========================
-def conectar_backlog():
-    return psycopg2.connect(
-        os.getenv("DATABASE_URL_BACKLOG"),
-        sslmode="require"
-    )
 
-def conectar_operacional():
-    return psycopg2.connect(
-        os.getenv("DATABASE_URL_OPERACIONAL"),
-        sslmode="require"
-    )
+@st.cache_resource
+def _conn_backlog():
+    return psycopg2.connect(os.getenv("DATABASE_URL_BACKLOG"), sslmode="require")
 
-def conectar_historico():
-    return psycopg2.connect(
-        os.getenv("DATABASE_URL_HISTORICO"),
-        sslmode="require"
-    )
+@st.cache_resource
+def _conn_operacional():
+    return psycopg2.connect(os.getenv("DATABASE_URL_OPERACIONAL"), sslmode="require")
 
-def executar_historico(query, params=None):
-    conn = conectar_historico()
-    cur = conn.cursor()
-    cur.execute(query, params or ())
-    conn.commit()
-    cur.close()
-    conn.close()
+@st.cache_resource
+def _conn_historico():
+    return psycopg2.connect(os.getenv("DATABASE_URL_HISTORICO"), sslmode="require")
+
+@st.cache_resource
+def _conn_devolucoes():
+    return psycopg2.connect(os.getenv("DATABASE_URL_DEVOLUCOES"), sslmode="require")
+
+@st.cache_resource
+def _conn_processamento():
+    return psycopg2.connect(os.getenv("DATABASE_URL_PROCESSAMENTO"), sslmode="require")
+
+
+def _get_conn(fn):
+    """Retorna conexão cacheada; reconecta se caiu."""
+    conn = fn()
+    try:
+        conn.cursor().execute("SELECT 1")
+    except Exception:
+        fn.clear()
+        conn = fn()
+    return conn
+
+
+# =========================
+# 🔗 CONEXÕES DIRETAS (mantém compatibilidade com processar_arquivo.py)
+# =========================
+def conectar_backlog():       return _get_conn(_conn_backlog)
+def conectar_operacional():   return _get_conn(_conn_operacional)
+def conectar_historico():     return _get_conn(_conn_historico)
+def conectar_devolucoes():    return _get_conn(_conn_devolucoes)
+def conectar_processamento(): return _get_conn(_conn_processamento)
+
+
+# =========================
+# 📊 CONSULTAR (usa conexão cacheada — sem overhead de reconexão)
+# =========================
+def consultar_backlog(query, params=None):
+    return pd.read_sql(query, _get_conn(_conn_backlog), params=params)
+
+def consultar_operacional(query, params=None):
+    return pd.read_sql(query, _get_conn(_conn_operacional), params=params)
 
 def consultar_historico(query, params=None):
-    conn = conectar_historico()
-    df = pd.read_sql(query, conn, params=params)
-    conn.close()
-    return df
+    return pd.read_sql(query, _get_conn(_conn_historico), params=params)
+
+def consultar_devolucoes(query, params=None):
+    return pd.read_sql(query, _get_conn(_conn_devolucoes), params=params)
+
+def consultar_processamento(query, params=None):
+    return pd.read_sql(query, _get_conn(_conn_processamento), params=params)
+
 
 # =========================
-# 🚀 EXECUTAR
+# 🚀 EXECUTAR (abre conexão nova — correto para writes)
 # =========================
 def executar_backlog(query, params=None):
-    conn = conectar_backlog()
+    conn = psycopg2.connect(os.getenv("DATABASE_URL_BACKLOG"), sslmode="require")
     cur = conn.cursor()
     cur.execute(query, params or ())
     conn.commit()
@@ -52,27 +83,37 @@ def executar_backlog(query, params=None):
     conn.close()
 
 def executar_operacional(query, params=None):
-    conn = conectar_operacional()
+    conn = psycopg2.connect(os.getenv("DATABASE_URL_OPERACIONAL"), sslmode="require")
     cur = conn.cursor()
     cur.execute(query, params or ())
     conn.commit()
     cur.close()
     conn.close()
 
-# =========================
-# 📊 CONSULTAR
-# =========================
-def consultar_backlog(query, params=None):
-    conn = conectar_backlog()
-    df = pd.read_sql(query, conn, params=params)
+def executar_historico(query, params=None):
+    conn = psycopg2.connect(os.getenv("DATABASE_URL_HISTORICO"), sslmode="require")
+    cur = conn.cursor()
+    cur.execute(query, params or ())
+    conn.commit()
+    cur.close()
     conn.close()
-    return df
 
-def consultar_operacional(query, params=None):
-    conn = conectar_operacional()
-    df = pd.read_sql(query, conn, params=params)
+def executar_devolucoes(query, params=None):
+    conn = psycopg2.connect(os.getenv("DATABASE_URL_DEVOLUCOES"), sslmode="require")
+    cur = conn.cursor()
+    cur.execute(query, params or ())
+    conn.commit()
+    cur.close()
     conn.close()
-    return df
+
+def executar_processamento(query, params=None):
+    conn = psycopg2.connect(os.getenv("DATABASE_URL_PROCESSAMENTO"), sslmode="require")
+    cur = conn.cursor()
+    cur.execute(query, params or ())
+    conn.commit()
+    cur.close()
+    conn.close()
+
 
 # =========================
 # 🧱 CRIAR TABELAS
@@ -153,43 +194,3 @@ def inicializar_banco():
             data_importacao TIMESTAMP
         )
     """)
-
-def conectar_devolucoes():
-    return psycopg2.connect(
-        os.getenv("DATABASE_URL_DEVOLUCOES"),
-        sslmode="require"
-    )
-
-def consultar_devolucoes(query, params=None):
-    conn = conectar_devolucoes()
-    df = pd.read_sql(query, conn, params=params)
-    conn.close()
-    return df
-
-def executar_devolucoes(query, params=None):
-    conn = conectar_devolucoes()
-    cur = conn.cursor()
-    cur.execute(query, params or ())
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def conectar_processamento():
-    return psycopg2.connect(
-        os.getenv("DATABASE_URL_PROCESSAMENTO"),
-        sslmode="require"
-    )
-
-def executar_processamento(query, params=None):
-    conn = conectar_processamento()
-    cur = conn.cursor()
-    cur.execute(query, params or ())
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def consultar_processamento(query, params=None):
-    conn = conectar_processamento()
-    df = pd.read_sql(query, conn, params=params)
-    conn.close()
-    return df

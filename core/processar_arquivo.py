@@ -12,7 +12,6 @@ from core.database import (
 )
 from core.database import conectar_processamento
 
-import requests
 import os
 
 
@@ -70,35 +69,6 @@ def limpar_historico_antigo():
     except Exception as e:
         print(f"⚠️ Erro na limpeza automática: {e}")
 
-
-def enviar_telegram(msg):
-    TOKEN = 'SEU_TOKEN_AQUI'
-    CHAT_ID = 'SEU_CHAT_ID_AQUI'
-
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
-    requests.post(url, data={
-        'chat_id': CHAT_ID,
-        'text': msg
-    })
-
-    # ⚠️ BLOCO DESATIVADO (evita erro e loop infinito)
-    """
-    enviar_telegram(f"...")
-
-    import tkinter as tk
-
-    def executar():
-        os.system("Automacao_Anjun.exe")
-
-    janela = tk.Tk()
-    janela.title("Automação Anjun")
-
-    botao = tk.Button(janela, text="Executar", command=executar)
-    botao.pack(padx=50, pady=30)
-
-    janela.mainloop()
-    """
 
 COLUNAS_MAPEAMENTO = {
     "waybill": ["waybill", "awb", "pedido"],
@@ -232,7 +202,7 @@ def preparar_dados(arquivo, data_referencia):
     dados["nome_arquivo"] = arquivo.name
 
     # 🔥 tratar próximo ponto
-    dados["proximo_ponto"] = dados["proximo_ponto"].fillna("Sem informação / 无信息")
+    dados["proximo_ponto"] = dados["proximo_ponto"].fillna("Sem informação")
 
     return dados
 
@@ -388,7 +358,7 @@ def importar_excel(arquivo, data_referencia):
     df_backlog["data_referencia"]        = agora.date()
     df_backlog["data_importacao"]        = datetime.now()
     df_backlog["nome_arquivo"]           = arquivo.name
-    df_backlog["proximo_ponto"]          = df_backlog["proximo_ponto"].fillna("Sem informação / 无信息")
+    df_backlog["proximo_ponto"]          = df_backlog["proximo_ponto"].fillna("Sem informação")
 
     # ── CAMADA 1: backlog_atual (snapshot atual por waybill) ──────────
     existentes     = consultar_backlog("SELECT waybill FROM backlog_atual")

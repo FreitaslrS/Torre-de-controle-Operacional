@@ -149,7 +149,7 @@ def render():
 
         labels_sem = [o[0] for o in opcoes_sem]
         idx_sel = st.selectbox(
-            "Semana de referência",
+            "Semana de referência / 参考周",
             range(len(labels_sem)),
             format_func=lambda i: labels_sem[i],
             key="sel_semana_ref"
@@ -157,12 +157,12 @@ def render():
         data_ref = opcoes_sem[idx_sel][1]   # segunda-feira da semana selecionada
         st.caption(f"Semana {int(data_ref.strftime('%V')):02d} / {data_ref.year} — de {data_ref.strftime('%d/%m/%Y')} a {(data_ref + timedelta(days=6)).strftime('%d/%m/%Y')}")
     else:
-        data_ref = st.date_input("Data de referência")
+        data_ref = st.date_input("Data de referência / 参考日期")
 
     # ========================
     # 🚀 IMPORTAR
     # ========================
-    if st.button("Importar"):
+    if st.button("Importar / 导入"):
 
         if tipo_importacao == "Backlog" and not data_ref:
             st.warning("Selecione a data de referência")
@@ -236,7 +236,7 @@ def render():
     # ========================
     # 📜 HISTÓRICO
     # ========================
-    st.subheader("📊 Histórico de Importações")
+    st.subheader("📊 Histórico de Importações / 导入历史")
 
     from core.database import consultar_backlog as consultar
 
@@ -327,7 +327,7 @@ def render():
     df_hist = df_hist.sort_values("data_importacao", ascending=False)
 
     if df_hist.empty:
-        st.info("Nenhum arquivo importado ainda")
+        st.info("Nenhum arquivo importado ainda / 暂无导入记录")
     else:
         # Formatar datas para exibição
         def fmt_ref(val):

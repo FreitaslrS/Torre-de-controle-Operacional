@@ -39,6 +39,25 @@ def listar_arquivos():
 
 
 # =========================
+# 📊 BACKLOG COMPLETO (cache p/ filtros em Python)
+# =========================
+@st.cache_data(ttl=300)
+def carregar_backlog_atual_completo():
+    """
+    Carrega backlog_atual completo uma vez. Usado para filtros em Python na
+    página Backlog Atual — evita 4 roundtrips ao banco por mudança de filtro.
+    """
+    return consultar_backlog("""
+        SELECT
+            waybill, cliente, estado, cidade,
+            pre_entrega, proximo_ponto,
+            horas_backlog_snapshot, faixa_backlog_snapshot,
+            data_atualizacao
+        FROM backlog_atual
+    """)
+
+
+# =========================
 # 📊 BACKLOG RESUMO
 # =========================
 @st.cache_data(ttl=600)

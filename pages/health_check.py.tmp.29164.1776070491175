@@ -128,46 +128,26 @@ def render():
     if df_sla.empty or df_sla["total"].iloc[0] is None:
         st.warning("Sem dados de tempo de processamento para esta semana.")
     else:
-        total_a  = int(df_sla["total"].iloc[0]  or 0)
-        dentro_a = int(df_sla["dentro"].iloc[0] or 0)
-        fora_a   = int(df_sla["fora"].iloc[0]   or 0)
-        sem_info = int(df_sla["sem_info"].iloc[0] or 0)
-        lead_a   = float(df_sla["lead_medio_h"].iloc[0] or 0)
+        total    = int(df_sla["total"].iloc[0])
+        dentro   = int(df_sla["dentro"].iloc[0])
+        fora     = int(df_sla["fora"].iloc[0])
+        sem_info = int(df_sla["sem_info"].iloc[0])
+        lead_h   = float(df_sla["lead_medio_h"].iloc[0] or 0)
 
-        perc_sla_a   = round(dentro_a / total_a * 100, 1) if total_a else 0
-        pct_fora     = fora_a   / total_a * 100 if total_a else 0
-        pct_sem_info = sem_info / total_a * 100 if total_a else 0
+        pct_dentro   = dentro   / total * 100 if total else 0
+        pct_fora     = fora     / total * 100 if total else 0
+        pct_sem_info = sem_info / total * 100 if total else 0
 
-        hh = int(lead_a)
-        mm = int((lead_a - hh) * 60)
+        hh = int(lead_h)
+        mm = int((lead_h - hh) * 60)
         lead_fmt = f"{hh:02d}:{mm:02d}h"
 
-        if comp_ativo:
-            df_sla_c   = _sla_hub(data_inicio_c, data_fim_c)
-            total_c    = int(df_sla_c["total"].iloc[0]  or 0) if not df_sla_c.empty else 0
-            dentro_c   = int(df_sla_c["dentro"].iloc[0] or 0) if not df_sla_c.empty else 0
-            lead_c     = float(df_sla_c["lead_medio_h"].iloc[0] or 0) if not df_sla_c.empty else 0
-            perc_sla_c = round(dentro_c / total_c * 100, 1) if total_c else 0
-        else:
-            total_c = dentro_c = lead_c = perc_sla_c = None
-
-        col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns(5)
-        col_s1.metric("Total Processado", f"{total_a:,}",
-                      delta=int(total_a - total_c) if comp_ativo else None)
-        col_s2.metric("✅ Dentro do SLA", f"{dentro_a:,}",
-                      delta=int(dentro_a - dentro_c) if comp_ativo else None)
-        col_s3.metric("% SLA", f"{perc_sla_a}%",
-                      delta=f"{round(perc_sla_a - perc_sla_c, 1)}%" if comp_ativo else None)
-        col_s4.metric("⏱️ Lead Time Médio", lead_fmt,
-                      delta=f"{round(lead_a - lead_c, 1)}h" if comp_ativo else None,
-                      delta_color="inverse")
-        col_s5.metric("❌ Fora do SLA", f"{fora_a:,}", f"{pct_fora:.1f}%")
-
-        total    = total_a
-        dentro   = dentro_a
-        fora     = fora_a
-        lead_h   = lead_a
-        pct_dentro = perc_sla_a
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Total / 总计",          f"{total:,}")
+        col2.metric("✅ Dentro do Prazo",    f"{dentro:,}",   f"{pct_dentro:.1f}%")
+        col3.metric("❌ Fora do Prazo",      f"{fora:,}",     f"{pct_fora:.1f}%")
+        col4.metric("⚪ Sem Info Saída",     f"{sem_info:,}", f"{pct_sem_info:.1f}%")
+        col5.metric("⏱️ Lead Time Médio",    lead_fmt)
 
         if pct_dentro < 70:
             st.error(f"🚨 SLA crítico: apenas {pct_dentro:.1f}% dentro do prazo")

@@ -123,5 +123,3 @@ def render():
         pagina, titulo, subtitulo = CARDS[3 + i]
         with col:
             _render_card(pagina, titulo, subtitulo)
-
-    st.markdown('</div>', unsafe_allow_html=True)

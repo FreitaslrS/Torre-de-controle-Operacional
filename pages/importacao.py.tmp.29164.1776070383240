@@ -327,7 +327,7 @@ def render():
     df_hist = df_hist.sort_values("data_importacao", ascending=False)
 
     if df_hist.empty:
-        st.info("Nenhum arquivo importado ainda")
+        st.info("Nenhum arquivo importado ainda / 暂无导入记录")
     else:
         # Formatar datas para exibição
         def fmt_ref(val):
