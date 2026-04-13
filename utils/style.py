@@ -23,7 +23,7 @@ def rodape_autoria():
         color: #9CA3AF;
         letter-spacing: 0.5px;
     ">
-        © 2025 Samuel Freitas — Torre de Controle. Todos os direitos reservados.
+        © 2026 Samuel Freitas — Torre de Controle. Todos os direitos reservados.
     </div>
     """, unsafe_allow_html=True)
 
