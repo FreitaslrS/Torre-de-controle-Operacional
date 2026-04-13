@@ -16,6 +16,7 @@ import pages.devolucoes as devolucoes
 import pages.importacao as importacao
 import pages.tempo_processamento as tempo_processamento
 import pages.health_check as health_check
+import pages.coletas as coletas
 
 st.markdown("""
 <style>
@@ -117,6 +118,9 @@ elif page == "health_check":
 
 elif page == "devolucoes":
     devolucoes.render()
+
+elif page == "coletas":
+    coletas.render()
 
 elif page == "importacao":
     importacao.render()

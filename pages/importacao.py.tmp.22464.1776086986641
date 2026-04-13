@@ -194,10 +194,6 @@ def render():
             st.warning("Selecione arquivos")
             return
 
-        if tipo_importacao == "Devolução + Monitoramento" and arquivo_monitor_secundario is None:
-            st.warning("Selecione o arquivo de Monitoramento de Pontualidade")
-            return
-
         progress = st.progress(0)
         status_text = st.empty()
 
@@ -207,10 +203,7 @@ def render():
 
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = [
-                executor.submit(
-                    processar_arquivo_individual, arq, data_ref, tipo_importacao,
-                    arquivo_monitor_secundario
-                )
+                executor.submit(processar_arquivo_individual, arq, data_ref, tipo_importacao)
                 for arq in arquivos
             ]
 

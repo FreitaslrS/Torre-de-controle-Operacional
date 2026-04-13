@@ -600,7 +600,9 @@ def buscar_dev_sla_semanal(cliente=None):
         WHERE 1=1
     """
     params = []
-    query, params = _filtro_cliente(query, params, cliente)
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
     query += " GROUP BY data_referencia, cliente, cliente_fantasia ORDER BY data_referencia"
     return consultar_devolucoes(query, params if params else None)
 
@@ -615,7 +617,9 @@ def buscar_dev_motivos(data_ref=None, cliente=None):
     if data_ref:
         query += " AND data_referencia = %s"
         params.append(data_ref)
-    query, params = _filtro_cliente(query, params, cliente)
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
     query += " GROUP BY motivo ORDER BY qtd DESC"
     return consultar_devolucoes(query, params if params else None)
 
@@ -630,7 +634,9 @@ def buscar_dev_interceptados(data_ref=None, cliente=None):
     if data_ref:
         query += " AND data_referencia = %s"
         params.append(data_ref)
-    query, params = _filtro_cliente(query, params, cliente)
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
     query += " GROUP BY ponto_entrada, estado ORDER BY qtd DESC"
     return consultar_devolucoes(query, params if params else None)
 
@@ -645,50 +651,11 @@ def buscar_dev_dsp_sem3tent(data_ref=None, cliente=None):
     if data_ref:
         query += " AND data_referencia = %s"
         params.append(data_ref)
-    query, params = _filtro_cliente(query, params, cliente)
+    if cliente:
+        query += " AND cliente = %s"
+        params.append(cliente)
     query += " GROUP BY ponto_entrada, estado ORDER BY qtd DESC"
     return consultar_devolucoes(query, params if params else None)
-
-
-# ================================
-# 📊 DEV DETALHADO — P90 por Estado Real
-# ================================
-@st.cache_data(ttl=600)
-def buscar_p90_por_estado_detalhado(semana=None, ano=None, clientes=None):
-    query = """
-        SELECT
-            estado_dest         AS estado,
-            semana,
-            ano,
-            cliente,
-            pre_entrega,
-            motivo,
-            COUNT(*)            AS qtd_pedidos,
-            PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY dias_dev) AS p90_dias
-        FROM dev_detalhado
-        WHERE status = 'Recebido de devolução'
-          AND dias_dev >= 0
-          AND estado_dest IS NOT NULL
-    """
-    params = []
-    if semana:
-        query += " AND semana = %s"
-        params.append(semana)
-    if ano:
-        query += " AND ano = %s"
-        params.append(ano)
-    query, params = _filtro_cliente(query, params, clientes)
-    query += " GROUP BY estado_dest, semana, ano, cliente, pre_entrega, motivo ORDER BY p90_dias DESC"
-    return consultar_devolucoes(query, params if params else None)
-
-
-@st.cache_data(ttl=600)
-def buscar_semanas_dev_detalhado():
-    return consultar_devolucoes("""
-        SELECT DISTINCT semana, ano
-        FROM dev_detalhado
-        ORDER BY ano DESC, semana DESC
-    """)
 
 
 # =========================

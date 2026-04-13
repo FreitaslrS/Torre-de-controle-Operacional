@@ -136,25 +136,13 @@ def render():
 
     tipo_importacao = st.selectbox(
         "Tipo de Importação",
-        ["Backlog", "Produtividade", "Tempo de Processamento",
-         "Devolução", "Devolução - P90", "Devolução - Monitoramento",
-         "Devolução + Monitoramento", "Coletas", "Pacotes Grandes"]
+        ["Backlog", "Produtividade", "Tempo de Processamento", "Devolução", "Devolução - P90", "Devolução - Monitoramento", "Pacotes Grandes"]
     )
-
-    # Uploader secundário para "Devolução + Monitoramento"
-    arquivo_monitor_secundario = None
-    if tipo_importacao == "Devolução + Monitoramento":
-        st.info("Este tipo requer dois arquivos: o arquivo principal (Folha de Devolução) vai no uploader acima. Selecione o Monitoramento abaixo.")
-        arquivo_monitor_secundario = st.file_uploader(
-            "Arquivo de Monitoramento de Pontualidade",
-            type=["xlsx", "xls"],
-            key="uploader_monitor_sec"
-        )
 
     # ========================
     # 📅 SELETOR DE DATA / SEMANA
     # ========================
-    TIPOS_SEMANAIS = {"Devolução", "Devolução - P90", "Devolução + Monitoramento", "Pacotes Grandes"}
+    TIPOS_SEMANAIS = {"Devolução", "Devolução - P90", "Pacotes Grandes"}
 
     if tipo_importacao in TIPOS_SEMANAIS:
         # Gera as últimas 52 semanas (segunda-feira de cada semana)
@@ -194,10 +182,6 @@ def render():
             st.warning("Selecione arquivos")
             return
 
-        if tipo_importacao == "Devolução + Monitoramento" and arquivo_monitor_secundario is None:
-            st.warning("Selecione o arquivo de Monitoramento de Pontualidade")
-            return
-
         progress = st.progress(0)
         status_text = st.empty()
 
@@ -207,10 +191,7 @@ def render():
 
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = [
-                executor.submit(
-                    processar_arquivo_individual, arq, data_ref, tipo_importacao,
-                    arquivo_monitor_secundario
-                )
+                executor.submit(processar_arquivo_individual, arq, data_ref, tipo_importacao)
                 for arq in arquivos
             ]
 

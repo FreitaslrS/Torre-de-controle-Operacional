@@ -978,3 +978,146 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
     conn.close()
 
     return len(df)
+# ================================
+# 📊 DEVOLUÇÃO ENRIQUECIDA (Folha + Monitoramento)
+# ================================
+def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
+    import io
+    from core.database import conectar_devolucoes
+
+    # ── Lê folha de devolução ──────────────────────────────────────
+    df_dev = pd.read_excel(io.BytesIO(arquivo_folha.read()), engine="openpyxl")
+    arquivo_folha.seek(0)
+
+    # Normaliza colunas: pega as primeiras 10
+    df_dev = df_dev.iloc[:, :10]
+    df_dev.columns = [
+        "waybill", "status", "tipo_operacao", "cliente",
+        "data_operacao", "proximo_ponto", "operador",
+        "ponto_operacao", "estado", "regiao"
+    ]
+    df_dev["data_operacao"] = pd.to_datetime(df_dev["data_operacao"], errors="coerce")
+    df_dev["waybill"] = df_dev["waybill"].astype(str).str.strip()
+
+    # ── Lê monitoramento ──────────────────────────────────────────
+    df_mon = pd.read_excel(io.BytesIO(arquivo_monitor.read()), engine="openpyxl")
+    arquivo_monitor.seek(0)
+
+    # Seleciona colunas por posição (índices 0,4,8,11,12,21,24,25,33)
+    cols_idx = [0, 4, 8, 11, 12, 21, 24, 25, 33]
+    cols_idx = [c for c in cols_idx if c < len(df_mon.columns)]
+    df_mon = df_mon.iloc[:, cols_idx]
+    df_mon.columns = [
+        "waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
+        "cliente_mon", "pre_entrega", "ponto_entrada", "data_criacao"
+    ][:len(cols_idx)]
+    df_mon["data_criacao"] = pd.to_datetime(df_mon["data_criacao"], errors="coerce")
+    df_mon["waybill"] = df_mon["waybill"].astype(str).str.strip()
+
+    # ── Merge ──────────────────────────────────────────────────────
+    df = df_dev.merge(df_mon, on="waybill", how="left")
+
+    df["dias_dev"] = (df["data_operacao"] - df["data_criacao"]).dt.days
+    df = df[df["dias_dev"] >= 0]
+
+    ref_ts  = pd.Timestamp(data_ref)
+    semana  = ref_ts.strftime("w%V")
+    ano     = int(ref_ts.year)
+    nome_arq = f"{arquivo_folha.name}+{arquivo_monitor.name}"
+
+    df["semana"]          = semana
+    df["ano"]             = ano
+    df["data_referencia"] = data_ref
+    df["nome_arquivo"]    = nome_arq
+    df["data_importacao"] = datetime.now()
+
+    colunas = [
+        "waybill", "status", "tipo_operacao", "cliente", "data_operacao",
+        "ponto_operacao", "estado_dest", "cidade_dest", "pre_entrega",
+        "ponto_entrada", "motivo", "data_criacao", "dias_dev",
+        "semana", "ano", "data_referencia", "nome_arquivo", "data_importacao"
+    ]
+
+    # Garante que todas as colunas existam
+    for col in colunas:
+        if col not in df.columns:
+            df[col] = None
+
+    df_save = df[colunas].copy()
+
+    values = [
+        tuple(None if (hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType')
+              else (None if pd.isna(v) else v)
+              for v in row)
+        for row in df_save.itertuples(index=False, name=None)
+    ]
+
+    conn = conectar_devolucoes()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM dev_detalhado WHERE data_referencia = %s", [data_ref])
+    execute_values(cur, f"INSERT INTO dev_detalhado ({','.join(colunas)}) VALUES %s", values)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return len(df_save)
+
+
+# ================================
+# 🚛 COLETAS — CARREGAMENTO/DESCARREGAMENTO
+# ================================
+def importar_coletas(arquivo, data_ref):
+    from core.database import conectar_operacional as _conectar_op
+
+    df = pd.read_excel(arquivo, engine="openpyxl")
+
+    if df.empty:
+        return 0
+
+    # Pega as primeiras 19 colunas
+    df = df.iloc[:, :19]
+    df.columns = [
+        "num_registro", "placa", "carregador", "rede_carregador",
+        "endereco_carga", "tempo_carga", "secao_destino",
+        "descarregador", "rede_descarregador", "endereco_descarga",
+        "tempo_descarga", "sacos_carregados", "sacos_descarregados",
+        "dif_sacos", "pacotes_carregados", "pacotes_descarregados",
+        "dif_pacotes", "modo_operacao", "tipo_veiculo"
+    ]
+
+    df["tempo_carga"]    = pd.to_datetime(df["tempo_carga"],    errors="coerce")
+    df["tempo_descarga"] = pd.to_datetime(df["tempo_descarga"], errors="coerce")
+
+    for col in ["sacos_carregados", "sacos_descarregados", "dif_sacos",
+                "pacotes_carregados", "pacotes_descarregados", "dif_pacotes"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+
+    df["data_referencia"] = data_ref
+    df["nome_arquivo"]    = arquivo.name
+    df["data_importacao"] = datetime.now()
+
+    colunas = [
+        "num_registro", "placa", "carregador", "rede_carregador",
+        "tempo_carga", "secao_destino", "descarregador", "rede_descarregador",
+        "tempo_descarga", "sacos_carregados", "sacos_descarregados", "dif_sacos",
+        "pacotes_carregados", "pacotes_descarregados", "dif_pacotes",
+        "modo_operacao", "tipo_veiculo", "data_referencia", "nome_arquivo", "data_importacao"
+    ]
+
+    conn = _conectar_op()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM coletas WHERE nome_arquivo = %s", [arquivo.name])
+
+    values = [
+        tuple(None if (hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType')
+              else (None if pd.isna(v) else v)
+              for v in row)
+        for row in df[colunas].itertuples(index=False, name=None)
+    ]
+
+    execute_values(cur, f"INSERT INTO coletas ({','.join(colunas)}) VALUES %s", values)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return len(df)
