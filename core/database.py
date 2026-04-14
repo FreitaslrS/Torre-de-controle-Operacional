@@ -60,14 +60,17 @@ def _executar_pool(pool_fn, query, params=None):
 
 
 # =========================
-# 🔗 CONEXÕES DIRETAS (compatível com processar_arquivo.py que usa conn diretamente)
+# 🔗 CONEXÕES DIRETAS (para processar_arquivo.py — fora do pool, fechadas com conn.close())
 # =========================
-def conectar_backlog():       return _pool_backlog().getconn()
-def conectar_operacional():   return _pool_operacional().getconn()
-def conectar_historico():     return _pool_historico().getconn()
-def conectar_devolucoes():    return _pool_devolucoes().getconn()
-def conectar_processamento(): return _pool_processamento().getconn()
-def conectar_coletas():       return _pool_coletas().getconn()
+def _conectar(url_env):
+    return psycopg2.connect(os.getenv(url_env), sslmode="require")
+
+def conectar_backlog():       return _conectar("DATABASE_URL_BACKLOG")
+def conectar_operacional():   return _conectar("DATABASE_URL_OPERACIONAL")
+def conectar_historico():     return _conectar("DATABASE_URL_HISTORICO")
+def conectar_devolucoes():    return _conectar("DATABASE_URL_DEVOLUCOES")
+def conectar_processamento(): return _conectar("DATABASE_URL_PROCESSAMENTO")
+def conectar_coletas():       return _conectar("DATABASE_URL_COLETAS")
 
 
 # =========================
