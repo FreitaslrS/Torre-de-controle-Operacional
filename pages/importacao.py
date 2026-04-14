@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from dotenv import load_dotenv
 
+from utils.style import rodape_autoria, aplicar_css_global
 from core.database import (
     executar_backlog, executar_historico, executar_operacional,
     consultar_historico, consultar_operacional, consultar_processamento,
@@ -115,6 +116,8 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
 # 🎯 TELA
 # =========================
 def render():
+
+    aplicar_css_global()
 
     if not verificar_senha():
         return
@@ -392,7 +395,6 @@ def render():
                 st.cache_data.clear()
                 st.rerun()
 
-    from utils.style import rodape_autoria
     rodape_autoria()
 
 

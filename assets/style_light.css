@@ -139,6 +139,23 @@ small, .stCaption {
     box-shadow: none !important;
 }
 
+/* ===== FILE UPLOADER — protege botão interno ===== */
+[data-testid="stFileUploader"] button {
+    background: #ffffff !important;
+    color: #053B31 !important;
+    border: 1px solid rgba(0,150,64,0.4) !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    font-family: 'Montserrat', sans-serif !important;
+    padding: 6px 14px !important;
+}
+
+[data-testid="stFileUploader"] button:hover {
+    background: rgba(0,150,64,0.06) !important;
+    border-color: #009640 !important;
+}
+
 [data-testid="stDownloadButton"] button {
     background: #053B31 !important;
     color: white !important;
