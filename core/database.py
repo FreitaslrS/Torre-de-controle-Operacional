@@ -37,16 +37,19 @@ def _pool_coletas():
 
 
 def _get_conn(pool):
-    """Retorna conexão válida do pool, descartando conexões mortas."""
+    """Retorna conexão válida do pool, descartando conexões mortas (inclusive SSL fechado)."""
     conn = pool.getconn()
     try:
         cur = conn.cursor()
         cur.execute("SELECT 1")
         cur.close()
+        return conn
     except Exception:
-        pool.putconn(conn, close=True)
-        conn = pool.getconn()
-    return conn
+        try:
+            pool.putconn(conn, close=True)
+        except Exception:
+            pass
+        return pool.getconn()
 
 
 def _consultar(pool_fn, query, params=None):
@@ -54,22 +57,52 @@ def _consultar(pool_fn, query, params=None):
     conn = _get_conn(pool)
     try:
         return pd.read_sql(query, conn, params=params)
-    finally:
+    except psycopg2.OperationalError:
+        pool.putconn(conn, close=True)
+        conn = pool.getconn()
+        try:
+            return pd.read_sql(query, conn, params=params)
+        except Exception:
+            pool.putconn(conn, close=True)
+            raise
+        else:
+            pool.putconn(conn)
+    else:
         pool.putconn(conn)
 
 
 def _executar_pool(pool_fn, query, params=None):
     pool = pool_fn()
     conn = _get_conn(pool)
-    try:
-        cur = conn.cursor()
+
+    def _run(c):
+        cur = c.cursor()
         cur.execute(query, params or ())
-        conn.commit()
+        c.commit()
         cur.close()
+
+    try:
+        _run(conn)
+    except psycopg2.OperationalError:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        pool.putconn(conn, close=True)
+        conn = pool.getconn()
+        try:
+            _run(conn)
+        except Exception:
+            conn.rollback()
+            pool.putconn(conn, close=True)
+            raise
+        else:
+            pool.putconn(conn)
     except Exception:
         conn.rollback()
+        pool.putconn(conn, close=True)
         raise
-    finally:
+    else:
         pool.putconn(conn)
 
 
