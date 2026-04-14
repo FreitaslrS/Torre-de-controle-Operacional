@@ -55,6 +55,9 @@ def _executar_pool(pool_fn, query, params=None):
         cur.execute(query, params or ())
         conn.commit()
         cur.close()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         pool.putconn(conn)
 

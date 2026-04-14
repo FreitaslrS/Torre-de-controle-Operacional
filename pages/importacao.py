@@ -32,14 +32,17 @@ def verificar_senha():
         st.session_state.autenticado = False
 
     if st.session_state.autenticado:
+        col_logout, _ = st.columns([1, 8])
+        if col_logout.button("🔒 Sair", key="btn_logout"):
+            st.session_state.autenticado = False
+            st.rerun()
         return True
 
     st.title("🔐 Área Restrita")
-
     senha = st.text_input("Digite a senha", type="password")
 
     if st.button("Entrar"):
-        if senha == obter_senha():
+        if senha and senha == obter_senha():
             st.session_state.autenticado = True
             st.rerun()
         else:
@@ -97,7 +100,7 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
 
     except Exception as e:
         qtd = 0
-        status = str(e)
+        status = f"Erro na importação: {type(e).__name__}"
 
     tempo = time.time() - inicio
 
