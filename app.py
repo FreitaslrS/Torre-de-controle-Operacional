@@ -43,11 +43,16 @@ if "page" not in st.session_state:
 page = st.session_state.page
 
 if page != "home":
-    col_back, _ = st.columns([1, 8])
+    col_back, col_mid, col_sair = st.columns([1, 7, 1])
     with col_back:
         if st.button("← Home", key="btn_voltar_home"):
             st.session_state.page = "home"
             st.rerun()
+    if page == "importacao" and st.session_state.get("autenticado"):
+        with col_sair:
+            if st.button("Sair", key="btn_logout"):
+                st.session_state.autenticado = False
+                st.rerun()
 
 if page == "home":
     import pages.home as _m; _m.render()

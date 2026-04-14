@@ -119,7 +119,7 @@ small, .stCaption {
 }
 
 /* ===== BOTÕES GERAIS ===== */
-.stButton button {
+.stButton button:not([data-testid="stFileUploaderDeleteBtn"]):not([data-testid="stBaseButton-minimal"]) {
     background: #009640 !important;
     color: white !important;
     border-radius: 8px !important;
@@ -132,7 +132,7 @@ small, .stCaption {
     padding: 8px 16px !important;
 }
 
-.stButton button:hover {
+.stButton button:not([data-testid="stFileUploaderDeleteBtn"]):not([data-testid="stBaseButton-minimal"]):hover {
     background: #007a33 !important;
     transform: none !important;
     box-shadow: none !important;

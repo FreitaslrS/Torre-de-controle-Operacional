@@ -33,13 +33,22 @@ def verificar_senha():
         st.session_state.autenticado = False
 
     if st.session_state.autenticado:
-        col_logout, _ = st.columns([1, 8])
-        if col_logout.button("🔒 Sair", key="btn_logout"):
-            st.session_state.autenticado = False
-            st.rerun()
         return True
 
-    st.title("🔐 Área Restrita")
+    st.markdown("""
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+    <div>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Área Restrita</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Acesso restrito a usuários autorizados</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
     senha = st.text_input("Digite a senha", type="password")
 
     if st.button("Entrar"):
