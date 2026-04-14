@@ -92,7 +92,8 @@ def render():
     ])
 
     df_clientes    = buscar_clientes_fantasia()
-    df_semanas_all = buscar_semanas_dev_detalhado()  # chamada única reutilizada nas 3 tabs
+    df_semanas_all  = buscar_semanas_dev_detalhado()
+    df_datas_mon    = buscar_datas_disponiveis_mon()  # chamada única reutilizada nas tabs 2 e 3
 
     # ════════════════════════════════════════
     # TAB 1 — RESUMO
@@ -224,7 +225,7 @@ def render():
 </svg>
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Motivos de Falha de Entrega</span>
 </div>""", unsafe_allow_html=True)
-        df_datas_mon_wbr = buscar_datas_disponiveis_mon()
+        df_datas_mon_wbr = df_datas_mon
 
         if df_datas_mon_wbr.empty:
             st.info("Sem dados de motivos. Importe 'Devolução - Monitoramento'.")
@@ -271,7 +272,7 @@ def render():
             df_st_int = buscar_dev_status_semanal(semana=semana_int, ano=ano_int, cliente=cliente_cod_int)
 
         # ── Seletor Monitoramento (diário) ────────────────────────
-        df_datas_mon_int = buscar_datas_disponiveis_mon()
+        df_datas_mon_int = df_datas_mon
 
         if df_datas_mon_int.empty:
             data_mon_int = None
@@ -472,7 +473,7 @@ def render():
 </div>""", unsafe_allow_html=True)
         st.caption("Calculado com cruzamento Folha de Devolução + Monitoramento. Estado = destino real do pedido.")
 
-        df_sem_det = buscar_semanas_dev_detalhado()
+        df_sem_det = df_semanas_all
 
         if df_sem_det.empty:
             st.warning("Sem dados. Importe usando o tipo 'Devolução + Monitoramento'.")

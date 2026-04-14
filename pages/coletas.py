@@ -238,8 +238,10 @@ def render():
         "📤 Saída para Bases"
     ])
 
+    df_datas_desc  = buscar_datas_coletas(tipo="descarregamento")
+    df_datas_saida = buscar_datas_coletas(tipo="saida")
+
     with tab_desc:
-        df_datas_desc = buscar_datas_coletas(tipo="descarregamento")
         if df_datas_desc.empty:
             st.warning("Sem dados. Importe um arquivo do tipo 'Coletas — Descarregamento em Perus'.")
         else:
@@ -249,7 +251,6 @@ def render():
             _tab_descarregamento(data_sel)
 
     with tab_saida:
-        df_datas_saida = buscar_datas_coletas(tipo="saida")
         if df_datas_saida.empty:
             st.warning("Sem dados. Importe um arquivo do tipo 'Coletas — Saída para Bases'.")
         else:
