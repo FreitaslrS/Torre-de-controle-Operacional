@@ -40,7 +40,9 @@ def _get_conn(pool):
     """Retorna conexão válida do pool, descartando conexões mortas."""
     conn = pool.getconn()
     try:
-        conn.cursor().execute("SELECT 1")
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
     except Exception:
         pool.putconn(conn, close=True)
         conn = pool.getconn()
@@ -293,7 +295,6 @@ def inicializar_banco():
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_resumo_semana ON dev_resumo (semana, ano)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_data ON produtividade (data)")
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_data ON tempo_processamento (data)")
-    executar_coletas("CREATE INDEX IF NOT EXISTS idx_coletas_data ON coletas (data_referencia, tipo)")
 
     # ── COLETAS (banco separado) ───────────────────────────────────────────
     executar_coletas("""
@@ -321,3 +322,4 @@ def inicializar_banco():
             data_importacao         TIMESTAMP
         )
     """)
+    executar_coletas("CREATE INDEX IF NOT EXISTS idx_coletas_data ON coletas (data_referencia, tipo)")
