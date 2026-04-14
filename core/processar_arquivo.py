@@ -1,19 +1,19 @@
-import io
+﻿import io
+import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from psycopg2.extras import execute_values
 from core.database import (
     conectar_backlog,
-    executar_backlog,
     consultar_backlog,
     conectar_operacional,
-    executar_operacional,
     conectar_historico,
     executar_historico,
     conectar_processamento,
     conectar_devolucoes,
     conectar_coletas,
     executar_devolucoes,
+    executar_operacional,
     executar_processamento,
 )
 
@@ -28,10 +28,10 @@ def xlsx_para_dataframe(arquivo, engine="openpyxl", **kwargs):
     em arquivos grandes (+10k linhas).
     """
     df = pd.read_excel(arquivo, engine=engine, **kwargs)
-    buf = io.BytesIO()
-    df.to_parquet(buf, index=False, compression="snappy")
-    buf.seek(0)
-    return pd.read_parquet(buf)
+    with io.BytesIO() as buf:
+        df.to_parquet(buf, index=False, compression="snappy")
+        buf.seek(0)
+        return pd.read_parquet(buf)
 
 
 # ================================
@@ -90,26 +90,29 @@ def limpar_base():
     """)
 
 
-def importar_excel(arquivo, data_referencia):
-    # Lê só colunas necessárias
-    df = xlsx_para_dataframe(
-        arquivo,
-        usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 56]
-    )
+def _classificar_faixa(h):
+    if pd.isna(h) or h < 0: return None
+    elif h <= 24:   return "1 dia"
+    elif h <= 120:  return "1-5 dias"
+    elif h <= 240:  return "5-10 dias"
+    elif h <= 480:  return "10-20 dias"
+    elif h <= 720:  return "20-30 dias"
+    else:           return "30+ dias"
+
+
+def _preparar_df_backlog(arquivo, data_referencia):
+    df = xlsx_para_dataframe(arquivo, usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 56])
     df.columns = [
         "waybill", "estado", "cidade", "cliente",
         "pre_entrega", "ponto_entrada",
         "entrada_hub1", "saida_hub1", "proximo_ponto",
         "entrada_hub2", "entrada_hub3"
     ]
-
     df["waybill"] = df["waybill"].astype(str).str.strip()
     df = df[df["waybill"].str.lower() != "nan"]
-
     for col in ["entrada_hub1", "saida_hub1", "entrada_hub2", "entrada_hub3"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
-    # Filtra só backlog real (parado no hub1)
     df_backlog = df[
         df["entrada_hub1"].notna() &
         df["saida_hub1"].isna() &
@@ -118,35 +121,24 @@ def importar_excel(arquivo, data_referencia):
     ].copy()
 
     if df_backlog.empty:
-        return 0
+        return df_backlog, None
 
     agora = pd.to_datetime(data_referencia)
-
     df_backlog["horas_backlog_snapshot"] = (
         (agora - df_backlog["entrada_hub1"]).dt.total_seconds() / 3600
     )
-
-    def classificar_faixa(h):
-        if pd.isna(h) or h < 0: return None
-        elif h <= 24:   return "1 dia"
-        elif h <= 120:  return "1-5 dias"
-        elif h <= 240:  return "5-10 dias"
-        elif h <= 480:  return "10-20 dias"
-        elif h <= 720:  return "20-30 dias"
-        else:           return "30+ dias"
-
-    df_backlog["faixa_backlog_snapshot"] = df_backlog["horas_backlog_snapshot"].apply(classificar_faixa)
+    df_backlog["faixa_backlog_snapshot"] = df_backlog["horas_backlog_snapshot"].apply(_classificar_faixa)
     df_backlog["data_referencia"]        = agora.date()
-    df_backlog["data_importacao"]        = datetime.now()
+    df_backlog["data_importacao"]        = datetime.now(timezone.utc)
     df_backlog["nome_arquivo"]           = arquivo.name
     df_backlog["proximo_ponto"]          = df_backlog["proximo_ponto"].fillna("Sem informação")
+    return df_backlog, agora
 
-    # ── CAMADA 1: backlog_atual (snapshot atual por waybill) ──────────
+
+def _salvar_backlog_atual(df_backlog):
     existentes     = consultar_backlog("SELECT waybill FROM backlog_atual")
     existentes_set = set(existentes["waybill"]) if not existentes.empty else set()
-    novos_set      = set(df_backlog["waybill"])
-
-    removidos = existentes_set - novos_set
+    removidos      = existentes_set - set(df_backlog["waybill"])
     if removidos:
         conn = conectar_backlog()
         cur  = conn.cursor()
@@ -174,7 +166,8 @@ def importar_excel(arquivo, data_referencia):
     ])
     conn.commit(); cur.close(); conn.close()
 
-    # ── CAMADA 2: pedidos_resumo (agregado para gráficos históricos) ──
+
+def _salvar_historico_backlog(df_backlog, arquivo, agora):
     df_resumo = (
         df_backlog.groupby([
             "data_referencia", "estado", "cliente",
@@ -184,7 +177,7 @@ def importar_excel(arquivo, data_referencia):
         .reset_index(name="qtd")
     )
     df_resumo["nome_arquivo"]    = arquivo.name
-    df_resumo["data_importacao"] = datetime.now()
+    df_resumo["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_historico()
     cur  = conn.cursor()
@@ -201,13 +194,8 @@ def importar_excel(arquivo, data_referencia):
          for row in df_resumo[colunas_resumo].itertuples(index=False, name=None)]
     )
 
-    # ── CAMADA 3: pedidos bruto — só 7 dias para drill down ──────────
-    executar_historico(
-        "DELETE FROM pedidos WHERE data_referencia = %s", [agora.date()]
-    )
-    executar_historico(
-        "DELETE FROM pedidos WHERE data_referencia < CURRENT_DATE - INTERVAL '7 days'"
-    )
+    executar_historico("DELETE FROM pedidos WHERE data_referencia = %s", [agora.date()])
+    executar_historico("DELETE FROM pedidos WHERE data_referencia < CURRENT_DATE - INTERVAL '7 days'")
 
     colunas_bruto = [
         "waybill", "cliente", "estado", "cidade", "pre_entrega", "proximo_ponto",
@@ -219,9 +207,15 @@ def importar_excel(arquivo, data_referencia):
         [tuple(None if pd.isna(v) else v for v in row)
          for row in df_backlog[colunas_bruto].itertuples(index=False, name=None)]
     )
-
     conn.commit(); cur.close(); conn.close()
 
+
+def importar_excel(arquivo, data_referencia):
+    df_backlog, agora = _preparar_df_backlog(arquivo, data_referencia)
+    if df_backlog.empty:
+        return 0
+    _salvar_backlog_atual(df_backlog)
+    _salvar_historico_backlog(df_backlog, arquivo, agora)
     limpar_historico_antigo()
     return len(df_backlog)
 
@@ -284,7 +278,7 @@ def importar_produtividade(arquivo):
     )
 
     df_agg["nome_arquivo"]    = arquivo.name
-    df_agg["data_importacao"] = datetime.now()
+    df_agg["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_operacional()
     cur  = conn.cursor()
@@ -361,9 +355,9 @@ def importar_tempo_processamento(arquivo):
         tempo_medio_h  = ("tempo_horas", lambda x: x.dropna().mean() if x.dropna().any() else None)
     ).reset_index()
 
-    agg["data_snapshot"]   = datetime.now().date()
+    agg["data_snapshot"]   = datetime.now(timezone.utc).date()
     agg["nome_arquivo"]    = arquivo.name
-    agg["data_importacao"] = datetime.now()
+    agg["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_processamento()
     cur  = conn.cursor()
@@ -390,7 +384,6 @@ def importar_tempo_processamento(arquivo):
 # 📊 DEVOLUÇÃO — P90
 # ================================
 def importar_p90(arquivo, data_ref):
-    import numpy as np
     df = xlsx_para_dataframe(arquivo)
 
     if df.empty:
@@ -419,7 +412,7 @@ def importar_p90(arquivo, data_ref):
             mes = int(w[4:6])
             dia = int(w[6:8])
             return pd.Timestamp(ano, mes, dia)
-        except:
+        except Exception:
             return None
 
     df["data_criacao"] = df["waybill"].apply(extrair_data_criacao)
@@ -449,7 +442,7 @@ def importar_p90(arquivo, data_ref):
 
     agg["data_referencia"] = data_ref
     agg["nome_arquivo"]    = arquivo.name
-    agg["data_importacao"] = datetime.now()
+    agg["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_devolucoes()
     cur  = conn.cursor()
@@ -504,7 +497,7 @@ def importar_devolucoes(arquivo, data_ref):
     for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
         cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
 
-    agora = datetime.now()
+    agora = datetime.now(timezone.utc)
 
     status_agg = (
         df.groupby(["status", "estado", "cliente"])
@@ -584,7 +577,7 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
     for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
         cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
 
-    agora       = datetime.now()
+    agora       = datetime.now(timezone.utc)
     sla_agg     = pd.DataFrame()
     motivos_agg = pd.DataFrame()
     dsp_agg     = pd.DataFrame()
@@ -699,7 +692,7 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
         df["semana"] = df["data_criacao"].dt.strftime("w%V")
         df["ano"]    = df["data_criacao"].dt.year
     df["nome_arquivo"]    = arquivo.name
-    df["data_importacao"] = datetime.now()
+    df["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_operacional()
     cur  = conn.cursor()
@@ -731,7 +724,6 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
 # 📊 DEVOLUÇÃO ENRIQUECIDA (Folha + Monitoramento)
 # ================================
 def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
-    import numpy as np
     # ── Lê folha de devolução ──────────────────────────────────────
     df_dev = xlsx_para_dataframe(io.BytesIO(arquivo_folha.read()))
     arquivo_folha.seek(0)
@@ -802,7 +794,7 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     semana   = ref_ts.strftime("w%V")
     ano      = int(ref_ts.year)
     nome_arq = f"{arquivo_folha.name}+{arquivo_monitor.name}"
-    agora    = datetime.now()
+    agora    = datetime.now(timezone.utc)
 
     df["semana"]          = semana
     df["ano"]             = ano
@@ -1048,7 +1040,7 @@ def _salvar_coletas(df, arquivo, data_ref, tipo):
     df["tipo"]            = tipo
     df["data_referencia"] = data_ref
     df["nome_arquivo"]    = arquivo.name
-    df["data_importacao"] = datetime.now()
+    df["data_importacao"] = datetime.now(timezone.utc)
 
     colunas = [
         "num_registro", "placa", "carregador", "rede_carregador",
@@ -1130,7 +1122,7 @@ def importar_presenca(arquivo):
         return 0
 
     nome_arquivo = arquivo.name
-    data_importacao = datetime.now()
+    data_importacao = datetime.now(timezone.utc)
 
     rows_turno  = []
     rows_diario = []
@@ -1143,7 +1135,8 @@ def importar_presenca(arquivo):
         if pd.notna(val_data) and val_data != "":
             try:
                 data_atual = pd.to_datetime(val_data).date()
-            except Exception:
+            except Exception as e:
+                print(f"⚠️ Linha ignorada (data inválida): {e}")
                 continue  # linha de cabeçalho ou inválida
 
         if data_atual is None:
@@ -1238,3 +1231,4 @@ def importar_presenca(arquivo):
     conn.close()
 
     return len(rows_turno)
+
