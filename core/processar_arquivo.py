@@ -725,7 +725,8 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
 # ================================
 def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     # ── Lê folha de devolução ──────────────────────────────────────
-    df_dev = xlsx_para_dataframe(io.BytesIO(arquivo_folha.read()))
+    with io.BytesIO(arquivo_folha.read()) as buf_folha:
+        df_dev = xlsx_para_dataframe(buf_folha)
     arquivo_folha.seek(0)
 
     df_dev = df_dev.iloc[:, :10]
@@ -738,7 +739,8 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     df_dev["waybill"] = df_dev["waybill"].astype(str).str.strip()
 
     # ── Lê monitoramento ──────────────────────────────────────────
-    df_mon_raw = xlsx_para_dataframe(io.BytesIO(arquivo_monitor.read()))
+    with io.BytesIO(arquivo_monitor.read()) as buf_monitor:
+        df_mon_raw = xlsx_para_dataframe(buf_monitor)
     arquivo_monitor.seek(0)
 
     # Colunas completas do monitoramento (igual a importar_devolucao_monitoramento)
