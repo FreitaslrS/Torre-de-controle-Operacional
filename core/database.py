@@ -36,10 +36,20 @@ def _pool_coletas():
     return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_COLETAS"), sslmode="require")
 
 
-def _consultar(pool_fn, query, params=None):
-    """Pega conexão do pool, executa query, devolve ao pool."""
-    pool = pool_fn()
+def _get_conn(pool):
+    """Retorna conexão válida do pool, descartando conexões mortas."""
     conn = pool.getconn()
+    try:
+        conn.cursor().execute("SELECT 1")
+    except Exception:
+        pool.putconn(conn, close=True)
+        conn = pool.getconn()
+    return conn
+
+
+def _consultar(pool_fn, query, params=None):
+    pool = pool_fn()
+    conn = _get_conn(pool)
     try:
         return pd.read_sql(query, conn, params=params)
     finally:
@@ -47,9 +57,8 @@ def _consultar(pool_fn, query, params=None):
 
 
 def _executar_pool(pool_fn, query, params=None):
-    """Pega conexão do pool, executa write, devolve ao pool."""
     pool = pool_fn()
-    conn = pool.getconn()
+    conn = _get_conn(pool)
     try:
         cur = conn.cursor()
         cur.execute(query, params or ())
