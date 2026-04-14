@@ -11,7 +11,7 @@ from core.repository import (
     buscar_presenca_diaria,
 )
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global
+from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global, fmt_numero
 
 # ── Paleta Produtividade ──────────────────────────────────────────────
 COR_PRINCIPAL  = "#009640"   # Verde Anjun — cor dominante desta página
@@ -59,7 +59,7 @@ def render():
 </div>
 """, unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["⚡ Produtividade", "📦 Pacotes Grandes", "👥 Presença e Eficiência"])
+    tab1, tab2, tab3 = st.tabs(["Produtividade", "Pacotes Grandes", "Presença e Eficiência"])
 
     with tab1:
         # =========================
@@ -100,10 +100,10 @@ def render():
         t3    = int(df[df["turno"] == "T3"]["volumes"].sum())
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total", total)
-        col2.metric("🟢 T1", t1, f"{(t1/total*100):.1f}%" if total else "0%")
-        col3.metric("🔵 T2", t2, f"{(t2/total*100):.1f}%" if total else "0%")
-        col4.metric("⚪ T3", t3, f"{(t3/total*100):.1f}%" if total else "0%")
+        col1.metric("Total", fmt_numero(total))
+        col2.metric("T1", fmt_numero(t1), f"{(t1/total*100):.1f}%" if total else "0%")
+        col3.metric("T2", fmt_numero(t2), f"{(t2/total*100):.1f}%" if total else "0%")
+        col4.metric("T3", fmt_numero(t3), f"{(t3/total*100):.1f}%" if total else "0%")
 
         st.divider()
 
@@ -286,12 +286,10 @@ def render():
                 st.warning("Sem dados para a semana selecionada.")
             else:
                 col1, col2, col3, col4 = st.columns(4)
-                col1.metric("📦 Total Pacotes",  len(df_pg))
-                col2.metric("🏋️ Peso Médio",     f"{df_pg['peso_kg'].mean():.1f} kg")
-                col3.metric("📐 Volume Médio",   f"{df_pg['volume_m3'].mean():.2f} m³")
-                col4.metric("✅ Entregues",
-                    len(df_pg[df_pg["status"] == "Pedido entregue"])
-                )
+                col1.metric("Total Pacotes",  fmt_numero(len(df_pg)))
+                col2.metric("Peso Médio",     f"{df_pg['peso_kg'].mean():.1f} kg")
+                col3.metric("Volume Médio",   f"{df_pg['volume_m3'].mean():.2f} m³")
+                col4.metric("Entregues", fmt_numero(len(df_pg[df_pg["status"] == "Pedido entregue"])))
 
                 st.divider()
 
@@ -375,7 +373,7 @@ def render():
                 perc_falta_med     = round(df_turno_f["perc_falta"].mean() * 100, 1) if df_turno_f["perc_falta"].notna().any() else 0
 
                 col1, col2, col3, col4, col5 = st.columns(5)
-                col1.metric("Produzido na semana",  f"{total_prod:,}")
+                col1.metric("Produzido na semana",  fmt_numero(total_prod))
                 col2.metric("Presença média/dia",   int(media_presenca) if pd.notna(media_presenca) else 0)
                 col3.metric("Faltas Anjun",          total_faltas_anjun)
                 col4.metric("Faltas Temporários",    total_faltas_temp)

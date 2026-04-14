@@ -11,6 +11,14 @@ def _carregar_css():
         return f.read()
 
 
+def fmt_numero(n):
+    """Formata número inteiro com separador de milhar brasileiro (ponto)."""
+    try:
+        return f"{int(n):,}".replace(",", ".")
+    except Exception:
+        return str(n)
+
+
 def aplicar_css_global():
     st.markdown(f"<style>{_carregar_css()}</style>", unsafe_allow_html=True)
     st.markdown("""

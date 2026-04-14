@@ -282,7 +282,7 @@ def render():
     # ========================
     # 📜 HISTÓRICO
     # ========================
-    st.subheader("📊 Histórico de Importações")
+    st.subheader("Histórico de Importações")
 
     @st.cache_data(ttl=60)
     def _carregar_historico():
@@ -355,10 +355,10 @@ def render():
             col1.write(row["nome_arquivo"])
             col2.write(row["registros"])
             col3.write(row["tipo"])
-            col4.write(f"📅 {fmt_ref(row['data_referencia'])}")
-            col5.write(f"⏱️ {fmt_import(row['data_importacao'])}")
+            col4.write(fmt_ref(row['data_referencia']))
+            col5.write(fmt_import(row['data_importacao']))
 
-            if col6.button("🗑️", key=f"del_{i}"):
+            if col6.button("X", key=f"del_{i}"):
                 excluir_arquivo(row["nome_arquivo"])
                 st.success(f"{row['nome_arquivo']} excluído")
                 st.rerun()
@@ -367,7 +367,7 @@ def render():
     # ⚠️ ZONA DE PERIGO
     # ========================
     st.divider()
-    st.subheader("⚠️ Zona de Perigo")
+    st.subheader("Zona de Perigo")
 
     confirmar = st.checkbox("Tenho certeza que quero fazer isso (modo destruição)")
 
@@ -376,7 +376,7 @@ def render():
 
         with col1:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🔥 Resetar Backlog Atual", use_container_width=True):
+            if st.button("Resetar Backlog Atual", use_container_width=True):
                 executar_backlog("DELETE FROM backlog_atual")
                 st.success("Backlog atual zerado!")
                 st.cache_data.clear()
@@ -384,7 +384,7 @@ def render():
 
         with col2:
             data_delete = st.date_input("Excluir por data de referência")
-            if st.button("🗑️ Excluir por Data", use_container_width=True):
+            if st.button("Excluir por Data", use_container_width=True):
                 executar_historico(
                     "DELETE FROM pedidos WHERE data_referencia = %s",
                     [data_delete]
@@ -395,7 +395,7 @@ def render():
 
         with col3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🧹 Limpar histórico > 30 dias", use_container_width=True):
+            if st.button("Limpar histórico > 30 dias", use_container_width=True):
                 limpar_base()
                 st.success("Histórico antigo removido!")
                 st.cache_data.clear()

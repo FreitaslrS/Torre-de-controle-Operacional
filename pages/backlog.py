@@ -10,7 +10,7 @@ from core.repository import (
     buscar_sla_por_estado,
 )
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global
+from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global, fmt_numero
 
 COR_PRINCIPAL  = "#009640"
 COR_SECUNDARIA = "#053B31"
@@ -59,21 +59,21 @@ def render():
 
     def cor_kpi(valor, total):
         p = valor / total if total else 0
-        return "🔴" if p > 0.3 else "🟡" if p > 0.15 else "🟢"
+        return "(!)" if p > 0.3 else "(~)" if p > 0.15 else "(ok)"
 
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Total", total)
-    col2.metric(">24h", f"{cor_kpi(b24, total)} {b24}")
-    col3.metric(">48h", f"{cor_kpi(b48, total)} {b48}")
-    col4.metric(">72h", f"{cor_kpi(b72, total)} {b72}")
+    col1.metric("Total", fmt_numero(total))
+    col2.metric(">24h", f"{cor_kpi(b24, total)} {fmt_numero(b24)}")
+    col3.metric(">48h", f"{cor_kpi(b48, total)} {fmt_numero(b48)}")
+    col4.metric(">72h", f"{cor_kpi(b72, total)} {fmt_numero(b72)}")
     col5.metric("% Crítico", f"{perc:.1f}%")
 
     if perc > 30:
-        st.error("🚨 Backlog crítico!")
+        st.error("Backlog crítico!")
     elif perc > 15:
-        st.warning("⚠️ Backlog em atenção")
+        st.warning("Backlog em atenção")
     else:
-        st.success("✅ Operação controlada")
+        st.success("Operação controlada")
 
     st.divider()
 
@@ -268,7 +268,7 @@ def render():
     buffer = io.BytesIO()
     df_export.to_excel(buffer, index=False)
     st.download_button(
-        label=f"⬇️ Baixar Excel ({len(df_export)} waybills)",
+        label=f"Baixar Excel ({fmt_numero(len(df_export))} waybills)",
         data=buffer.getvalue(),
         file_name="backlog_waybills.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

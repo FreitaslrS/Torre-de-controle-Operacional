@@ -9,7 +9,7 @@ from core.repository import (
 )
 
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global
+from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global, fmt_numero
 from utils.semana import semana_para_datas, datas_para_label
 
 # ── Paleta Backlog Histórico ──────────────────────────────────────────
@@ -24,12 +24,12 @@ def gerar_download(df, key_prefix):
     col1, col2 = st.columns(2)
 
     csv = df.to_csv(index=False).encode("utf-8")
-    col1.download_button("⬇️ CSV", csv, f"{key_prefix}.csv", "text/csv", key=f"{key_prefix}_csv")
+    col1.download_button("CSV", csv, f"{key_prefix}.csv", "text/csv", key=f"{key_prefix}_csv")
 
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     col2.download_button(
-        "⬇️ Excel", buffer.getvalue(), f"{key_prefix}.xlsx",
+        "Excel", buffer.getvalue(), f"{key_prefix}.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key=f"{key_prefix}_excel"
     )
@@ -69,7 +69,7 @@ def render():
 
     st.divider()
 
-    tab1, tab2 = st.tabs(["📊 Evolução e Gráficos", "⏱️ Drill SLA"])
+    tab1, tab2 = st.tabs(["Evolução e Gráficos", "Drill SLA"])
 
     with tab1:
         # =========================

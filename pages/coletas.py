@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 
 from core.repository import buscar_datas_coletas, buscar_coletas
-from utils.style import aplicar_css_global, tabela_padrao, rodape_autoria
+from utils.style import aplicar_css_global, tabela_padrao, rodape_autoria, fmt_numero
 from utils.theme import grafico_barra
 
 COR_PRINCIPAL  = "#053B31"
@@ -32,11 +32,11 @@ def _tab_descarregamento(data_sel):
 
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Veículos",              veic)
-    col2.metric("Pacotes Carregados",    f"{pac_c:,}")
-    col3.metric("Pacotes Descarregados", f"{pac_dc:,}")
-    col4.metric("Diferença Pacotes",     f"{dif:+,}",
+    col2.metric("Pacotes Carregados",    fmt_numero(pac_c))
+    col3.metric("Pacotes Descarregados", fmt_numero(pac_dc))
+    col4.metric("Diferença Pacotes",     f"+{fmt_numero(dif)}" if dif >= 0 else f"-{fmt_numero(abs(dif))}",
                 delta_color="inverse" if dif < 0 else "normal")
-    col5.metric("Sacos Carregados",      f"{sacos_c:,}")
+    col5.metric("Sacos Carregados",      fmt_numero(sacos_c))
 
     st.divider()
 
@@ -127,10 +127,10 @@ def _tab_saida(data_sel):
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Veículos",            veic)
     col2.metric("Destinos",            total_destinos)
-    col3.metric("Pacotes Enviados",    f"{pac_c:,}")
-    col4.metric("Sacos Enviados",      f"{sacos_c:,}")
-    col5.metric("Confirmados (Desc.)", f"{pac_dc:,}",
-                delta=f"{dif:+,} pendentes",
+    col3.metric("Pacotes Enviados",    fmt_numero(pac_c))
+    col4.metric("Sacos Enviados",      fmt_numero(sacos_c))
+    col5.metric("Confirmados (Desc.)", fmt_numero(pac_dc),
+                delta=f"+{fmt_numero(dif)} pendentes" if dif >= 0 else f"-{fmt_numero(abs(dif))} pendentes",
                 delta_color="inverse" if dif < 0 else "normal")
 
     st.divider()
@@ -234,8 +234,8 @@ def render():
 """, unsafe_allow_html=True)
 
     tab_desc, tab_saida = st.tabs([
-        "📥 Descarregamento em Perus",
-        "📤 Saída para Bases"
+        "Descarregamento em Perus",
+        "Saída para Bases"
     ])
 
     df_datas_desc  = buscar_datas_coletas(tipo="descarregamento")
