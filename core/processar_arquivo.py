@@ -1,4 +1,4 @@
-﻿import io
+import io
 import numpy as np
 import pandas as pd
 from datetime import datetime, timezone
@@ -90,29 +90,26 @@ def limpar_base():
     """)
 
 
-def _classificar_faixa(h):
-    if pd.isna(h) or h < 0: return None
-    elif h <= 24:   return "1 dia"
-    elif h <= 120:  return "1-5 dias"
-    elif h <= 240:  return "5-10 dias"
-    elif h <= 480:  return "10-20 dias"
-    elif h <= 720:  return "20-30 dias"
-    else:           return "30+ dias"
-
-
-def _preparar_df_backlog(arquivo, data_referencia):
-    df = xlsx_para_dataframe(arquivo, usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 56])
+def importar_excel(arquivo, data_referencia):
+    # Lê só colunas necessárias
+    df = xlsx_para_dataframe(
+        arquivo,
+        usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 56]
+    )
     df.columns = [
         "waybill", "estado", "cidade", "cliente",
         "pre_entrega", "ponto_entrada",
         "entrada_hub1", "saida_hub1", "proximo_ponto",
         "entrada_hub2", "entrada_hub3"
     ]
+
     df["waybill"] = df["waybill"].astype(str).str.strip()
     df = df[df["waybill"].str.lower() != "nan"]
+
     for col in ["entrada_hub1", "saida_hub1", "entrada_hub2", "entrada_hub3"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
+    # Filtra só backlog real (parado no hub1)
     df_backlog = df[
         df["entrada_hub1"].notna() &
         df["saida_hub1"].isna() &
@@ -121,24 +118,35 @@ def _preparar_df_backlog(arquivo, data_referencia):
     ].copy()
 
     if df_backlog.empty:
-        return df_backlog, None
+        return 0
 
     agora = pd.to_datetime(data_referencia)
+
     df_backlog["horas_backlog_snapshot"] = (
         (agora - df_backlog["entrada_hub1"]).dt.total_seconds() / 3600
     )
-    df_backlog["faixa_backlog_snapshot"] = df_backlog["horas_backlog_snapshot"].apply(_classificar_faixa)
+
+    def classificar_faixa(h):
+        if pd.isna(h) or h < 0: return None
+        elif h <= 24:   return "1 dia"
+        elif h <= 120:  return "1-5 dias"
+        elif h <= 240:  return "5-10 dias"
+        elif h <= 480:  return "10-20 dias"
+        elif h <= 720:  return "20-30 dias"
+        else:           return "30+ dias"
+
+    df_backlog["faixa_backlog_snapshot"] = df_backlog["horas_backlog_snapshot"].apply(classificar_faixa)
     df_backlog["data_referencia"]        = agora.date()
     df_backlog["data_importacao"]        = datetime.now(timezone.utc)
     df_backlog["nome_arquivo"]           = arquivo.name
     df_backlog["proximo_ponto"]          = df_backlog["proximo_ponto"].fillna("Sem informação")
-    return df_backlog, agora
 
-
-def _salvar_backlog_atual(df_backlog):
+    # ── CAMADA 1: backlog_atual (snapshot atual por waybill) ──────────
     existentes     = consultar_backlog("SELECT waybill FROM backlog_atual")
     existentes_set = set(existentes["waybill"]) if not existentes.empty else set()
-    removidos      = existentes_set - set(df_backlog["waybill"])
+    novos_set      = set(df_backlog["waybill"])
+
+    removidos = existentes_set - novos_set
     if removidos:
         conn = conectar_backlog()
         cur  = conn.cursor()
@@ -166,8 +174,7 @@ def _salvar_backlog_atual(df_backlog):
     ])
     conn.commit(); cur.close(); conn.close()
 
-
-def _salvar_historico_backlog(df_backlog, arquivo, agora):
+    # ── CAMADA 2: pedidos_resumo (agregado para gráficos históricos) ──
     df_resumo = (
         df_backlog.groupby([
             "data_referencia", "estado", "cliente",
@@ -194,8 +201,13 @@ def _salvar_historico_backlog(df_backlog, arquivo, agora):
          for row in df_resumo[colunas_resumo].itertuples(index=False, name=None)]
     )
 
-    executar_historico("DELETE FROM pedidos WHERE data_referencia = %s", [agora.date()])
-    executar_historico("DELETE FROM pedidos WHERE data_referencia < CURRENT_DATE - INTERVAL '7 days'")
+    # ── CAMADA 3: pedidos bruto — só 7 dias para drill down ──────────
+    executar_historico(
+        "DELETE FROM pedidos WHERE data_referencia = %s", [agora.date()]
+    )
+    executar_historico(
+        "DELETE FROM pedidos WHERE data_referencia < CURRENT_DATE - INTERVAL '7 days'"
+    )
 
     colunas_bruto = [
         "waybill", "cliente", "estado", "cidade", "pre_entrega", "proximo_ponto",
@@ -207,15 +219,9 @@ def _salvar_historico_backlog(df_backlog, arquivo, agora):
         [tuple(None if pd.isna(v) else v for v in row)
          for row in df_backlog[colunas_bruto].itertuples(index=False, name=None)]
     )
+
     conn.commit(); cur.close(); conn.close()
 
-
-def importar_excel(arquivo, data_referencia):
-    df_backlog, agora = _preparar_df_backlog(arquivo, data_referencia)
-    if df_backlog.empty:
-        return 0
-    _salvar_backlog_atual(df_backlog)
-    _salvar_historico_backlog(df_backlog, arquivo, agora)
     limpar_historico_antigo()
     return len(df_backlog)
 
@@ -725,10 +731,8 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
 # ================================
 def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     # ── Lê folha de devolução ──────────────────────────────────────
-    with io.BytesIO(arquivo_folha.read()) as buf_folha:
-        df_dev = xlsx_para_dataframe(buf_folha)
+    df_dev = xlsx_para_dataframe(io.BytesIO(arquivo_folha.read()))
     arquivo_folha.seek(0)
-
     df_dev = df_dev.iloc[:, :10]
     df_dev.columns = [
         "waybill", "status", "tipo_operacao", "cliente",
@@ -739,8 +743,7 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     df_dev["waybill"] = df_dev["waybill"].astype(str).str.strip()
 
     # ── Lê monitoramento ──────────────────────────────────────────
-    with io.BytesIO(arquivo_monitor.read()) as buf_monitor:
-        df_mon_raw = xlsx_para_dataframe(buf_monitor)
+    df_mon_raw = xlsx_para_dataframe(io.BytesIO(arquivo_monitor.read()))
     arquivo_monitor.seek(0)
 
     # Colunas completas do monitoramento (igual a importar_devolucao_monitoramento)
@@ -1233,4 +1236,3 @@ def importar_presenca(arquivo):
     conn.close()
 
     return len(rows_turno)
-
