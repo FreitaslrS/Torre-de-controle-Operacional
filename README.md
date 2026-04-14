@@ -10,10 +10,11 @@ Dashboard operacional em tempo real para monitoramento logístico. Desenvolvido 
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | **Backlog Atual**          | Visão em tempo real do backlog por estado, cliente e faixa de tempo (24h / 48h / 72h+). Inclui mapa geográfico e download de waybills |
 | **Backlog Histórico**      | Evolução histórica do backlog com drill por faixa de SLA                                                                              |
-| **Produtividade**          | Volume processado por turno e dispositivo; análise de pacotes grandes                                                                 |
+| **Produtividade**          | Volume processado por turno e dispositivo; análise de pacotes grandes e presença de equipe                                            |
 | **Tempo de Processamento** | SLA operacional, tempo médio por IATA e consolidação Perus + TFK                                                                      |
 | **Health Check**           | Saúde operacional consolidada com indicadores por semana                                                                              |
 | **Devoluções**             | Análise de pedidos devolvidos, P90, motivos e DSPs sem 3 tentativas                                                                   |
+| **Coletas**                | Monitoramento de carregamento e descarregamento por veículo, seção e operador                                                         |
 | **Importação**             | Upload de planilhas Excel para atualização das bases de dados                                                                         |
 
 ---
@@ -21,7 +22,7 @@ Dashboard operacional em tempo real para monitoramento logístico. Desenvolvido 
 ## Tecnologias
 
 - **Frontend:** [Streamlit](https://streamlit.io) — interface web em Python
-- **Banco de dados:** PostgreSQL (5 databases separados por domínio)
+- **Banco de dados:** PostgreSQL (6 databases separados por domínio — Neon + Railway)
 - **Visualização:** Plotly Express + gráficos HTML customizados
 - **Dados geoespaciais:** GeoJSON dos estados brasileiros
 
@@ -40,22 +41,35 @@ logistica_dashboard/
 │   ├── tempo_processamento.py
 │   ├── health_check.py
 │   ├── devolucoes.py
+│   ├── coletas.py
 │   └── importacao.py
 ├── core/                   # Lógica de negócio e acesso a dados
-│   ├── database.py         # Conexões PostgreSQL (com cache por sessão)
-│   ├── repository.py       # Queries organizadas por domínio
+│   ├── database.py         # Pools de conexão PostgreSQL por banco
+│   ├── repository.py       # Queries organizadas por domínio (com cache)
 │   └── processar_arquivo.py# ETL das planilhas importadas
 ├── utils/                  # Utilitários compartilhados
 │   ├── style.py            # CSS global, tabela padrão, rodapé
 │   ├── theme.py            # Helpers de gráficos Plotly
-│   └── colors.py           # Paleta de cores Anjun
+│   └── semana.py           # Helpers de cálculo de semana
 ├── assets/                 # Arquivos estáticos
 │   ├── style_light.css
-│   ├── style_dark.css
 │   └── brasil_estados.json # GeoJSON para mapa choropleth
 ├── requirements.txt
 └── .env                    # Credenciais (não versionado)
 ```
+
+---
+
+## Bancos de dados
+
+| Variável de ambiente       | Domínio                                                                 |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `DATABASE_URL_BACKLOG`     | `pedidos`, `backlog_atual`                                              |
+| `DATABASE_URL_HISTORICO`   | `pedidos_resumo`                                                        |
+| `DATABASE_URL_OPERACIONAL` | `produtividade`, `pacotes_grandes`, `presenca_turno`, `presenca_diaria` |
+| `DATABASE_URL_PROCESSAMENTO` | `tempo_processamento`                                                 |
+| `DATABASE_URL_DEVOLUCOES`  | `dev_resumo`, `dev_detalhado`, `dev_sla_semanal`, `dev_motivos_semanal`, `dev_dsp_sem3tent`, `dev_iatas_semanal`, `dev_status_semanal` |
+| `DATABASE_URL_COLETAS`     | `coletas`                                                               |
 
 ---
 
@@ -67,7 +81,7 @@ logistica_dashboard/
 git clone https://github.com/seu-usuario/logistica_dashboard.git
 cd logistica_dashboard
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+venv\Scripts\activate  # Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -81,6 +95,7 @@ DATABASE_URL_OPERACIONAL=postgresql://usuario:senha@host:5432/operacional
 DATABASE_URL_HISTORICO=postgresql://usuario:senha@host:5432/historico
 DATABASE_URL_DEVOLUCOES=postgresql://usuario:senha@host:5432/devolucoes
 DATABASE_URL_PROCESSAMENTO=postgresql://usuario:senha@host:5432/processamento
+DATABASE_URL_COLETAS=postgresql://usuario:senha@host:5432/coletas
 ```
 
 > Em produção (ex: Streamlit Cloud), configure as mesmas variáveis em **Settings → Secrets**.
@@ -111,6 +126,8 @@ O projeto está configurado para deploy no **Streamlit Community Cloud**:
 Por segurança e tamanho, os seguintes arquivos/pastas estão no `.gitignore`:
 
 - `.env` — credenciais do banco de dados
+- `.claude/` — configurações locais do Claude Code
+- `.amazonq/rules/` — regras locais do Amazon Q Developer
 - `data/` — banco local e arquivos parquet
 - `uploads/` — planilhas enviadas pelos usuários
 - `temp/` — arquivos temporários gerados pelo sistema
