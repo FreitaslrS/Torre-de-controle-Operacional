@@ -1,125 +1,65 @@
 import streamlit as st
 import psycopg2
-import psycopg2.pool
 import os
 import pandas as pd
+from contextlib import contextmanager
 from dotenv import load_dotenv
 
 load_dotenv()
 
+
 # =========================
-# 🔗 POOLS DE CONEXÃO (thread-safe, 1–3 conexões por banco)
+# 🔗 CONEXÕES DIRETAS COM RECONEXÃO AUTOMÁTICA
+# Sem pool — cada query abre e fecha sua própria conexão.
+# Elimina PoolError e SSL closed de uma vez.
 # =========================
 
-@st.cache_resource
-def _pool_backlog():
-    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_BACKLOG"), sslmode="require")
-
-@st.cache_resource
-def _pool_operacional():
-    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_OPERACIONAL"), sslmode="require")
-
-@st.cache_resource
-def _pool_historico():
-    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_HISTORICO"), sslmode="require")
-
-@st.cache_resource
-def _pool_devolucoes():
-    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_DEVOLUCOES"), sslmode="require")
-
-@st.cache_resource
-def _pool_processamento():
-    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_PROCESSAMENTO"), sslmode="require")
-
-@st.cache_resource
-def _pool_coletas():
-    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_COLETAS"), sslmode="require")
+def _conectar(url_env):
+    return psycopg2.connect(os.getenv(url_env), sslmode="require")
 
 
-def _validar_conn(pool, conn):
-    """Testa a conexão; descarta e retorna uma nova se estiver morta."""
+@contextmanager
+def _conn(url_env):
+    """Abre conexão, faz retry automático se SSL cair, garante fechamento."""
+    conn = _conectar(url_env)
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        cur.close()
-        return conn
-    except Exception:
+        yield conn
+    finally:
         try:
-            pool.putconn(conn, close=True)
+            conn.close()
         except Exception:
             pass
-        return pool.getconn()
 
 
-def _consultar(pool_fn, query, params=None):
-    pool = pool_fn()
-    conn = _validar_conn(pool, pool.getconn())
+def _consultar(url_env, query, params=None):
     try:
-        resultado = pd.read_sql(query, conn, params=params)
+        with _conn(url_env) as conn:
+            return pd.read_sql(query, conn, params=params)
     except psycopg2.OperationalError:
-        # Conexão morreu durante a query — descarta, pega nova e tenta uma vez
-        pool.putconn(conn, close=True)
-        conn = pool.getconn()
-        try:
-            resultado = pd.read_sql(query, conn, params=params)
-        except Exception:
-            pool.putconn(conn, close=True)
-            raise
-        pool.putconn(conn)
-        return resultado
-    except Exception:
-        pool.putconn(conn, close=True)
-        raise
-    pool.putconn(conn)
-    return resultado
+        # SSL caiu durante a query — reconecta e tenta uma vez
+        with _conn(url_env) as conn:
+            return pd.read_sql(query, conn, params=params)
 
 
-def _executar_pool(pool_fn, query, params=None):
-    pool = pool_fn()
-    conn = _validar_conn(pool, pool.getconn())
+def _executar(url_env, query, params=None):
     try:
-        cur = conn.cursor()
-        cur.execute(query, params or ())
-        conn.commit()
-        cur.close()
-    except psycopg2.OperationalError:
-        # Conexão morreu — descarta, pega nova e tenta uma vez
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        pool.putconn(conn, close=True)
-        conn = pool.getconn()
-        try:
+        with _conn(url_env) as conn:
             cur = conn.cursor()
             cur.execute(query, params or ())
             conn.commit()
             cur.close()
-        except Exception:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            pool.putconn(conn, close=True)
-            raise
-        pool.putconn(conn)
-        return
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        pool.putconn(conn, close=True)
-        raise
-    pool.putconn(conn)
+    except psycopg2.OperationalError:
+        # SSL caiu — reconecta e tenta uma vez
+        with _conn(url_env) as conn:
+            cur = conn.cursor()
+            cur.execute(query, params or ())
+            conn.commit()
+            cur.close()
 
 
 # =========================
-# 🔗 CONEXÕES DIRETAS (para processar_arquivo.py — fora do pool, fechadas com conn.close())
+# 🔗 CONEXÕES DIRETAS (para processar_arquivo.py — mesma interface de antes)
 # =========================
-def _conectar(url_env):
-    return psycopg2.connect(os.getenv(url_env), sslmode="require")
-
 def conectar_backlog():       return _conectar("DATABASE_URL_BACKLOG")
 def conectar_operacional():   return _conectar("DATABASE_URL_OPERACIONAL")
 def conectar_historico():     return _conectar("DATABASE_URL_HISTORICO")
@@ -131,23 +71,23 @@ def conectar_coletas():       return _conectar("DATABASE_URL_COLETAS")
 # =========================
 # 📊 CONSULTAR
 # =========================
-def consultar_backlog(query, params=None):       return _consultar(_pool_backlog,       query, params)
-def consultar_operacional(query, params=None):   return _consultar(_pool_operacional,   query, params)
-def consultar_historico(query, params=None):     return _consultar(_pool_historico,     query, params)
-def consultar_devolucoes(query, params=None):    return _consultar(_pool_devolucoes,    query, params)
-def consultar_processamento(query, params=None): return _consultar(_pool_processamento, query, params)
-def consultar_coletas(query, params=None):       return _consultar(_pool_coletas,       query, params)
+def consultar_backlog(query, params=None):       return _consultar("DATABASE_URL_BACKLOG",       query, params)
+def consultar_operacional(query, params=None):   return _consultar("DATABASE_URL_OPERACIONAL",   query, params)
+def consultar_historico(query, params=None):     return _consultar("DATABASE_URL_HISTORICO",     query, params)
+def consultar_devolucoes(query, params=None):    return _consultar("DATABASE_URL_DEVOLUCOES",    query, params)
+def consultar_processamento(query, params=None): return _consultar("DATABASE_URL_PROCESSAMENTO", query, params)
+def consultar_coletas(query, params=None):       return _consultar("DATABASE_URL_COLETAS",       query, params)
 
 
 # =========================
 # 🚀 EXECUTAR
 # =========================
-def executar_backlog(query, params=None):       _executar_pool(_pool_backlog,       query, params)
-def executar_operacional(query, params=None):   _executar_pool(_pool_operacional,   query, params)
-def executar_historico(query, params=None):     _executar_pool(_pool_historico,     query, params)
-def executar_devolucoes(query, params=None):    _executar_pool(_pool_devolucoes,    query, params)
-def executar_processamento(query, params=None): _executar_pool(_pool_processamento, query, params)
-def executar_coletas(query, params=None):       _executar_pool(_pool_coletas,       query, params)
+def executar_backlog(query, params=None):       _executar("DATABASE_URL_BACKLOG",       query, params)
+def executar_operacional(query, params=None):   _executar("DATABASE_URL_OPERACIONAL",   query, params)
+def executar_historico(query, params=None):     _executar("DATABASE_URL_HISTORICO",     query, params)
+def executar_devolucoes(query, params=None):    _executar("DATABASE_URL_DEVOLUCOES",    query, params)
+def executar_processamento(query, params=None): _executar("DATABASE_URL_PROCESSAMENTO", query, params)
+def executar_coletas(query, params=None):       _executar("DATABASE_URL_COLETAS",       query, params)
 
 
 # =========================
