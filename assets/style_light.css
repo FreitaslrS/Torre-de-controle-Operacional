@@ -119,7 +119,7 @@ small, .stCaption {
 }
 
 /* ===== BOTÕES GERAIS ===== */
-.stButton button:not([data-testid="stFileUploaderDeleteBtn"]):not([data-testid="stBaseButton-minimal"]) {
+.stButton > button {
     background: #009640 !important;
     color: white !important;
     border-radius: 8px !important;
@@ -132,14 +132,16 @@ small, .stCaption {
     padding: 8px 16px !important;
 }
 
-.stButton button:not([data-testid="stFileUploaderDeleteBtn"]):not([data-testid="stBaseButton-minimal"]):hover {
+.stButton > button:hover {
     background: #007a33 !important;
     transform: none !important;
     box-shadow: none !important;
 }
 
-/* ===== FILE UPLOADER — botão interno preservado ===== */
-/* Sem customização — layout padrão do Streamlit preservado */
+/* ===== FILE UPLOADER — completamente preservado ===== */
+[data-testid="stFileUploader"] * {
+    all: revert;
+}
 
 [data-testid="stDownloadButton"] button {
     background: #053B31 !important;
