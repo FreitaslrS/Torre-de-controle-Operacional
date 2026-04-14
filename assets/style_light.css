@@ -138,9 +138,17 @@ small, .stCaption {
     box-shadow: none !important;
 }
 
-/* ===== FILE UPLOADER — completamente preservado ===== */
-[data-testid="stFileUploader"] * {
-    all: revert;
+/* ===== FILE UPLOADER — padrão Streamlit ===== */
+[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploaderDropzone"] button:hover {
+    background: unset !important;
+    color: unset !important;
+    border: unset !important;
+    border-radius: unset !important;
+    font-size: unset !important;
+    font-weight: unset !important;
+    padding: unset !important;
+    letter-spacing: unset !important;
 }
 
 [data-testid="stDownloadButton"] button {
