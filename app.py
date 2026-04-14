@@ -50,7 +50,7 @@ if page != "home":
             st.rerun()
     if page == "importacao" and st.session_state.get("autenticado"):
         with col_sair:
-            if st.button("Sair", key="btn_logout"):
+            if st.button("Sair", key="btn_sair_importacao"):
                 st.session_state.autenticado = False
                 st.rerun()
 
