@@ -48,16 +48,13 @@ def verificar_senha():
     </div>
 </div>
 """, unsafe_allow_html=True)
-
-    senha = st.text_input("Digite a senha", type="password")
-
+    senha = st.text_input("Senha", type="password")
     if st.button("Entrar"):
         if senha and senha == obter_senha():
             st.session_state.autenticado = True
             st.rerun()
         else:
             st.error("Senha incorreta")
-
     return False
 
 
