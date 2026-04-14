@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from typing import NamedTuple
 
 from core.repository import buscar_datas_coletas, buscar_coletas
@@ -10,7 +9,6 @@ from utils.theme import grafico_barra
 COR_PRINCIPAL  = "#053B31"
 COR_SECUNDARIA = "#009640"
 COR_ALERTA     = "#DE121C"
-COR_AMARELO    = "#F0A202"
 
 
 class KPIsColeta(NamedTuple):
