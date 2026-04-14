@@ -78,7 +78,6 @@ h3 { font-size: 16px !important; }
 
 p, span, label {
     font-family: 'Montserrat', sans-serif !important;
-    color: #374151;
 }
 
 small, .stCaption {
@@ -139,22 +138,8 @@ small, .stCaption {
     box-shadow: none !important;
 }
 
-/* ===== FILE UPLOADER — protege botão interno ===== */
-[data-testid="stFileUploader"] button {
-    background: #ffffff !important;
-    color: #053B31 !important;
-    border: 1px solid rgba(0,150,64,0.4) !important;
-    border-radius: 6px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    font-family: 'Montserrat', sans-serif !important;
-    padding: 6px 14px !important;
-}
-
-[data-testid="stFileUploader"] button:hover {
-    background: rgba(0,150,64,0.06) !important;
-    border-color: #009640 !important;
-}
+/* ===== FILE UPLOADER — botão interno preservado ===== */
+/* Sem customização — layout padrão do Streamlit preservado */
 
 [data-testid="stDownloadButton"] button {
     background: #053B31 !important;
@@ -187,8 +172,7 @@ small, .stCaption {
 .stSelectbox label,
 .stMultiSelect label,
 .stDateInput label,
-.stTextInput label,
-.stFileUploader label {
+.stTextInput label {
     font-size: 11px !important;
     font-weight: 600 !important;
     color: #374151 !important;
