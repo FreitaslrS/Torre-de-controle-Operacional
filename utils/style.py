@@ -4,11 +4,15 @@ import streamlit as st
 import pandas as pd
 
 
-def aplicar_css_global():
+@st.cache_resource
+def _carregar_css():
     css_path = os.path.join(os.path.dirname(__file__), "..", "assets", "style_light.css")
     with open(css_path, encoding="utf-8") as f:
-        css = f.read()
-    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+        return f.read()
+
+
+def aplicar_css_global():
+    st.markdown(f"<style>{_carregar_css()}</style>", unsafe_allow_html=True)
     st.markdown("""
     <style>
     div[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }

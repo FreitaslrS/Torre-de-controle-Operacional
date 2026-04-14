@@ -3,30 +3,24 @@ import time
 import pandas as pd
 from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-from core.database import executar_backlog
-from core.repository import salvar_log_importacao
-from core.processar_arquivo import importar_excel, importar_produtividade, limpar_base
-from core.database import conectar_backlog
-from core.database import (
-    consultar_historico,
-    consultar_operacional,
-    executar_historico,
-    executar_operacional
-)
-from core.processar_arquivo import importar_tempo_processamento
-from core.database import consultar_processamento
-
-@st.cache_resource
-
-def get_conexao():
-    return conectar_backlog()
-
-# =========================
-# 🔐 LOGIN
-# =========================
 import os
 from dotenv import load_dotenv
+
+from core.database import (
+    executar_backlog, executar_historico, executar_operacional,
+    consultar_historico, consultar_operacional, consultar_processamento,
+    consultar_devolucoes, consultar_coletas,
+    executar_processamento, executar_devolucoes, executar_coletas,
+)
+from core.repository import salvar_log_importacao
+from core.processar_arquivo import (
+    importar_excel, importar_produtividade, limpar_base,
+    importar_tempo_processamento, importar_devolucoes, importar_p90,
+    importar_devolucao_monitoramento, importar_devolucao_enriquecida,
+    importar_coletas, importar_coletas_saida,
+    importar_pacotes_grandes, importar_presenca,
+)
+
 load_dotenv()
 
 def obter_senha():
@@ -71,37 +65,29 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
             qtd = importar_tempo_processamento(arquivo)
 
         elif tipo_importacao == "Devolução":
-            from core.processar_arquivo import importar_devolucoes
             qtd = importar_devolucoes(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução - P90":
-            from core.processar_arquivo import importar_p90
             qtd = importar_p90(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução - Monitoramento":
-            from core.processar_arquivo import importar_devolucao_monitoramento
             qtd = importar_devolucao_monitoramento(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução + Monitoramento":
-            from core.processar_arquivo import importar_devolucao_enriquecida
             if arquivo_secundario is None:
                 raise Exception("Arquivo de Monitoramento não selecionado")
             qtd = importar_devolucao_enriquecida(arquivo, arquivo_secundario, data_ref)
 
         elif tipo_importacao == "Coletas — Descarregamento em Perus":
-            from core.processar_arquivo import importar_coletas
             qtd = importar_coletas(arquivo, data_ref)
 
         elif tipo_importacao == "Coletas — Saída para Bases":
-            from core.processar_arquivo import importar_coletas_saida
             qtd = importar_coletas_saida(arquivo, data_ref)
 
         elif tipo_importacao == "Pacotes Grandes":
-            from core.processar_arquivo import importar_pacotes_grandes
             qtd = importar_pacotes_grandes(arquivo, data_ref)
 
         elif tipo_importacao == "Presença / Diário de Bordo":
-            from core.processar_arquivo import importar_presenca
             qtd = importar_presenca(arquivo)
 
         else:
@@ -286,129 +272,54 @@ def render():
     # ========================
     st.subheader("📊 Histórico de Importações")
 
-    from core.database import consultar_backlog as consultar
+    @st.cache_data(ttl=60)
+    def _carregar_historico():
+        from core.database import consultar_devolucoes, consultar_coletas
+        dfs = [
+            consultar_historico("""
+                SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Backlog' as tipo
+                FROM pedidos_resumo GROUP BY nome_arquivo"""),
+            consultar_operacional("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data) as data_referencia, 'Produtividade' as tipo
+                FROM produtividade GROUP BY nome_arquivo"""),
+            consultar_processamento("""
+                SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data) as data_referencia, 'Tempo Processamento' as tipo
+                FROM tempo_processamento GROUP BY nome_arquivo"""),
+            consultar_devolucoes("""
+                SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Devolução' as tipo
+                FROM dev_status_semanal GROUP BY nome_arquivo"""),
+            consultar_devolucoes("""
+                SELECT nome_arquivo, SUM(qtd_pedidos) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Devolução - P90' as tipo
+                FROM p90_semanal GROUP BY nome_arquivo"""),
+            consultar_devolucoes("""
+                SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Devolução - Monitoramento' as tipo
+                FROM dev_sla_semanal GROUP BY nome_arquivo"""),
+            consultar_operacional("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Pacotes Grandes' as tipo
+                FROM pacotes_grandes GROUP BY nome_arquivo"""),
+            consultar_coletas("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, CONCAT('Coletas — ', MAX(tipo)) as tipo
+                FROM coletas GROUP BY nome_arquivo"""),
+            consultar_devolucoes("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Devolução + Monitoramento' as tipo
+                FROM dev_detalhado GROUP BY nome_arquivo"""),
+            consultar_operacional("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Presença / Diário de Bordo' as tipo
+                FROM presenca_turno GROUP BY nome_arquivo"""),
+        ]
+        return pd.concat(dfs, ignore_index=True).sort_values("data_importacao", ascending=False)
 
-    df_hist_backlog = consultar_historico("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            'Backlog' as tipo
-        FROM pedidos_resumo
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_prod = consultar_operacional("""
-        SELECT 
-            nome_arquivo,
-            COUNT(*) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data) as data_referencia,
-            'Produtividade' as tipo
-        FROM produtividade
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_proc = consultar_processamento("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd_total) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data) as data_referencia,
-            'Tempo Processamento' as tipo
-        FROM tempo_processamento
-        GROUP BY nome_arquivo
-    """)
-
-    from core.database import consultar_devolucoes
-
-    df_hist_dev = consultar_devolucoes("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            'Devolução' as tipo
-        FROM dev_status_semanal
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_p90 = consultar_devolucoes("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd_pedidos) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            'Devolução - P90' as tipo
-        FROM p90_semanal
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_mon = consultar_devolucoes("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd_total) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            'Devolução - Monitoramento' as tipo
-        FROM dev_sla_semanal
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_pg = consultar_operacional("""
-        SELECT
-            nome_arquivo,
-            COUNT(*) as registros,
-            MAX(data_importacao) as data_importacao,
-            CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia,
-            'Pacotes Grandes' as tipo
-        FROM pacotes_grandes
-        GROUP BY nome_arquivo
-    """)
-
-    from core.database import consultar_coletas
-
-    df_hist_col = consultar_coletas("""
-        SELECT
-            nome_arquivo,
-            COUNT(*) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            CONCAT('Coletas — ', MAX(tipo)) as tipo
-        FROM coletas
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_det = consultar_devolucoes("""
-        SELECT
-            nome_arquivo,
-            COUNT(*) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            'Devolução + Monitoramento' as tipo
-        FROM dev_detalhado
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_pres = consultar_operacional("""
-        SELECT
-            nome_arquivo,
-            COUNT(*) as registros,
-            MAX(data_importacao) as data_importacao,
-            CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia,
-            'Presença / Diário de Bordo' as tipo
-        FROM presenca_turno
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist = pd.concat(
-        [df_hist_backlog, df_hist_prod, df_hist_proc, df_hist_dev, df_hist_p90,
-         df_hist_mon, df_hist_pg, df_hist_col, df_hist_det, df_hist_pres],
-        ignore_index=True
-    )
-
-    df_hist = df_hist.sort_values("data_importacao", ascending=False)
+    df_hist = _carregar_historico()
 
     if df_hist.empty:
         st.info("Nenhum arquivo importado ainda")
@@ -486,49 +397,16 @@ def render():
 # 🗑️ DELETE
 # ========================
 def excluir_arquivo(nome_arquivo):
-
-    executar_historico(
-        "DELETE FROM pedidos WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-
-    executar_operacional(
-        "DELETE FROM produtividade WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-
-    executar_operacional(
-        "DELETE FROM pacotes_grandes WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-
-    from core.database import executar_processamento, executar_devolucoes
-
-    executar_processamento(
-        "DELETE FROM tempo_processamento WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
+    executar_historico("DELETE FROM pedidos WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_operacional("DELETE FROM produtividade WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_operacional("DELETE FROM pacotes_grandes WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_processamento("DELETE FROM tempo_processamento WHERE nome_arquivo = %s", [nome_arquivo])
 
     for tabela in ["dev_status_semanal", "dev_iatas_semanal", "dev_sla_semanal",
                    "dev_motivos_semanal", "dev_dsp_sem3tent", "p90_semanal", "dev_detalhado"]:
-        executar_devolucoes(
-            f"DELETE FROM {tabela} WHERE nome_arquivo = %s",
-            [nome_arquivo]
-        )
+        executar_devolucoes(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arquivo])
 
-    from core.database import executar_coletas
-    executar_coletas(
-        "DELETE FROM coletas WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-
-    executar_operacional(
-        "DELETE FROM presenca_turno WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-    executar_operacional(
-        "DELETE FROM presenca_diaria WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-
+    executar_coletas("DELETE FROM coletas WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_operacional("DELETE FROM presenca_turno WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_operacional("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
     st.cache_data.clear()
