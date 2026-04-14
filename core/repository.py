@@ -466,6 +466,7 @@ def buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa):
 # =========================
 # ⏱️ TEMPO PROCESSAMENTO
 # =========================
+@st.cache_data(ttl=300)
 def buscar_tempo_processamento(data_inicio=None, data_fim=None):
     query = """
         SELECT
@@ -534,6 +535,7 @@ def buscar_p90(ano=None, cliente=None):
 # 📊 DASHBOARDS DEVOLUÇÃO
 # ================================
 
+@st.cache_data(ttl=300)
 def buscar_semanas_disponiveis_dev():
     """Retorna semana/ano disponíveis — lê de dev_detalhado (fonte unificada)."""
     return consultar_devolucoes("""
@@ -543,6 +545,7 @@ def buscar_semanas_disponiveis_dev():
     """)
 
 
+@st.cache_data(ttl=300)
 def buscar_datas_disponiveis_mon():
     """Retorna datas disponíveis em dev_sla_semanal (arquivo diário de Monitoramento)."""
     return consultar_devolucoes("""
@@ -569,6 +572,7 @@ def _filtro_cliente(query, params, cliente):
     return query, params
 
 
+@st.cache_data(ttl=300)
 def buscar_dev_status_semanal(semana=None, ano=None, cliente=None):
     query = "SELECT estado, status, semana, ano, data_referencia, cliente, cliente_fantasia, qtd FROM dev_status_semanal WHERE 1=1"
     params = []
@@ -582,6 +586,7 @@ def buscar_dev_status_semanal(semana=None, ano=None, cliente=None):
     return consultar_devolucoes(query, params if params else None)
 
 
+@st.cache_data(ttl=300)
 def buscar_dev_iatas_semanal(semana=None, ano=None, estado=None, cliente=None):
     """Retorna pré-entregas por estado (col Y do monitoramento) agrupados por semana."""
     query = "SELECT ponto_operacao, estado, semana, ano, qtd FROM dev_iatas_semanal WHERE 1=1"
@@ -602,6 +607,7 @@ def buscar_dev_iatas_semanal(semana=None, ano=None, estado=None, cliente=None):
     return consultar_devolucoes(query, params if params else None)
 
 
+@st.cache_data(ttl=300)
 def buscar_dev_sla_semanal(cliente=None):
     query = """
         SELECT data_referencia, cliente, cliente_fantasia,
@@ -616,6 +622,7 @@ def buscar_dev_sla_semanal(cliente=None):
     return consultar_devolucoes(query, params if params else None)
 
 
+@st.cache_data(ttl=300)
 def buscar_dev_motivos(data_ref=None, cliente=None):
     query = """
         SELECT motivo, SUM(qtd) as qtd
@@ -646,6 +653,7 @@ def buscar_dev_interceptados(data_ref=None, cliente=None):
     return consultar_devolucoes(query, params if params else None)
 
 
+@st.cache_data(ttl=300)
 def buscar_dev_dsp_sem3tent(data_ref=None, cliente=None):
     query = """
         SELECT ponto_entrada, estado, SUM(qtd) as qtd
@@ -868,8 +876,6 @@ def buscar_dev_por_cliente_fantasia(cliente_fantasia, semana=None, ano=None):
 # ================================
 @st.cache_data(ttl=600)
 def buscar_pacotes_grandes(semana=None, ano=None):
-    from core.database import consultar_operacional
-
     query = """
         SELECT
             waybill_mae, waybill, cliente, status,
@@ -892,7 +898,6 @@ def buscar_pacotes_grandes(semana=None, ano=None):
 
 @st.cache_data(ttl=600)
 def buscar_semanas_pacotes_grandes():
-    from core.database import consultar_operacional
     return consultar_operacional("""
         SELECT DISTINCT semana, ano
         FROM pacotes_grandes

@@ -237,6 +237,21 @@ def inicializar_banco():
 
     # ── DEVOLUÇÕES ────────────────────────────────────────────────────────
     executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_resumo (
+            semana          TEXT,
+            ano             INTEGER,
+            data_referencia DATE,
+            status          TEXT,
+            cliente         TEXT,
+            estado_dest     TEXT,
+            motivo          TEXT,
+            qtd             INTEGER,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
+    executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS dev_detalhado (
             waybill             TEXT,
             status              TEXT,
@@ -258,6 +273,15 @@ def inicializar_banco():
             data_importacao     TIMESTAMP
         )
     """)
+
+    # ── ÍNDICES (performance de queries por data/semana) ─────────────────
+    executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_data ON pedidos_resumo (data_referencia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_data ON dev_detalhado (data_referencia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_semana ON dev_detalhado (semana, ano)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_resumo_semana ON dev_resumo (semana, ano)")
+    executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_data ON produtividade (data)")
+    executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_data ON tempo_processamento (data)")
+    executar_coletas("CREATE INDEX IF NOT EXISTS idx_coletas_data ON coletas (data_referencia, tipo)")
 
     # ── COLETAS (banco separado) ───────────────────────────────────────────
     executar_coletas("""
