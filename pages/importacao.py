@@ -107,7 +107,7 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
 
     except Exception as e:
         qtd = 0
-        status = f"Erro na importação: {type(e).__name__}"
+        status = f"Erro: {type(e).__name__}: {e}"
 
     tempo = time.time() - inicio
 

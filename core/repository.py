@@ -333,7 +333,9 @@ def buscar_backlog_historico(data_inicio, data_fim):
             cliente,
             proximo_ponto,
             faixa_backlog_snapshot,
-            qtd
+            qtd,
+            horas_min,
+            horas_max
         FROM pedidos_resumo
         WHERE data_referencia BETWEEN %s AND %s
     """, [data_inicio, data_fim])
@@ -416,24 +418,28 @@ def salvar_log_importacao(logs_df):
         for _, row in logs_df.iterrows()
     ]
 
-    execute_values(
-        cur,
-        """
-        INSERT INTO log_importacoes (
-            id,
-            nome_arquivo,
-            status,
-            registros,
-            tempo_segundos,
-            data_importacao
-        ) VALUES %s
-        """,
-        values
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        execute_values(
+            cur,
+            """
+            INSERT INTO log_importacoes (
+                id,
+                nome_arquivo,
+                status,
+                registros,
+                tempo_segundos,
+                data_importacao
+            ) VALUES %s
+            """,
+            values
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
 
 # =========================

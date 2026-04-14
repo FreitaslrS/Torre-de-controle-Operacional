@@ -14,8 +14,8 @@ _init_banco()
 # Ping para acordar o Neon antes do usuário navegar (evita cold start)
 @st.cache_data(ttl=60)
 def _acordar_bancos():
-    from core.database import consultar_backlog, consultar_operacional, consultar_devolucoes, consultar_processamento
-    for fn in [consultar_backlog, consultar_operacional, consultar_devolucoes, consultar_processamento]:
+    from core.database import consultar_backlog, consultar_operacional, consultar_devolucoes, consultar_processamento, consultar_coletas
+    for fn in [consultar_backlog, consultar_operacional, consultar_devolucoes, consultar_processamento, consultar_coletas]:
         try:
             fn("SELECT 1")
         except Exception:
