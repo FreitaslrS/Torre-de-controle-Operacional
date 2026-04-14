@@ -13,32 +13,31 @@ load_dotenv()
 
 @st.cache_resource
 def _pool_backlog():
-    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_BACKLOG"), sslmode="require")
+    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_BACKLOG"), sslmode="require")
 
 @st.cache_resource
 def _pool_operacional():
-    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_OPERACIONAL"), sslmode="require")
+    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_OPERACIONAL"), sslmode="require")
 
 @st.cache_resource
 def _pool_historico():
-    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_HISTORICO"), sslmode="require")
+    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_HISTORICO"), sslmode="require")
 
 @st.cache_resource
 def _pool_devolucoes():
-    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_DEVOLUCOES"), sslmode="require")
+    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_DEVOLUCOES"), sslmode="require")
 
 @st.cache_resource
 def _pool_processamento():
-    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_PROCESSAMENTO"), sslmode="require")
+    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_PROCESSAMENTO"), sslmode="require")
 
 @st.cache_resource
 def _pool_coletas():
-    return psycopg2.pool.ThreadedConnectionPool(1, 3, os.getenv("DATABASE_URL_COLETAS"), sslmode="require")
+    return psycopg2.pool.ThreadedConnectionPool(1, 5, os.getenv("DATABASE_URL_COLETAS"), sslmode="require")
 
 
-def _get_conn(pool):
-    """Retorna conexão válida do pool, descartando conexões mortas (inclusive SSL fechado)."""
-    conn = pool.getconn()
+def _validar_conn(pool, conn):
+    """Testa a conexão; descarta e retorna uma nova se estiver morta."""
     try:
         cur = conn.cursor()
         cur.execute("SELECT 1")
@@ -54,36 +53,37 @@ def _get_conn(pool):
 
 def _consultar(pool_fn, query, params=None):
     pool = pool_fn()
-    conn = _get_conn(pool)
+    conn = _validar_conn(pool, pool.getconn())
     try:
-        return pd.read_sql(query, conn, params=params)
+        resultado = pd.read_sql(query, conn, params=params)
     except psycopg2.OperationalError:
+        # Conexão morreu durante a query — descarta, pega nova e tenta uma vez
         pool.putconn(conn, close=True)
         conn = pool.getconn()
         try:
-            return pd.read_sql(query, conn, params=params)
+            resultado = pd.read_sql(query, conn, params=params)
         except Exception:
             pool.putconn(conn, close=True)
             raise
-        else:
-            pool.putconn(conn)
-    else:
         pool.putconn(conn)
+        return resultado
+    except Exception:
+        pool.putconn(conn, close=True)
+        raise
+    pool.putconn(conn)
+    return resultado
 
 
 def _executar_pool(pool_fn, query, params=None):
     pool = pool_fn()
-    conn = _get_conn(pool)
-
-    def _run(c):
-        cur = c.cursor()
-        cur.execute(query, params or ())
-        c.commit()
-        cur.close()
-
+    conn = _validar_conn(pool, pool.getconn())
     try:
-        _run(conn)
+        cur = conn.cursor()
+        cur.execute(query, params or ())
+        conn.commit()
+        cur.close()
     except psycopg2.OperationalError:
+        # Conexão morreu — descarta, pega nova e tenta uma vez
         try:
             conn.rollback()
         except Exception:
@@ -91,19 +91,27 @@ def _executar_pool(pool_fn, query, params=None):
         pool.putconn(conn, close=True)
         conn = pool.getconn()
         try:
-            _run(conn)
+            cur = conn.cursor()
+            cur.execute(query, params or ())
+            conn.commit()
+            cur.close()
         except Exception:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             pool.putconn(conn, close=True)
             raise
-        else:
-            pool.putconn(conn)
+        pool.putconn(conn)
+        return
     except Exception:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         pool.putconn(conn, close=True)
         raise
-    else:
-        pool.putconn(conn)
+    pool.putconn(conn)
 
 
 # =========================
