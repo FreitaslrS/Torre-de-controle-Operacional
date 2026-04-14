@@ -249,11 +249,7 @@ hr {
 }
 
 /* ===== FILE UPLOADER ===== */
-[data-testid="stFileUploader"] {
-    border: 2px dashed rgba(0,150,64,0.3) !important;
-    border-radius: 10px !important;
-    background: rgba(0,150,64,0.03) !important;
-}
+/* Sem customização — layout padrão do Streamlit preservado */
 
 /* ===== PLOTLY FUNDO ===== */
 .js-plotly-plot, .plotly {
