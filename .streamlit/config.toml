@@ -5,3 +5,11 @@ address = "localhost"
 
 [client]
 showSidebarNavigation = false
+
+[theme]
+base = "light"
+primaryColor = "#009640"
+backgroundColor = "#f4f6f4"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#2B2D42"
+font = "sans serif"

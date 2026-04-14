@@ -500,7 +500,7 @@ def buscar_devolucoes(limit=1000):
 # ================================
 # 📊 P90 DEVOLUÇÕES
 # ================================
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def buscar_p90(ano=None, cliente=None):
     """
     Calcula P90 diretamente de dev_detalhado (fonte unificada).
@@ -701,7 +701,7 @@ def buscar_p90_por_estado_detalhado(semana=None, ano=None, clientes=None):
     return consultar_devolucoes(query, params if params else None)
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def buscar_semanas_dev_detalhado():
     return consultar_devolucoes("""
         SELECT DISTINCT semana, ano

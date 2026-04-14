@@ -91,13 +91,14 @@ def render():
         "🗺️ P90 por Estado (Detalhado)"
     ])
 
-    df_clientes = buscar_clientes_fantasia()
+    df_clientes    = buscar_clientes_fantasia()
+    df_semanas_all = buscar_semanas_dev_detalhado()  # chamada única reutilizada nas 3 tabs
 
     # ════════════════════════════════════════
     # TAB 1 — RESUMO
     # ════════════════════════════════════════
     with tab1:
-        df_semanas = buscar_semanas_dev_detalhado()
+        df_semanas = df_semanas_all
 
         if df_semanas.empty:
             st.warning("Sem dados. Importe usando 'Devolução + Monitoramento'.")
@@ -167,7 +168,7 @@ def render():
         st.divider()
 
         # ── Backlog e Estados (Devolução — semanal) ───────────────
-        df_semanas_wbr = buscar_semanas_dev_detalhado()
+        df_semanas_wbr = df_semanas_all
 
         if df_semanas_wbr.empty:
             st.info("Sem dados de status. Importe 'Devolução + Monitoramento'.")
@@ -252,7 +253,7 @@ def render():
         cliente_cod_int = clientes_int if clientes_int else None
 
         # ── Seletor Devolução (semanal) ───────────────────────────
-        df_semanas_int = buscar_semanas_dev_detalhado()
+        df_semanas_int = df_semanas_all
 
         if df_semanas_int.empty:
             st.warning("Sem dados. Importe usando 'Devolução + Monitoramento'.")
