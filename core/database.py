@@ -141,6 +141,7 @@ def inicializar_banco():
         CREATE TABLE IF NOT EXISTS produtividade (
             cliente         TEXT,
             data            DATE,
+            hora            INTEGER,
             turno           TEXT,
             dispositivo     TEXT,
             volumes         INTEGER,
@@ -281,9 +282,21 @@ def inicializar_banco():
     executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_data ON pedidos_resumo (data_referencia)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_data ON dev_detalhado (data_referencia)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_semana ON dev_detalhado (semana, ano)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_status ON dev_detalhado (status) WHERE status = 'Recebido de devolução'")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_p90 ON dev_detalhado (semana, ano, estado_dest, cliente) WHERE status = 'Recebido de devolução' AND dias_dev >= 0")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_resumo_semana ON dev_resumo (semana, ano)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_data ON produtividade (data)")
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_data ON tempo_processamento (data)")
+    executar_operacional("CREATE INDEX IF NOT EXISTS idx_pacotes_grandes_semana ON pacotes_grandes (semana, ano)")
+    executar_operacional("CREATE INDEX IF NOT EXISTS idx_presenca_turno_semana ON presenca_turno (semana, ano)")
+    executar_operacional("CREATE INDEX IF NOT EXISTS idx_presenca_diaria_semana ON presenca_diaria (semana, ano)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_status_semanal_semana ON dev_status_semanal (semana, ano)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_iatas_semanal_semana ON dev_iatas_semanal (semana, ano)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_sla_semanal_data ON dev_sla_semanal (data_referencia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_sla_semanal_cliente ON dev_sla_semanal (cliente_fantasia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_motivos_semanal_data ON dev_motivos_semanal (data_referencia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_dsp_sem3tent_data ON dev_dsp_sem3tent (data_referencia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_iatas_semanal_estado ON dev_iatas_semanal (semana, ano, estado)")
 
     # ── COLETAS (banco separado) ───────────────────────────────────────────
     executar_coletas("""
