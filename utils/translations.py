@@ -1,6 +1,9 @@
 # utils/translations.py
 # Dicionario central de traducoes: PT (padrao) → EN → ZH (mandarin simplificado)
 # Uso: from utils.i18n import t  →  t("chave")
+#
+# ATENÇÃO: strings zh (chinês) que precisem de aspas no meio devem usar 「」 em vez de ""
+# pois "" dentro de uma string Python delimitada por "" causa SyntaxError.
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
 
@@ -418,7 +421,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "pg.sem_dados": {
         "pt": "Sem dados. Importe um arquivo do tipo 'Pacotes Grandes'.",
         "en": "No data. Import a file of type 'Large Packages'.",
-        "zh": "暂无数据。请导入"大件包裹"类型文件。",
+        "zh": "暂无数据。请导入「大件包裹」类型文件。",
     },
     "pg.total_pacotes": {
         "pt": "Total Pacotes",
@@ -766,7 +769,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "dev.importar_mon": {
         "pt": "Importe 'Devolução - Monitoramento' para filtrar por cliente",
         "en": "Import 'Return - Monitoring' to filter by client",
-        "zh": "导入"退货 - 监控"以按客户筛选",
+        "zh": "导入「退货 - 监控」以按客户筛选",
     },
 
     # ─────────────────────────────────────────────
