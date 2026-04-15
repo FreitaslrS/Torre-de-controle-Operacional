@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+import html
 
 
 def semana_para_datas(semana_str: str, ano: int):
@@ -19,12 +20,12 @@ def semana_para_datas(semana_str: str, ano: int):
 
 def datas_para_label(inicio, fim):
     """Retorna label legivel: '30/03 - 05/04/2026'"""
-    return f"{inicio.strftime('%d/%m')} \u2013 {fim.strftime('%d/%m/%Y')}"
+    if not isinstance(inicio, (date, datetime)) or not isinstance(fim, (date, datetime)):
+        raise TypeError("inicio e fim devem ser objetos date ou datetime")
+    return html.escape(f"{inicio.strftime('%d/%m')} \u2013 {fim.strftime('%d/%m/%Y')}")
 
 
 def semana_atual_iso():
     """Retorna (semana_str, ano) da semana atual. Ex: ('w14', 2026)"""
-    hoje = datetime.now()
-    semana = hoje.isocalendar()[1]
-    ano = hoje.isocalendar()[0]
-    return f"w{semana:02d}", ano
+    iso = datetime.now().isocalendar()
+    return f"w{iso[1]:02d}", iso[0]

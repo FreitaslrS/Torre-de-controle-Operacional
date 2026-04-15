@@ -1,3 +1,4 @@
+import html
 import math
 import os
 import streamlit as st
@@ -137,7 +138,7 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     for i, row in enumerate(df.itertuples(index=False, name=None)):
         bg    = ROW_BG if i % 2 == 0 else ROW_ALT_BG
         cells = "".join(
-            f'<td style="{td_style}">{_fmt_celula(v, str(cols[j]).lower())}</td>'
+            f'<td style="{td_style}">{html.escape(str(_fmt_celula(v, str(cols[j]).lower())))}</td>'
             for j, v in enumerate(row)
         )
         rows_list.append(
@@ -150,7 +151,7 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     body_html = "".join(rows_list)
     width     = "100%" if use_container_width else "auto"
 
-    html = f"""
+    tabela_html = f"""
     <div style="
         overflow-x:auto;overflow-y:auto;
         max-height:{max_height}px;
@@ -166,4 +167,4 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     </div>
     """
 
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown(tabela_html, unsafe_allow_html=True)
