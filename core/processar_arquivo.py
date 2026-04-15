@@ -4,17 +4,12 @@ import pandas as pd
 from datetime import datetime, timezone
 from psycopg2.extras import execute_values
 from core.database import (
-    conectar_backlog,
     consultar_backlog,
-    conectar_operacional,
-    conectar_historico,
     executar_historico,
-    conectar_processamento,
-    conectar_devolucoes,
-    conectar_coletas,
     executar_devolucoes,
     executar_operacional,
     executar_processamento,
+    _conn,
 )
 
 
@@ -147,32 +142,29 @@ def importar_excel(arquivo, data_referencia):
     novos_set      = set(df_backlog["waybill"])
 
     removidos = existentes_set - novos_set
-    if removidos:
-        conn = conectar_backlog()
-        cur  = conn.cursor()
-        cur.execute("DELETE FROM backlog_atual WHERE waybill = ANY(%s)", (list(removidos),))
-        conn.commit(); cur.close(); conn.close()
-
-    conn = conectar_backlog()
-    cur  = conn.cursor()
-    execute_values(cur, """
-        INSERT INTO backlog_atual (
-            waybill, cliente, estado, cidade, pre_entrega,
-            proximo_ponto, entrada_hub1,
-            horas_backlog_snapshot, faixa_backlog_snapshot
-        ) VALUES %s
-        ON CONFLICT (waybill) DO UPDATE SET
-            horas_backlog_snapshot = EXCLUDED.horas_backlog_snapshot,
-            faixa_backlog_snapshot = EXCLUDED.faixa_backlog_snapshot,
-            proximo_ponto          = EXCLUDED.proximo_ponto,
-            data_atualizacao       = NOW()
-    """, [
-        (row["waybill"], row["cliente"], row["estado"], row["cidade"],
-         row["pre_entrega"], row["proximo_ponto"], row["entrada_hub1"],
-         row["horas_backlog_snapshot"], row["faixa_backlog_snapshot"])
-        for _, row in df_backlog.iterrows()
-    ])
-    conn.commit(); cur.close(); conn.close()
+    with _conn("DATABASE_URL_BACKLOG") as conn:
+        cur = conn.cursor()
+        if removidos:
+            cur.execute("DELETE FROM backlog_atual WHERE waybill = ANY(%s)", (list(removidos),))
+        execute_values(cur, """
+            INSERT INTO backlog_atual (
+                waybill, cliente, estado, cidade, pre_entrega,
+                proximo_ponto, entrada_hub1,
+                horas_backlog_snapshot, faixa_backlog_snapshot
+            ) VALUES %s
+            ON CONFLICT (waybill) DO UPDATE SET
+                horas_backlog_snapshot = EXCLUDED.horas_backlog_snapshot,
+                faixa_backlog_snapshot = EXCLUDED.faixa_backlog_snapshot,
+                proximo_ponto          = EXCLUDED.proximo_ponto,
+                data_atualizacao       = NOW()
+        """, [
+            (row["waybill"], row["cliente"], row["estado"], row["cidade"],
+             row["pre_entrega"], row["proximo_ponto"], row["entrada_hub1"],
+             row["horas_backlog_snapshot"], row["faixa_backlog_snapshot"])
+            for _, row in df_backlog.iterrows()
+        ])
+        conn.commit()
+        cur.close()
 
     # ── CAMADA 2: pedidos_resumo (agregado para gráficos históricos) ──
     df_resumo = (
@@ -186,41 +178,37 @@ def importar_excel(arquivo, data_referencia):
     df_resumo["nome_arquivo"]    = arquivo.name
     df_resumo["data_importacao"] = datetime.now(timezone.utc)
 
-    conn = conectar_historico()
-    cur  = conn.cursor()
-    cur.execute("DELETE FROM pedidos_resumo WHERE nome_arquivo = %s", [arquivo.name])
+    with _conn("DATABASE_URL_HISTORICO") as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM pedidos_resumo WHERE nome_arquivo = %s", [arquivo.name])
 
-    colunas_resumo = [
-        "data_referencia", "estado", "cliente", "pre_entrega",
-        "proximo_ponto", "faixa_backlog_snapshot", "qtd",
-        "nome_arquivo", "data_importacao"
-    ]
-    execute_values(cur,
-        f"INSERT INTO pedidos_resumo ({','.join(colunas_resumo)}) VALUES %s",
-        [tuple(None if pd.isna(v) else v for v in row)
-         for row in df_resumo[colunas_resumo].itertuples(index=False, name=None)]
-    )
+        colunas_resumo = [
+            "data_referencia", "estado", "cliente", "pre_entrega",
+            "proximo_ponto", "faixa_backlog_snapshot", "qtd",
+            "nome_arquivo", "data_importacao"
+        ]
+        execute_values(cur,
+            f"INSERT INTO pedidos_resumo ({','.join(colunas_resumo)}) VALUES %s",
+            [tuple(None if pd.isna(v) else v for v in row)
+             for row in df_resumo[colunas_resumo].itertuples(index=False, name=None)]
+        )
 
-    # ── CAMADA 3: pedidos bruto — só 7 dias para drill down ──────────
-    executar_historico(
-        "DELETE FROM pedidos WHERE data_referencia = %s", [agora.date()]
-    )
-    executar_historico(
-        "DELETE FROM pedidos WHERE data_referencia < CURRENT_DATE - INTERVAL '7 days'"
-    )
+        # ── CAMADA 3: pedidos bruto — só 7 dias para drill down ──────────
+        cur.execute("DELETE FROM pedidos WHERE data_referencia = %s", [agora.date()])
+        cur.execute("DELETE FROM pedidos WHERE data_referencia < CURRENT_DATE - INTERVAL '7 days'")
 
-    colunas_bruto = [
-        "waybill", "cliente", "estado", "cidade", "pre_entrega", "proximo_ponto",
-        "entrada_hub1", "horas_backlog_snapshot", "faixa_backlog_snapshot",
-        "data_referencia", "data_importacao", "nome_arquivo"
-    ]
-    execute_values(cur,
-        f"INSERT INTO pedidos ({','.join(colunas_bruto)}) VALUES %s",
-        [tuple(None if pd.isna(v) else v for v in row)
-         for row in df_backlog[colunas_bruto].itertuples(index=False, name=None)]
-    )
-
-    conn.commit(); cur.close(); conn.close()
+        colunas_bruto = [
+            "waybill", "cliente", "estado", "cidade", "pre_entrega", "proximo_ponto",
+            "entrada_hub1", "horas_backlog_snapshot", "faixa_backlog_snapshot",
+            "data_referencia", "data_importacao", "nome_arquivo"
+        ]
+        execute_values(cur,
+            f"INSERT INTO pedidos ({','.join(colunas_bruto)}) VALUES %s",
+            [tuple(None if pd.isna(v) else v for v in row)
+             for row in df_backlog[colunas_bruto].itertuples(index=False, name=None)]
+        )
+        conn.commit()
+        cur.close()
 
     limpar_historico_antigo()
     return len(df_backlog)
@@ -286,18 +274,15 @@ def importar_produtividade(arquivo):
     df_agg["nome_arquivo"]    = arquivo.name
     df_agg["data_importacao"] = datetime.now(timezone.utc)
 
-    conn = conectar_operacional()
-    cur  = conn.cursor()
-    cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])
-
-    colunas = ["cliente", "data", "hora", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
-    values  = [tuple(None if pd.isna(v) else v for v in row)
-               for row in df_agg[colunas].itertuples(index=False, name=None)]
-
-    execute_values(cur, f"INSERT INTO produtividade ({','.join(colunas)}) VALUES %s", values)
-    conn.commit()
-    cur.close()
-    conn.close()
+    with _conn("DATABASE_URL_OPERACIONAL") as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])
+        colunas = ["cliente", "data", "hora", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
+        values  = [tuple(None if pd.isna(v) else v for v in row)
+                   for row in df_agg[colunas].itertuples(index=False, name=None)]
+        execute_values(cur, f"INSERT INTO produtividade ({','.join(colunas)}) VALUES %s", values)
+        conn.commit()
+        cur.close()
 
     # View materializada substituída por query direta em buscar_produtividade()
     # Não é mais necessário fazer REFRESH
@@ -365,22 +350,19 @@ def importar_tempo_processamento(arquivo):
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
 
-    conn = conectar_processamento()
-    cur  = conn.cursor()
-    cur.execute("DELETE FROM tempo_processamento WHERE nome_arquivo = %s", [arquivo.name])
-
-    colunas = [
-        "estado", "ponto_entrada", "hiata", "cliente", "data",
-        "data_snapshot", "qtd_total", "qtd_dentro_sla", "qtd_fora_sla",
-        "qtd_sem_saida", "tempo_medio_h", "nome_arquivo", "data_importacao"
-    ]
-    values = [tuple(None if pd.isna(v) else v for v in row)
-              for row in agg[colunas].itertuples(index=False, name=None)]
-
-    execute_values(cur, f"INSERT INTO tempo_processamento ({','.join(colunas)}) VALUES %s", values)
-    conn.commit()
-    cur.close()
-    conn.close()
+    with _conn("DATABASE_URL_PROCESSAMENTO") as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM tempo_processamento WHERE nome_arquivo = %s", [arquivo.name])
+        colunas = [
+            "estado", "ponto_entrada", "hiata", "cliente", "data",
+            "data_snapshot", "qtd_total", "qtd_dentro_sla", "qtd_fora_sla",
+            "qtd_sem_saida", "tempo_medio_h", "nome_arquivo", "data_importacao"
+        ]
+        values = [tuple(None if pd.isna(v) else v for v in row)
+                  for row in agg[colunas].itertuples(index=False, name=None)]
+        execute_values(cur, f"INSERT INTO tempo_processamento ({','.join(colunas)}) VALUES %s", values)
+        conn.commit()
+        cur.close()
 
     limpar_historico_antigo()
     return len(agg)
@@ -450,28 +432,20 @@ def importar_p90(arquivo, data_ref):
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
 
-    conn = conectar_devolucoes()
-    cur  = conn.cursor()
-    cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [arquivo.name])
-
-    colunas = [
-        "estado", "semana", "ano", "cliente", "p90_dias",
-        "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
-    ]
-    values = [
-        tuple(None if pd.isna(v) else v for v in row)
-        for row in agg[colunas].itertuples(index=False, name=None)
-    ]
-
-    execute_values(
-        cur,
-        f"INSERT INTO p90_semanal ({','.join(colunas)}) VALUES %s",
-        values
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with _conn("DATABASE_URL_DEVOLUCOES") as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [arquivo.name])
+        colunas = [
+            "estado", "semana", "ano", "cliente", "p90_dias",
+            "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
+        ]
+        values = [
+            tuple(None if pd.isna(v) else v for v in row)
+            for row in agg[colunas].itertuples(index=False, name=None)
+        ]
+        execute_values(cur, f"INSERT INTO p90_semanal ({','.join(colunas)}) VALUES %s", values)
+        conn.commit()
+        cur.close()
 
     limpar_historico_antigo()
     return len(agg)
@@ -497,12 +471,6 @@ def importar_devolucoes(arquivo, data_ref):
     semana = data_ref_ts.strftime("w%V")
     ano    = int(data_ref_ts.year)
 
-    conn = conectar_devolucoes()
-    cur  = conn.cursor()
-
-    for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
-        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
-
     agora = datetime.now(timezone.utc)
 
     status_agg = (
@@ -517,16 +485,6 @@ def importar_devolucoes(arquivo, data_ref):
     status_agg["data_importacao"]  = agora
     status_agg["cliente_fantasia"] = None
 
-    colunas_status = [
-        "estado", "status", "semana", "ano", "data_referencia", "cliente",
-        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
-    ]
-    execute_values(cur,
-        f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
-        [tuple(None if pd.isna(v) else v for v in row)
-         for row in status_agg[colunas_status].itertuples(index=False, name=None)]
-    )
-
     iata_agg = (
         df.groupby(["ponto_operacao", "estado"])
         .size()
@@ -539,19 +497,31 @@ def importar_devolucoes(arquivo, data_ref):
     iata_agg["data_importacao"]  = agora
     iata_agg["cliente_fantasia"] = None
 
+    colunas_status = [
+        "estado", "status", "semana", "ano", "data_referencia", "cliente",
+        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+    ]
     colunas_iata = [
         "ponto_operacao", "estado", "semana", "ano", "data_referencia",
         "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
     ]
-    execute_values(cur,
-        f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
-        [tuple(None if pd.isna(v) else v for v in row)
-         for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
-    )
 
-    conn.commit()
-    cur.close()
-    conn.close()
+    with _conn("DATABASE_URL_DEVOLUCOES") as conn:
+        cur = conn.cursor()
+        for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
+            cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
+        execute_values(cur,
+            f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
+            [tuple(None if pd.isna(v) else v for v in row)
+             for row in status_agg[colunas_status].itertuples(index=False, name=None)]
+        )
+        execute_values(cur,
+            f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
+            [tuple(None if pd.isna(v) else v for v in row)
+             for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
+        )
+        conn.commit()
+        cur.close()
 
     limpar_historico_antigo()
     return len(status_agg) + len(iata_agg)
@@ -577,27 +547,19 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
     for col in ["tent1", "tent2", "tent3", "assinatura", "data_criacao"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
-    conn = conectar_devolucoes()
-    cur  = conn.cursor()
-
-    for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
-        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
-
     agora       = datetime.now(timezone.utc)
     sla_agg     = pd.DataFrame()
     motivos_agg = pd.DataFrame()
     dsp_agg     = pd.DataFrame()
+    colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
+    colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+    colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
 
-    # ── SLA ───────────────────────────────────────────────────────────
     df_entregues = df[df["assinatura"].notna()].copy()
     if not df_entregues.empty:
-        df_entregues["dias"] = (
-            (df_entregues["assinatura"] - df_entregues["data_criacao"])
-            .dt.total_seconds() / 86400
-        )
+        df_entregues["dias"]     = (df_entregues["assinatura"] - df_entregues["data_criacao"]).dt.total_seconds() / 86400
         df_entregues["prazo"]    = df_entregues["prazo_dias"].fillna(7)
         df_entregues["no_prazo"] = df_entregues["dias"] <= df_entregues["prazo"]
-
         sla_agg = (
             df_entregues.groupby(["estado", "cliente", "cliente_fantasia"])
             .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
@@ -607,60 +569,53 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
         sla_agg["nome_arquivo"]    = arquivo.name
         sla_agg["data_importacao"] = agora
 
-        colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
-        execute_values(cur,
-            f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
-             for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
-        )
-
-    # ── Motivos ───────────────────────────────────────────────────────
     df_motivos = df[df["motivo"].notna()].copy()
     if not df_motivos.empty:
         motivos_agg = (
             df_motivos.groupby(["estado", "motivo", "cliente", "cliente_fantasia"])
-            .size()
-            .reset_index(name="qtd")
+            .size().reset_index(name="qtd")
         )
         motivos_agg["data_referencia"] = data_ref
         motivos_agg["nome_arquivo"]    = arquivo.name
         motivos_agg["data_importacao"] = agora
 
-        colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
-        execute_values(cur,
-            f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
-             for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
-        )
-
-    # ── DSPs sem 3 tentativas ─────────────────────────────────────────
     dsp_sem3 = df[
-        df["motivo"].notna() &
-        df["tent1"].notna() &
-        df["tent3"].isna() &
-        df["assinatura"].isna()
+        df["motivo"].notna() & df["tent1"].notna() &
+        df["tent3"].isna()   & df["assinatura"].isna()
     ].copy()
-
     if not dsp_sem3.empty:
         dsp_agg = (
             dsp_sem3.groupby(["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia"])
-            .size()
-            .reset_index(name="qtd")
+            .size().reset_index(name="qtd")
         )
         dsp_agg["data_referencia"] = data_ref
         dsp_agg["nome_arquivo"]    = arquivo.name
         dsp_agg["data_importacao"] = agora
 
-        colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
-        execute_values(cur,
-            f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
-             for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
-        )
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with _conn("DATABASE_URL_DEVOLUCOES") as conn:
+        cur = conn.cursor()
+        for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
+            cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
+        if not sla_agg.empty:
+            execute_values(cur,
+                f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
+                [tuple(None if pd.isna(v) else v for v in row)
+                 for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
+            )
+        if not motivos_agg.empty:
+            execute_values(cur,
+                f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
+                [tuple(None if pd.isna(v) else v for v in row)
+                 for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
+            )
+        if not dsp_agg.empty:
+            execute_values(cur,
+                f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
+                [tuple(None if pd.isna(v) else v for v in row)
+                 for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
+            )
+        conn.commit()
+        cur.close()
 
     limpar_historico_antigo()
     return len(sla_agg) + len(motivos_agg) + len(dsp_agg)
@@ -700,30 +655,22 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
     df["nome_arquivo"]    = arquivo.name
     df["data_importacao"] = datetime.now(timezone.utc)
 
-    conn = conectar_operacional()
-    cur  = conn.cursor()
-    cur.execute("DELETE FROM pacotes_grandes WHERE nome_arquivo = %s", [arquivo.name])
-
     colunas = [
         "waybill_mae", "waybill", "cliente", "status", "data_status",
         "estado", "cidade", "pre_entrega", "produto", "peso_kg", "volume_m3",
         "semana", "ano", "nome_arquivo", "data_importacao"
     ]
-
     values = [
         tuple(None if pd.isna(v) else v for v in row)
         for row in df[colunas].itertuples(index=False, name=None)
     ]
 
-    execute_values(
-        cur,
-        f"INSERT INTO pacotes_grandes ({','.join(colunas)}) VALUES %s",
-        values
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with _conn("DATABASE_URL_OPERACIONAL") as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM pacotes_grandes WHERE nome_arquivo = %s", [arquivo.name])
+        execute_values(cur, f"INSERT INTO pacotes_grandes ({','.join(colunas)}) VALUES %s", values)
+        conn.commit()
+        cur.close()
 
     return len(df)
 # ================================
@@ -731,7 +678,8 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
 # ================================
 def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     # ── Lê folha de devolução ──────────────────────────────────────
-    df_dev = xlsx_para_dataframe(io.BytesIO(arquivo_folha.read()))
+    with io.BytesIO(arquivo_folha.read()) as buf_folha:
+        df_dev = xlsx_para_dataframe(buf_folha)
     arquivo_folha.seek(0)
     df_dev = df_dev.iloc[:, :10]
     df_dev.columns = [
@@ -743,7 +691,8 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     df_dev["waybill"] = df_dev["waybill"].astype(str).str.strip()
 
     # ── Lê monitoramento ──────────────────────────────────────────
-    df_mon_raw = xlsx_para_dataframe(io.BytesIO(arquivo_monitor.read()))
+    with io.BytesIO(arquivo_monitor.read()) as buf_monitor:
+        df_mon_raw = xlsx_para_dataframe(buf_monitor)
     arquivo_monitor.seek(0)
 
     # Colunas completas do monitoramento (igual a importar_devolucao_monitoramento)
@@ -827,193 +776,186 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
         except Exception:
             return v
 
-    conn = conectar_devolucoes()
-    cur  = conn.cursor()
+    with _conn("DATABASE_URL_DEVOLUCOES") as conn:
+        cur = conn.cursor()
 
-    # ── Salva dev_detalhado ────────────────────────────────────────
-    cur.execute("DELETE FROM dev_detalhado WHERE data_referencia = %s", [data_ref])
-    execute_values(cur,
-        f"INSERT INTO dev_detalhado ({','.join(colunas_det)}) VALUES %s",
-        [tuple(_val(v) for v in row) for row in df_save.itertuples(index=False, name=None)]
-    )
-
-    # ── Salva dev_resumo (agregado — 50x menos linhas para leitura rápida) ──
-    df_resumo_dev = (
-        df_save
-        .groupby(["semana", "ano", "data_referencia", "status",
-                  "cliente", "estado_dest", "motivo"], dropna=False)
-        .agg(qtd=("waybill", "count"))
-        .reset_index()
-    )
-    df_resumo_dev["nome_arquivo"]    = nome_arq
-    df_resumo_dev["data_importacao"] = agora
-    cur.execute("DELETE FROM dev_resumo WHERE data_referencia = %s", [data_ref])
-    colunas_resumo_dev = ["semana", "ano", "data_referencia", "status",
-                          "cliente", "estado_dest", "motivo", "qtd",
-                          "nome_arquivo", "data_importacao"]
-    execute_values(cur,
-        f"INSERT INTO dev_resumo ({','.join(colunas_resumo_dev)}) VALUES %s",
-        [tuple(_val(v) for v in row)
-         for row in df_resumo_dev[colunas_resumo_dev].itertuples(index=False, name=None)]
-    )
-
-    # ── Salva dev_status_semanal (Resumo / WBR / Semanal Interno) ─
-    for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
-        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
-
-    status_agg = (
-        df.groupby(["status", "estado_dest", "cliente"])
-        .size().reset_index(name="qtd")
-    )
-    status_agg["semana"]           = semana
-    status_agg["ano"]              = ano
-    status_agg["data_referencia"]  = data_ref
-    status_agg["nome_arquivo"]     = nome_arq
-    status_agg["data_importacao"]  = agora
-    status_agg["cliente_fantasia"] = None
-    status_agg = status_agg.rename(columns={"estado_dest": "estado"})
-
-    colunas_status = [
-        "estado", "status", "semana", "ano", "data_referencia", "cliente",
-        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
-    ]
-    execute_values(cur,
-        f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
-        [tuple(_val(v) for v in row)
-         for row in status_agg[colunas_status].itertuples(index=False, name=None)]
-    )
-
-    # iata_agg: usa pre_entrega (col Y do monitoramento) + estado_dest (col L do monitoramento)
-    iata_agg = (
-        df[df["pre_entrega"].notna()]
-        .groupby(["pre_entrega", "estado_dest"])
-        .size().reset_index(name="qtd")
-    )
-    iata_agg["semana"]           = semana
-    iata_agg["ano"]              = ano
-    iata_agg["data_referencia"]  = data_ref
-    iata_agg["nome_arquivo"]     = nome_arq
-    iata_agg["data_importacao"]  = agora
-    iata_agg["cliente_fantasia"] = None
-    iata_agg = iata_agg.rename(columns={"pre_entrega": "ponto_operacao", "estado_dest": "estado"})
-
-    colunas_iata = [
-        "ponto_operacao", "estado", "semana", "ano", "data_referencia",
-        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
-    ]
-    execute_values(cur,
-        f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
-        [tuple(_val(v) for v in row)
-         for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
-    )
-
-    # ── Salva p90_semanal (tab P90) ────────────────────────────────
-    cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [nome_arq])
-
-    df_p90_src = df[df["status"] == "Recebido de devolução"].copy()
-    if not df_p90_src.empty:
-        # Fallback: pedidos sem estado_dest (sem match no monitoramento) usam estado da folha
-        df_p90_src["estado_p90"] = df_p90_src["estado_dest"].fillna(df_p90_src["estado"])
-        df_p90_src = df_p90_src[df_p90_src["dias_dev"] >= 0].dropna(subset=["estado_p90", "dias_dev"])
-        if not df_p90_src.empty:
-            p90_agg = (
-                df_p90_src.groupby(["estado_p90", "cliente"])
-                .agg(
-                    p90_dias    = ("dias_dev", lambda x: round(float(np.percentile(x, 90)), 1)),
-                    qtd_pedidos = ("dias_dev", "count")
-                )
-                .reset_index()
-                .rename(columns={"estado_p90": "estado"})
-            )
-            p90_agg["semana"]          = semana
-            p90_agg["ano"]             = ano
-            p90_agg["data_referencia"] = data_ref
-            p90_agg["nome_arquivo"]    = nome_arq
-            p90_agg["data_importacao"] = agora
-
-            colunas_p90 = [
-                "estado", "semana", "ano", "cliente", "p90_dias",
-                "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
-            ]
-            execute_values(cur,
-                f"INSERT INTO p90_semanal ({','.join(colunas_p90)}) VALUES %s",
-                [tuple(_val(v) for v in row)
-                 for row in p90_agg[colunas_p90].itertuples(index=False, name=None)]
-            )
-
-    # ── Salva dev_sla_semanal, dev_motivos_semanal, dev_dsp_sem3tent ─
-    for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
-        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
-
-    df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
-
-    df_entregues = df_mon_full[df_mon_full["assinatura"].notna()].copy() if "assinatura" in df_mon_full.columns else pd.DataFrame()
-    if not df_entregues.empty:
-        df_entregues["dias"] = (
-            (df_entregues["assinatura"] - df_entregues["data_criacao"]).dt.total_seconds() / 86400
+        # ── Salva dev_detalhado ────────────────────────────────────────
+        cur.execute("DELETE FROM dev_detalhado WHERE data_referencia = %s", [data_ref])
+        execute_values(cur,
+            f"INSERT INTO dev_detalhado ({','.join(colunas_det)}) VALUES %s",
+            [tuple(_val(v) for v in row) for row in df_save.itertuples(index=False, name=None)]
         )
-        df_entregues["prazo"]    = df_entregues["prazo_dias"].fillna(7) if "prazo_dias" in df_entregues.columns else 7
-        df_entregues["no_prazo"] = df_entregues["dias"] <= df_entregues["prazo"]
-        sla_agg = (
-            df_entregues.groupby(["estado_dest", "cliente_mon", "cliente_fantasia"])
-            .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
+
+        # ── Salva dev_resumo ───────────────────────────────────────────
+        df_resumo_dev = (
+            df_save
+            .groupby(["semana", "ano", "data_referencia", "status",
+                      "cliente", "estado_dest", "motivo"], dropna=False)
+            .agg(qtd=("waybill", "count"))
             .reset_index()
-            .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
         )
-        sla_agg["data_referencia"] = data_ref
-        sla_agg["nome_arquivo"]    = nome_arq
-        sla_agg["data_importacao"] = agora
-        colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
+        df_resumo_dev["nome_arquivo"]    = nome_arq
+        df_resumo_dev["data_importacao"] = agora
+        cur.execute("DELETE FROM dev_resumo WHERE data_referencia = %s", [data_ref])
+        colunas_resumo_dev = ["semana", "ano", "data_referencia", "status",
+                              "cliente", "estado_dest", "motivo", "qtd",
+                              "nome_arquivo", "data_importacao"]
         execute_values(cur,
-            f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
+            f"INSERT INTO dev_resumo ({','.join(colunas_resumo_dev)}) VALUES %s",
             [tuple(_val(v) for v in row)
-             for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
+             for row in df_resumo_dev[colunas_resumo_dev].itertuples(index=False, name=None)]
         )
 
-    df_motivos = df_mon_full[df_mon_full["motivo"].notna()].copy() if "motivo" in df_mon_full.columns else pd.DataFrame()
-    if not df_motivos.empty:
-        motivos_agg = (
-            df_motivos.groupby(["estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
+        # ── Salva dev_status_semanal e dev_iatas_semanal ───────────────
+        for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
+            cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+
+        status_agg = (
+            df.groupby(["status", "estado_dest", "cliente"])
             .size().reset_index(name="qtd")
-            .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
         )
-        motivos_agg["data_referencia"] = data_ref
-        motivos_agg["nome_arquivo"]    = nome_arq
-        motivos_agg["data_importacao"] = agora
-        colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+        status_agg["semana"]           = semana
+        status_agg["ano"]              = ano
+        status_agg["data_referencia"]  = data_ref
+        status_agg["nome_arquivo"]     = nome_arq
+        status_agg["data_importacao"]  = agora
+        status_agg["cliente_fantasia"] = None
+        status_agg = status_agg.rename(columns={"estado_dest": "estado"})
+        colunas_status = [
+            "estado", "status", "semana", "ano", "data_referencia", "cliente",
+            "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+        ]
         execute_values(cur,
-            f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
+            f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
             [tuple(_val(v) for v in row)
-             for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
+             for row in status_agg[colunas_status].itertuples(index=False, name=None)]
         )
 
-    cols_dsp = ["motivo", "tent1", "tent3", "assinatura"]
-    if all(c in df_mon_full.columns for c in cols_dsp):
-        dsp_sem3 = df_mon_full[
-            df_mon_full["motivo"].notna() &
-            df_mon_full["tent1"].notna() &
-            df_mon_full["tent3"].isna() &
-            df_mon_full["assinatura"].isna()
-        ].copy()
-        if not dsp_sem3.empty:
-            dsp_agg = (
-                dsp_sem3.groupby(["ponto_entrada", "estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
+        iata_agg = (
+            df[df["pre_entrega"].notna()]
+            .groupby(["pre_entrega", "estado_dest"])
+            .size().reset_index(name="qtd")
+        )
+        iata_agg["semana"]           = semana
+        iata_agg["ano"]              = ano
+        iata_agg["data_referencia"]  = data_ref
+        iata_agg["nome_arquivo"]     = nome_arq
+        iata_agg["data_importacao"]  = agora
+        iata_agg["cliente_fantasia"] = None
+        iata_agg = iata_agg.rename(columns={"pre_entrega": "ponto_operacao", "estado_dest": "estado"})
+        colunas_iata = [
+            "ponto_operacao", "estado", "semana", "ano", "data_referencia",
+            "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+        ]
+        execute_values(cur,
+            f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
+            [tuple(_val(v) for v in row)
+             for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
+        )
+
+        # ── Salva p90_semanal ──────────────────────────────────────────
+        cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [nome_arq])
+        df_p90_src = df[df["status"] == "Recebido de devolução"].copy()
+        if not df_p90_src.empty:
+            df_p90_src["estado_p90"] = df_p90_src["estado_dest"].fillna(df_p90_src["estado"])
+            df_p90_src = df_p90_src[df_p90_src["dias_dev"] >= 0].dropna(subset=["estado_p90", "dias_dev"])
+            if not df_p90_src.empty:
+                p90_agg = (
+                    df_p90_src.groupby(["estado_p90", "cliente"])
+                    .agg(
+                        p90_dias    = ("dias_dev", lambda x: round(float(np.percentile(x, 90)), 1)),
+                        qtd_pedidos = ("dias_dev", "count")
+                    )
+                    .reset_index()
+                    .rename(columns={"estado_p90": "estado"})
+                )
+                p90_agg["semana"]          = semana
+                p90_agg["ano"]             = ano
+                p90_agg["data_referencia"] = data_ref
+                p90_agg["nome_arquivo"]    = nome_arq
+                p90_agg["data_importacao"] = agora
+                colunas_p90 = [
+                    "estado", "semana", "ano", "cliente", "p90_dias",
+                    "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
+                ]
+                execute_values(cur,
+                    f"INSERT INTO p90_semanal ({','.join(colunas_p90)}) VALUES %s",
+                    [tuple(_val(v) for v in row)
+                     for row in p90_agg[colunas_p90].itertuples(index=False, name=None)]
+                )
+
+        # ── Salva dev_sla_semanal, dev_motivos_semanal, dev_dsp_sem3tent ─
+        for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
+            cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+
+        df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
+
+        df_entregues = df_mon_full[df_mon_full["assinatura"].notna()].copy() if "assinatura" in df_mon_full.columns else pd.DataFrame()
+        if not df_entregues.empty:
+            df_entregues["dias"] = (
+                (df_entregues["assinatura"] - df_entregues["data_criacao"]).dt.total_seconds() / 86400
+            )
+            df_entregues["prazo"]    = df_entregues["prazo_dias"].fillna(7) if "prazo_dias" in df_entregues.columns else 7
+            df_entregues["no_prazo"] = df_entregues["dias"] <= df_entregues["prazo"]
+            sla_agg = (
+                df_entregues.groupby(["estado_dest", "cliente_mon", "cliente_fantasia"])
+                .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
+                .reset_index()
+                .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
+            )
+            sla_agg["data_referencia"] = data_ref
+            sla_agg["nome_arquivo"]    = nome_arq
+            sla_agg["data_importacao"] = agora
+            colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
+            execute_values(cur,
+                f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
+                [tuple(_val(v) for v in row)
+                 for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
+            )
+
+        df_motivos = df_mon_full[df_mon_full["motivo"].notna()].copy() if "motivo" in df_mon_full.columns else pd.DataFrame()
+        if not df_motivos.empty:
+            motivos_agg = (
+                df_motivos.groupby(["estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
                 .size().reset_index(name="qtd")
                 .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
             )
-            dsp_agg["data_referencia"] = data_ref
-            dsp_agg["nome_arquivo"]    = nome_arq
-            dsp_agg["data_importacao"] = agora
-            colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+            motivos_agg["data_referencia"] = data_ref
+            motivos_agg["nome_arquivo"]    = nome_arq
+            motivos_agg["data_importacao"] = agora
+            colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
             execute_values(cur,
-                f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
+                f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
                 [tuple(_val(v) for v in row)
-                 for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
+                 for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
             )
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        cols_dsp = ["motivo", "tent1", "tent3", "assinatura"]
+        if all(c in df_mon_full.columns for c in cols_dsp):
+            dsp_sem3 = df_mon_full[
+                df_mon_full["motivo"].notna() &
+                df_mon_full["tent1"].notna() &
+                df_mon_full["tent3"].isna() &
+                df_mon_full["assinatura"].isna()
+            ].copy()
+            if not dsp_sem3.empty:
+                dsp_agg = (
+                    dsp_sem3.groupby(["ponto_entrada", "estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
+                    .size().reset_index(name="qtd")
+                    .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
+                )
+                dsp_agg["data_referencia"] = data_ref
+                dsp_agg["nome_arquivo"]    = nome_arq
+                dsp_agg["data_importacao"] = agora
+                colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+                execute_values(cur,
+                    f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
+                    [tuple(_val(v) for v in row)
+                     for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
+                )
+
+        conn.commit()
+        cur.close()
 
     limpar_historico_antigo()
     return len(df_save)
@@ -1056,20 +998,19 @@ def _salvar_coletas(df, arquivo, data_ref, tipo):
         "data_referencia", "nome_arquivo", "data_importacao"
     ]
 
-    conn = conectar_coletas()
-    cur  = conn.cursor()
-    cur.execute(
-        "DELETE FROM coletas WHERE nome_arquivo = %s AND tipo = %s",
-        [arquivo.name, tipo]
-    )
-    values = [
-        tuple(None if pd.isna(v) else v for v in row)
-        for row in df[colunas].itertuples(index=False, name=None)
-    ]
-    execute_values(cur, f"INSERT INTO coletas ({','.join(colunas)}) VALUES %s", values)
-    conn.commit()
-    cur.close()
-    conn.close()
+    with _conn("DATABASE_URL_COLETAS") as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM coletas WHERE nome_arquivo = %s AND tipo = %s",
+            [arquivo.name, tipo]
+        )
+        values = [
+            tuple(None if pd.isna(v) else v for v in row)
+            for row in df[colunas].itertuples(index=False, name=None)
+        ]
+        execute_values(cur, f"INSERT INTO coletas ({','.join(colunas)}) VALUES %s", values)
+        conn.commit()
+        cur.close()
     return len(df)
 
 
@@ -1205,34 +1146,29 @@ def importar_presenca(arquivo):
     if not rows_turno:
         return 0
 
-    conn = conectar_operacional()
-    cur  = conn.cursor()
-
-    cur.execute("DELETE FROM presenca_turno  WHERE nome_arquivo = %s", [nome_arquivo])
-    cur.execute("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
-
-    execute_values(cur, """
-        INSERT INTO presenca_turno (
-            data, semana, ano, turno,
-            produzido_turno, presenca_turno, presenca_total,
-            anjun, temporarios, diaristas_presenciais,
-            faltas_anjun, faltas_temporarios, perc_falta,
-            custo_diaristas, custo_por_pedido,
-            nome_arquivo, data_importacao
-        ) VALUES %s
-    """, rows_turno)
-
-    if rows_diario:
+    with _conn("DATABASE_URL_OPERACIONAL") as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM presenca_turno  WHERE nome_arquivo = %s", [nome_arquivo])
+        cur.execute("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
         execute_values(cur, """
-            INSERT INTO presenca_diaria (
-                data, semana, ano,
-                vol_tfk, vol_shein, vol_d2d, vol_kwai, vol_b2c,
+            INSERT INTO presenca_turno (
+                data, semana, ano, turno,
+                produzido_turno, presenca_turno, presenca_total,
+                anjun, temporarios, diaristas_presenciais,
+                faltas_anjun, faltas_temporarios, perc_falta,
+                custo_diaristas, custo_por_pedido,
                 nome_arquivo, data_importacao
             ) VALUES %s
-        """, rows_diario)
-
-    conn.commit()
-    cur.close()
-    conn.close()
+        """, rows_turno)
+        if rows_diario:
+            execute_values(cur, """
+                INSERT INTO presenca_diaria (
+                    data, semana, ano,
+                    vol_tfk, vol_shein, vol_d2d, vol_kwai, vol_b2c,
+                    nome_arquivo, data_importacao
+                ) VALUES %s
+            """, rows_diario)
+        conn.commit()
+        cur.close()
 
     return len(rows_turno)
