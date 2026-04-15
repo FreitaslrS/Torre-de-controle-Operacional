@@ -1,12 +1,16 @@
+import logging
 import streamlit as st
 import os
 from core.database import inicializar_banco
+
+logger = logging.getLogger(__name__)
 
 @st.cache_resource
 def _init_banco():
     try:
         inicializar_banco()
     except Exception as e:
+        logger.warning("Banco de dados indisponível na inicialização: %s", e)
         st.warning(f"⚠️ Banco de dados indisponível no momento: {e}")
 
 _init_banco()
@@ -34,6 +38,16 @@ button[data-testid="baseButton-headerNoPadding"],
 </style>
 """, unsafe_allow_html=True)
 
+import pages.home as _page_home
+import pages.backlog as _page_backlog
+import pages.backlog_historico as _page_historico
+import pages.produtividade as _page_produtividade
+import pages.tempo_processamento as _page_tempo
+import pages.health_check as _page_health
+import pages.devolucoes as _page_devolucoes
+import pages.coletas as _page_coletas
+import pages.importacao as _page_importacao
+
 from utils.style import aplicar_css_global
 aplicar_css_global()
 
@@ -55,20 +69,20 @@ if page != "home":
                 st.rerun()
 
 if page == "home":
-    import pages.home as _m; _m.render()
+    _page_home.render()
 elif page == "backlog":
-    import pages.backlog as _m; _m.render()
+    _page_backlog.render()
 elif page == "historico":
-    import pages.backlog_historico as _m; _m.render()
+    _page_historico.render()
 elif page == "produtividade":
-    import pages.produtividade as _m; _m.render()
+    _page_produtividade.render()
 elif page == "tempo":
-    import pages.tempo_processamento as _m; _m.render()
+    _page_tempo.render()
 elif page == "health_check":
-    import pages.health_check as _m; _m.render()
+    _page_health.render()
 elif page == "devolucoes":
-    import pages.devolucoes as _m; _m.render()
+    _page_devolucoes.render()
 elif page == "coletas":
-    import pages.coletas as _m; _m.render()
+    _page_coletas.render()
 elif page == "importacao":
-    import pages.importacao as _m; _m.render()
+    _page_importacao.render()

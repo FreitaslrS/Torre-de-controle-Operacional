@@ -66,11 +66,8 @@ def _fmt_celula(v, col_lower):
             return "–" if s in ("nan", "None", "") else s
 
     # Nulo
-    try:
-        if pd.isna(v):
-            return "–"
-    except Exception:
-        pass
+    if pd.isna(v):
+        return "–"
 
     s = str(v)
     if s in ("nan", "None", "<NA>", ""):
