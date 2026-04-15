@@ -92,11 +92,10 @@ def _data_do_waybill(waybill):
 # ================================
 # ⚡ LEITURA RÁPIDA: XLSX → Parquet em memória
 # ================================
-def xlsx_para_dataframe(arquivo, engine="openpyxl", **kwargs):
+def xlsx_para_dataframe(arquivo, engine="calamine", **kwargs):
     """
-    Lê XLSX, converte para Parquet em memória (snappy) e retorna
-    um DataFrame columnar — ~3-10x mais rápido para manipulação
-    em arquivos grandes (+10k linhas).
+    Lê XLSX com calamine (Rust, ~10x mais rápido que openpyxl),
+    converte para Parquet em memória e retorna DataFrame columnar.
     """
     df = pd.read_excel(arquivo, engine=engine, **kwargs)
     with io.BytesIO() as buf:
