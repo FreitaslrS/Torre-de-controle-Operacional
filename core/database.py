@@ -35,41 +35,31 @@ def _conn(url_env):
             logger.warning("Erro ao fechar conexão: %s", e)
 
 
-def _consultar(url_env, query, params=None):
+def _com_retry(fn):
     try:
-        with _conn(url_env) as conn:
-            return pd.read_sql(query, conn, params=params)
+        return fn()
     except psycopg2.OperationalError:
-        # SSL caiu durante a query — reconecta e tenta uma vez
-        with _conn(url_env) as conn:
-            return pd.read_sql(query, conn, params=params)
+        return fn()
+
+
+def _consultar(url_env, query, params=None):
+    return _com_retry(lambda: _fazer_consulta(url_env, query, params))
+
+
+def _fazer_consulta(url_env, query, params):
+    with _conn(url_env) as conn:
+        return pd.read_sql(query, conn, params=params)
 
 
 def _executar(url_env, query, params=None):
-    try:
-        with _conn(url_env) as conn:
-            cur = conn.cursor()
-            cur.execute(query, params or ())
-            conn.commit()
-            cur.close()
-    except psycopg2.OperationalError:
-        # SSL caiu — reconecta e tenta uma vez
-        with _conn(url_env) as conn:
-            cur = conn.cursor()
-            cur.execute(query, params or ())
-            conn.commit()
-            cur.close()
+    return _com_retry(lambda: _fazer_execucao(url_env, query, params))
 
 
-# =========================
-# 🔗 CONEXÕES DIRETAS (para processar_arquivo.py — mesma interface de antes)
-# =========================
-def conectar_backlog():       return _conectar("DATABASE_URL_BACKLOG")
-def conectar_operacional():   return _conectar("DATABASE_URL_OPERACIONAL")
-def conectar_historico():     return _conectar("DATABASE_URL_HISTORICO")
-def conectar_devolucoes():    return _conectar("DATABASE_URL_DEVOLUCOES")
-def conectar_processamento(): return _conectar("DATABASE_URL_PROCESSAMENTO")
-def conectar_coletas():       return _conectar("DATABASE_URL_COLETAS")
+def _fazer_execucao(url_env, query, params):
+    with _conn(url_env) as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params or ())
+            conn.commit()
 
 
 # =========================
@@ -270,6 +260,20 @@ def inicializar_banco():
             data_referencia     DATE,
             nome_arquivo        TEXT,
             data_importacao     TIMESTAMP
+        )
+    """)
+
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS p90_semanal (
+            estado          TEXT,
+            semana          TEXT,
+            ano             INTEGER,
+            cliente         TEXT,
+            p90_dias        DOUBLE PRECISION,
+            qtd_pedidos     INTEGER,
+            data_referencia DATE,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
         )
     """)
 

@@ -13,6 +13,29 @@ from core.database import (
 )
 
 
+def _safe_int(v):
+    try:
+        return int(float(v)) if pd.notna(v) else None
+    except Exception:
+        return None
+
+
+def _safe_float(v):
+    try:
+        return float(v) if pd.notna(v) else None
+    except Exception:
+        return None
+
+
+def _val(v):
+    if hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType':
+        return None
+    try:
+        return None if pd.isna(v) else v
+    except Exception:
+        return v
+
+
 # ================================
 # ⚡ LEITURA RÁPIDA: XLSX → Parquet em memória
 # ================================
@@ -718,13 +741,13 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
         df_mon_raw = xlsx_para_dataframe(buf_monitor)
     arquivo_monitor.seek(0)
 
-    # Colunas completas do monitoramento (igual a importar_devolucao_monitoramento)
-    cols_mon_full = [0, 4, 8, 11, 21, 22, 25, 33, 66, 67, 68, 71, 73]
+    # Colunas completas do monitoramento (para SLA/motivos/DSP e merge)
+    cols_mon_full = [0, 4, 8, 11, 12, 21, 22, 24, 25, 33, 66, 67, 68, 71, 73]
     cols_mon_full = [c for c in cols_mon_full if c < len(df_mon_raw.columns)]
     df_mon_full = df_mon_raw.iloc[:, cols_mon_full].copy()
     df_mon_full.columns = [
-        "waybill", "status_mon", "motivo", "estado_dest",
-        "cliente_mon", "cliente_fantasia", "ponto_entrada", "data_criacao",
+        "waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
+        "cliente_mon", "cliente_fantasia", "pre_entrega", "ponto_entrada", "data_criacao",
         "tent1", "tent2", "tent3", "assinatura", "prazo_dias"
     ][:len(cols_mon_full)]
     for col in ["tent1", "tent2", "tent3", "assinatura", "data_criacao"]:
@@ -732,16 +755,11 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
             df_mon_full[col] = pd.to_datetime(df_mon_full[col], errors="coerce")
     df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
 
-    # Colunas reduzidas para o merge com dev (estado_dest, cidade_dest, pre_entrega, ponto_entrada, motivo, data_criacao)
-    cols_idx = [0, 4, 8, 11, 12, 21, 24, 25, 33]
-    cols_idx = [c for c in cols_idx if c < len(df_mon_raw.columns)]
-    df_mon = df_mon_raw.iloc[:, cols_idx].copy()
-    df_mon.columns = [
-        "waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
-        "cliente_mon", "pre_entrega", "ponto_entrada", "data_criacao"
-    ][:len(cols_idx)]
-    df_mon["data_criacao"] = pd.to_datetime(df_mon["data_criacao"], errors="coerce")
-    df_mon["waybill"] = df_mon["waybill"].astype(str).str.strip()
+    # Subset para merge com dev_detalhado — derivado de df_mon_full (sem reler o arquivo)
+    merge_cols = [c for c in ["waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
+                               "cliente_mon", "pre_entrega", "ponto_entrada", "data_criacao"]
+                  if c in df_mon_full.columns]
+    df_mon = df_mon_full[merge_cols].copy()
 
     # ── Merge para dev_detalhado ───────────────────────────────────
     df = df_dev.merge(df_mon, on="waybill", how="left")
@@ -790,14 +808,6 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
             df[col] = None
 
     df_save = df[colunas_det].copy()
-
-    def _val(v):
-        if hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType':
-            return None
-        try:
-            return None if pd.isna(v) else v
-        except Exception:
-            return v
 
     with _conn("DATABASE_URL_DEVOLUCOES") as conn:
         cur = conn.cursor()
@@ -1078,20 +1088,6 @@ def importar_presenca(arquivo):
         if turno not in ("T1", "T2", "T3"):
             continue
 
-        def _int(idx):
-            v = row.iloc[idx] if len(row) > idx else None
-            try:
-                return int(float(v)) if pd.notna(v) else None
-            except Exception:
-                return None
-
-        def _float(idx):
-            v = row.iloc[idx] if len(row) > idx else None
-            try:
-                return float(v) if pd.notna(v) else None
-            except Exception:
-                return None
-
         semana = str(pd.Timestamp(data_atual).isocalendar()[1]).zfill(2)
         ano    = int(pd.Timestamp(data_atual).year)
 
@@ -1100,17 +1096,17 @@ def importar_presenca(arquivo):
             semana,
             ano,
             turno,
-            _int(2),    # produzido_turno
-            _int(6),    # presenca_turno
-            _int(12),   # presenca_total (só T3, None nos outros — OK)
-            _int(3),    # anjun
-            _int(4),    # temporarios
-            _int(5),    # diaristas_presenciais
-            _int(7),    # faltas_anjun
-            _int(8),    # faltas_temporarios
-            _float(9),  # perc_falta
-            _float(10), # custo_diaristas
-            _float(11), # custo_por_pedido
+            _safe_int(row.iloc[2] if len(row) > 2 else None),   # produzido_turno
+            _safe_int(row.iloc[6] if len(row) > 6 else None),   # presenca_turno
+            _safe_int(row.iloc[12] if len(row) > 12 else None), # presenca_total
+            _safe_int(row.iloc[3] if len(row) > 3 else None),   # anjun
+            _safe_int(row.iloc[4] if len(row) > 4 else None),   # temporarios
+            _safe_int(row.iloc[5] if len(row) > 5 else None),   # diaristas_presenciais
+            _safe_int(row.iloc[7] if len(row) > 7 else None),   # faltas_anjun
+            _safe_int(row.iloc[8] if len(row) > 8 else None),   # faltas_temporarios
+            _safe_float(row.iloc[9] if len(row) > 9 else None), # perc_falta
+            _safe_float(row.iloc[10] if len(row) > 10 else None), # custo_diaristas
+            _safe_float(row.iloc[11] if len(row) > 11 else None), # custo_por_pedido
             nome_arquivo,
             data_importacao,
         ))
@@ -1120,11 +1116,11 @@ def importar_presenca(arquivo):
                 data_atual,
                 semana,
                 ano,
-                _int(13),  # vol_tfk
-                _int(14),  # vol_shein
-                _int(15),  # vol_d2d
-                _int(16),  # vol_kwai
-                _int(17),  # vol_b2c
+                _safe_int(row.iloc[13] if len(row) > 13 else None), # vol_tfk
+                _safe_int(row.iloc[14] if len(row) > 14 else None), # vol_shein
+                _safe_int(row.iloc[15] if len(row) > 15 else None), # vol_d2d
+                _safe_int(row.iloc[16] if len(row) > 16 else None), # vol_kwai
+                _safe_int(row.iloc[17] if len(row) > 17 else None), # vol_b2c
                 nome_arquivo,
                 data_importacao,
             ))

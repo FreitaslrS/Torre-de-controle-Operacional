@@ -1,18 +1,36 @@
-import streamlit as st
-import pandas as pd
-from psycopg2.extras import execute_values
 
-from core.database import (
+
+# =========================
+# 🔧 HELPERS
+# =========================
+def _filtro_cliente(query, params, cliente):
+    """Adiciona filtro de cliente a query/params. Aceita string ou lista."""
+    if not cliente:
+        return query, params
+    if isinstance(cliente, list):
+        if len(cliente) == 1:
+            query += " AND cliente = %s"
+            params.append(cliente[0])
+        else:
+            query += " AND cliente = ANY(%s)"
+            params.append(cliente)
+    else:
+        query += " AND cliente = %s"
+        params.append(cliente)
+    return query, params
+
+
+
     consultar_backlog,
     consultar_operacional,
-    executar_backlog,
-    executar_operacional,
-    conectar_operacional,
+    consultar_processamento,
     consultar_historico,
     consultar_devolucoes,
     consultar_coletas,
+    executar_backlog,
+    executar_operacional,
+    _conn,
 )
-from core.database import consultar_processamento
 
 # =========================
 # 🗑️ DELETE
@@ -304,7 +322,7 @@ def buscar_sla_por_estado():
 @st.cache_data(ttl=300)
 def contar_backlog(estados=None, clientes=None, faixa=None):
 
-    query = "SELECT SUM(qtd) as total FROM backlog_atual WHERE 1=1"
+    query = "SELECT COUNT(*) as total FROM backlog_atual WHERE 1=1"
     params = []
 
     if estados:
@@ -378,7 +396,7 @@ def buscar_produtividade(data_inicio=None, data_fim=None):
 # =========================
 @st.cache_data(ttl=300)
 def buscar_pedidos(limit=1000):
-    return consultar_historico("""
+    return consultar_backlog("""
         SELECT 
             waybill,
             cliente,
@@ -401,9 +419,6 @@ def salvar_log_importacao(logs_df):
     if logs_df.empty:
         return
 
-    conn = conectar_operacional()
-    cur = conn.cursor()
-
     logs_df = logs_df.fillna(0)
 
     values = [
@@ -418,28 +433,29 @@ def salvar_log_importacao(logs_df):
         for _, row in logs_df.iterrows()
     ]
 
-    try:
-        execute_values(
-            cur,
-            """
-            INSERT INTO log_importacoes (
-                id,
-                nome_arquivo,
-                status,
-                registros,
-                tempo_segundos,
-                data_importacao
-            ) VALUES %s
-            """,
-            values
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        cur.close()
-        conn.close()
+    with _conn("DATABASE_URL_OPERACIONAL") as conn:
+        cur = conn.cursor()
+        try:
+            execute_values(
+                cur,
+                """
+                INSERT INTO log_importacoes (
+                    id,
+                    nome_arquivo,
+                    status,
+                    registros,
+                    tempo_segundos,
+                    data_importacao
+                ) VALUES %s
+                """,
+                values
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
 
 
 # =========================
@@ -450,8 +466,7 @@ def buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa):
     query = """
         SELECT waybill, estado, cliente, pre_entrega, horas_backlog_snapshot
         FROM pedidos
-        WHERE status = 'backlog'
-        AND data_referencia BETWEEN %s AND %s
+        WHERE data_referencia BETWEEN %s AND %s
     """
 
     params = [data_inicio, data_fim]
@@ -559,23 +574,6 @@ def buscar_datas_disponiveis_mon():
         FROM dev_sla_semanal
         ORDER BY data_referencia DESC
     """)
-
-
-def _filtro_cliente(query, params, cliente):
-    """Adiciona filtro de cliente a query/params. Aceita string ou lista."""
-    if not cliente:
-        return query, params
-    if isinstance(cliente, list):
-        if len(cliente) == 1:
-            query += " AND cliente = %s"
-            params.append(cliente[0])
-        else:
-            query += " AND cliente = ANY(%s)"
-            params.append(cliente)
-    else:
-        query += " AND cliente = %s"
-        params.append(cliente)
-    return query, params
 
 
 @st.cache_data(ttl=300)
