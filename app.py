@@ -1,7 +1,24 @@
 import logging
 import streamlit as st
-import os
-from core.database import inicializar_banco
+from core.database import (
+    inicializar_banco,
+    consultar_backlog,
+    consultar_operacional,
+    consultar_historico,
+    consultar_devolucoes,
+    consultar_processamento,
+    consultar_coletas,
+)
+import pages.home as _page_home
+import pages.backlog as _page_backlog
+import pages.backlog_historico as _page_historico
+import pages.produtividade as _page_produtividade
+import pages.tempo_processamento as _page_tempo
+import pages.health_check as _page_health
+import pages.devolucoes as _page_devolucoes
+import pages.coletas as _page_coletas
+import pages.importacao as _page_importacao
+from utils.style import aplicar_css_global
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +35,12 @@ _init_banco()
 # Ping para acordar o Neon antes do usuário navegar (evita cold start)
 @st.cache_data(ttl=300)
 def _acordar_bancos():
-    from core.database import consultar_backlog, consultar_operacional, consultar_historico, consultar_devolucoes, consultar_processamento, consultar_coletas
-    for fn in [consultar_backlog, consultar_operacional, consultar_historico, consultar_devolucoes, consultar_processamento, consultar_coletas]:
+    for fn in [consultar_backlog, consultar_operacional, consultar_historico,
+               consultar_devolucoes, consultar_processamento, consultar_coletas]:
         try:
             fn("SELECT 1")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Warm-up ping falhou para %s: %s", getattr(fn, "__name__", fn), e)
 
 _acordar_bancos()
 
@@ -38,19 +55,7 @@ button[data-testid="baseButton-headerNoPadding"],
 </style>
 """, unsafe_allow_html=True)
 
-import pages.home as _page_home
-import pages.backlog as _page_backlog
-import pages.backlog_historico as _page_historico
-import pages.produtividade as _page_produtividade
-import pages.tempo_processamento as _page_tempo
-import pages.health_check as _page_health
-import pages.devolucoes as _page_devolucoes
-import pages.coletas as _page_coletas
-import pages.importacao as _page_importacao
-
-from utils.style import aplicar_css_global
 aplicar_css_global()
-
 if "page" not in st.session_state:
     st.session_state.page = "home"
 

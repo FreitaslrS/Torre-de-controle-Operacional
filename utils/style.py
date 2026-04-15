@@ -16,7 +16,7 @@ def fmt_numero(n):
     """Formata número inteiro com separador de milhar brasileiro (ponto)."""
     try:
         return f"{int(n):,}".replace(",", ".")
-    except Exception:
+    except (ValueError, TypeError):
         return str(n)
 
 
@@ -61,7 +61,7 @@ def _fmt_celula(v, col_lower):
                 hi += 1
                 mi = 0
             return f"{hi:02d}:{mi:02d}"
-        except Exception:
+        except (ValueError, TypeError):
             s = str(v)
             return "–" if s in ("nan", "None", "") else s
 

@@ -67,13 +67,19 @@ def _classificar_turno_e_data(dt):
 
 
 def _classificar_faixa_backlog(h):
-    if pd.isna(h) or h < 0: return None
-    elif h <= 24:   return "1 dia"
-    elif h <= 120:  return "1-5 dias"
-    elif h <= 240:  return "5-10 dias"
-    elif h <= 480:  return "10-20 dias"
-    elif h <= 720:  return "20-30 dias"
-    else:           return "30+ dias"
+    if pd.isna(h) or h < 0:
+        return None
+    if h <= 24:
+        return "1 dia"
+    if h <= 120:
+        return "1-5 dias"
+    if h <= 240:
+        return "5-10 dias"
+    if h <= 480:
+        return "10-20 dias"
+    if h <= 720:
+        return "20-30 dias"
+    return "30+ dias"
 
 
 def _data_do_waybill(waybill):
@@ -740,34 +746,37 @@ def _agregar_dsp_sem3tent(df, col_estado, col_cliente, data_ref, nome_arquivo, a
     return agg
 
 
-def importar_devolucao_monitoramento(arquivo, data_ref):
+def _ler_monitoramento_simples(arquivo):
+    """Lê e prepara o DataFrame de monitoramento pontual (sem join com folha)."""
     df = xlsx_para_dataframe(
         arquivo,
         usecols=[0, 4, 8, 11, 21, 22, 25, 33, 66, 67, 68, 71, 73]
     )
+    if df.empty:
+        return df
     df.columns = [
         "waybill", "status", "motivo", "estado", "cliente",
         "cliente_fantasia", "ponto_entrada", "data_criacao",
         "tent1", "tent2", "tent3", "assinatura", "prazo_dias"
     ]
-
-    if df.empty:
-        return 0
-
     for col in ["tent1", "tent2", "tent3", "assinatura", "data_criacao"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
+    return df
 
+
+def importar_devolucao_monitoramento(arquivo, data_ref):
+    df = _ler_monitoramento_simples(arquivo)
+    if df.empty:
+        return 0
     agora       = datetime.now(timezone.utc)
     sla_agg     = _agregar_sla(df, "estado", "cliente", data_ref, arquivo.name, agora)
     motivos_agg = _agregar_motivos(df, "estado", "cliente", data_ref, arquivo.name, agora)
     dsp_agg     = _agregar_dsp_sem3tent(df, "estado", "cliente", data_ref, arquivo.name, agora)
-
     with _conn("DATABASE_URL_DEVOLUCOES") as conn:
         cur = conn.cursor()
         _salvar_sla_motivos_dsp(cur, df, data_ref, arquivo.name, agora)
         conn.commit()
         cur.close()
-
     limpar_historico_antigo()
     return len(sla_agg) + len(motivos_agg) + len(dsp_agg)
 
@@ -876,9 +885,10 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
 # ================================
 # 📊 DEVOLUÇÃO ENRIQUECIDA (Folha + Monitoramento)
 # ================================
-def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
-    with io.BytesIO(arquivo_folha.read()) as buf_folha:
-        df_dev = xlsx_para_dataframe(buf_folha)
+def _ler_folha_devolucao(arquivo_folha):
+    """Lê e prepara a folha de registro de devoluções."""
+    with io.BytesIO(arquivo_folha.read()) as buf:
+        df_dev = xlsx_para_dataframe(buf)
     arquivo_folha.seek(0)
     df_dev = df_dev.iloc[:, :10]
     df_dev.columns = [
@@ -888,7 +898,25 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     ]
     df_dev["data_operacao"] = pd.to_datetime(df_dev["data_operacao"], errors="coerce")
     df_dev["waybill"] = df_dev["waybill"].astype(str).str.strip()
+    return df_dev
 
+
+def _persistir_enriquecida(cur, df_save, colunas_det, df, df_mon_full,
+                            semana, ano, data_ref, nome_arq, agora):
+    """Persiste todos os dados da devolução enriquecida num cursor já aberto."""
+    cur.execute("DELETE FROM dev_detalhado WHERE data_referencia = %s", [data_ref])
+    execute_values(cur,
+        f"INSERT INTO dev_detalhado ({','.join(colunas_det)}) VALUES %s",
+        [tuple(_val(v) for v in row) for row in df_save.itertuples(index=False, name=None)]
+    )
+    _salvar_dev_resumo(cur, df_save, nome_arq, agora, data_ref)
+    _salvar_status_iata(cur, df, semana, ano, data_ref, nome_arq, agora)
+    _salvar_p90(cur, df, semana, ano, data_ref, nome_arq, agora)
+    _salvar_sla_motivos_dsp(cur, df_mon_full, data_ref, nome_arq, agora)
+
+
+def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
+    df_dev = _ler_folha_devolucao(arquivo_folha)
     df_mon_full, df_mon = _ler_monitoramento(arquivo_monitor)
 
     ref_ts   = pd.Timestamp(data_ref)
@@ -912,15 +940,8 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
 
     with _conn("DATABASE_URL_DEVOLUCOES") as conn:
         cur = conn.cursor()
-        cur.execute("DELETE FROM dev_detalhado WHERE data_referencia = %s", [data_ref])
-        execute_values(cur,
-            f"INSERT INTO dev_detalhado ({','.join(colunas_det)}) VALUES %s",
-            [tuple(_val(v) for v in row) for row in df_save.itertuples(index=False, name=None)]
-        )
-        _salvar_dev_resumo(cur, df_save, nome_arq, agora, data_ref)
-        _salvar_status_iata(cur, df, semana, ano, data_ref, nome_arq, agora)
-        _salvar_p90(cur, df, semana, ano, data_ref, nome_arq, agora)
-        _salvar_sla_motivos_dsp(cur, df_mon_full, data_ref, nome_arq, agora)
+        _persistir_enriquecida(cur, df_save, colunas_det, df, df_mon_full,
+                               semana, ano, data_ref, nome_arq, agora)
         conn.commit()
         cur.close()
 
