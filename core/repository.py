@@ -1,4 +1,18 @@
+import streamlit as st
+import pandas as pd
+from psycopg2.extras import execute_values
 
+from core.database import (
+    consultar_backlog,
+    consultar_operacional,
+    consultar_processamento,
+    consultar_historico,
+    consultar_devolucoes,
+    consultar_coletas,
+    executar_backlog,
+    executar_operacional,
+    _conn,
+)
 
 # =========================
 # 🔧 HELPERS
@@ -19,18 +33,6 @@ def _filtro_cliente(query, params, cliente):
         params.append(cliente)
     return query, params
 
-
-
-    consultar_backlog,
-    consultar_operacional,
-    consultar_processamento,
-    consultar_historico,
-    consultar_devolucoes,
-    consultar_coletas,
-    executar_backlog,
-    executar_operacional,
-    _conn,
-)
 
 # =========================
 # 🗑️ DELETE

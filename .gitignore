@@ -68,3 +68,29 @@ build/
 # ── Amazon Q Developer ───────────────────────────────────────────────
 .amazonq/rules/
 !.amazonq/
+
+# ── Streamlit cache local ─────────────────────────────────────────────
+.streamlit/cache/
+__streamlit__/
+
+# ── Jupyter / notebooks ───────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Coverage / testes ─────────────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+*.pytest_cache
+
+# ── Credenciais e chaves (defesa extra) ──────────────────────────────
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+credentials.json
+
+# ── Arquivos de profiling / debug ─────────────────────────────────────
+*.prof
+*.lprof

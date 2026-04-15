@@ -1,5 +1,6 @@
 import logging
 import streamlit as st
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.database import (
     inicializar_banco,
     consultar_backlog,
@@ -33,14 +34,22 @@ def _init_banco():
 _init_banco()
 
 # Ping para acordar o Neon antes do usuário navegar (evita cold start)
+# Paralelo: todos os 6 bancos são pingados ao mesmo tempo — reduz espera de ~18s → ~3s
 @st.cache_data(ttl=300)
 def _acordar_bancos():
-    for fn in [consultar_backlog, consultar_operacional, consultar_historico,
-               consultar_devolucoes, consultar_processamento, consultar_coletas]:
+    _fns = [consultar_backlog, consultar_operacional, consultar_historico,
+            consultar_devolucoes, consultar_processamento, consultar_coletas]
+
+    def _ping(fn):
         try:
             fn("SELECT 1")
         except Exception as e:
             logger.debug("Warm-up ping falhou para %s: %s", getattr(fn, "__name__", fn), e)
+
+    with ThreadPoolExecutor(max_workers=len(_fns)) as pool:
+        futures = [pool.submit(_ping, fn) for fn in _fns]
+        for f in as_completed(futures):
+            f.result()  # propaga apenas exceções não capturadas (não deve ocorrer)
 
 _acordar_bancos()
 

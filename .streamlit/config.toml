@@ -1,7 +1,11 @@
 [server]
 headless = true
 port = 8501
-address = "localhost"
+# Não definir address em produção — Streamlit Cloud vincula automaticamente ao 0.0.0.0
+
+[runner]
+# Reruns rápidos ao clicar em widgets (não espera o script inteiro reiniciar)
+fastReruns = true
 
 [client]
 showSidebarNavigation = false

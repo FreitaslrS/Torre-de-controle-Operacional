@@ -87,7 +87,7 @@ pip install -r requirements.txt
 
 ### 2. Variáveis de ambiente
 
-Crie um arquivo `.env` na raiz com as conexões PostgreSQL:
+Crie um arquivo `.env` na raiz com base no `.env.example`:
 
 ```env
 DATABASE_URL_BACKLOG=postgresql://usuario:senha@host:5432/backlog
@@ -96,9 +96,10 @@ DATABASE_URL_HISTORICO=postgresql://usuario:senha@host:5432/historico
 DATABASE_URL_DEVOLUCOES=postgresql://usuario:senha@host:5432/devolucoes
 DATABASE_URL_PROCESSAMENTO=postgresql://usuario:senha@host:5432/processamento
 DATABASE_URL_COLETAS=postgresql://usuario:senha@host:5432/coletas
+SENHA_IMPORTACAO=sua_senha_forte_aqui
 ```
 
-> Em produção (ex: Streamlit Cloud), configure as mesmas variáveis em **Settings → Secrets**.
+> **Segurança:** o `.env` nunca deve ser versionado — ele já está no `.gitignore`. Em produção (Streamlit Cloud), configure as mesmas variáveis em **Settings → Secrets**, sem o arquivo `.env`.
 
 ### 3. Rodar localmente
 
@@ -121,11 +122,21 @@ O projeto está configurado para deploy no **Streamlit Community Cloud**:
 
 ---
 
+## Segurança
+
+- Todas as conexões com banco de dados usam TLS (`sslmode=require`).
+- Nenhuma credencial é armazenada no código — use `.env` (local) ou Streamlit Secrets (produção).
+- A página de Importação é protegida por senha configurada via `SENHA_IMPORTACAO`.
+- Consulte [SECURITY.md](SECURITY.md) para a política completa de segurança e procedimentos em caso de incidente.
+
+---
+
 ## Arquivos que não são versionados
 
 Por segurança e tamanho, os seguintes arquivos/pastas estão no `.gitignore`:
 
-- `.env` — credenciais do banco de dados
+- `.env` — credenciais do banco de dados e senha de importação
+- `.streamlit/secrets.toml` — secrets do Streamlit (alternativa ao `.env`)
 - `.claude/` — configurações locais do Claude Code
 - `.amazonq/rules/` — regras locais do Amazon Q Developer
 - `data/` — banco local e arquivos parquet

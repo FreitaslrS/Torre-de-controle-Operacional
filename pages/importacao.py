@@ -27,48 +27,56 @@ load_dotenv()
 
 @st.cache_data(ttl=60)
 def _carregar_historico():
-    dfs = [
-        consultar_historico("""
+    consultas = [
+        (consultar_historico, """
             SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, 'Backlog' as tipo
             FROM pedidos_resumo GROUP BY nome_arquivo"""),
-        consultar_operacional("""
+        (consultar_operacional, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data) as data_referencia, 'Produtividade' as tipo
             FROM produtividade GROUP BY nome_arquivo"""),
-        consultar_processamento("""
+        (consultar_processamento, """
             SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data) as data_referencia, 'Tempo Processamento' as tipo
             FROM tempo_processamento GROUP BY nome_arquivo"""),
-        consultar_devolucoes("""
+        (consultar_devolucoes, """
             SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, 'Devolução' as tipo
             FROM dev_status_semanal GROUP BY nome_arquivo"""),
-        consultar_devolucoes("""
+        (consultar_devolucoes, """
             SELECT nome_arquivo, SUM(qtd_pedidos) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, 'Devolução - P90' as tipo
             FROM p90_semanal GROUP BY nome_arquivo"""),
-        consultar_devolucoes("""
+        (consultar_devolucoes, """
             SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, 'Devolução - Monitoramento' as tipo
             FROM dev_sla_semanal GROUP BY nome_arquivo"""),
-        consultar_operacional("""
+        (consultar_operacional, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Pacotes Grandes' as tipo
             FROM pacotes_grandes GROUP BY nome_arquivo"""),
-        consultar_coletas("""
+        (consultar_coletas, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, CONCAT('Coletas — ', MAX(tipo)) as tipo
             FROM coletas GROUP BY nome_arquivo"""),
-        consultar_devolucoes("""
+        (consultar_devolucoes, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, 'Devolução + Monitoramento' as tipo
             FROM dev_detalhado GROUP BY nome_arquivo"""),
-        consultar_operacional("""
+        (consultar_operacional, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Presença / Diário de Bordo' as tipo
             FROM presenca_turno GROUP BY nome_arquivo"""),
     ]
+    dfs = []
+    for fn, sql in consultas:
+        try:
+            dfs.append(fn(sql))
+        except Exception:
+            pass  # banco indisponível não derruba o histórico inteiro
+    if not dfs:
+        return pd.DataFrame()
     return pd.concat(dfs, ignore_index=True).sort_values("data_importacao", ascending=False)
 
 
@@ -77,9 +85,14 @@ def _senha_configurada():
     return os.getenv("SENHA_IMPORTACAO", "").strip()
 
 
+_MAX_TENTATIVAS = 5
+
+
 def verificar_senha():
     if "autenticado" not in st.session_state:
         st.session_state.autenticado = False
+    if "tentativas_senha" not in st.session_state:
+        st.session_state.tentativas_senha = 0
 
     if st.session_state.autenticado:
         return True
@@ -87,6 +100,13 @@ def verificar_senha():
     senha_correta = _senha_configurada()
     if not senha_correta:
         st.error("Importação bloqueada: SENHA_IMPORTACAO não configurada no ambiente.")
+        return False
+
+    if st.session_state.tentativas_senha >= _MAX_TENTATIVAS:
+        st.error(
+            f"Acesso bloqueado após {_MAX_TENTATIVAS} tentativas incorretas. "
+            "Recarregue a página para tentar novamente."
+        )
         return False
 
     st.markdown("""
@@ -106,9 +126,15 @@ def verificar_senha():
     if st.button("Entrar"):
         if senha and senha == senha_correta:
             st.session_state.autenticado = True
+            st.session_state.tentativas_senha = 0
             st.rerun()
         else:
-            st.error("Senha incorreta")
+            st.session_state.tentativas_senha += 1
+            restantes = _MAX_TENTATIVAS - st.session_state.tentativas_senha
+            if restantes > 0:
+                st.error(f"Senha incorreta. {restantes} tentativa(s) restante(s).")
+            else:
+                st.error("Acesso bloqueado. Recarregue a página para tentar novamente.")
     return False
 
 
@@ -184,8 +210,9 @@ def render():
 
     st.markdown("## Importação de Dados", unsafe_allow_html=True)
 
+    _LIMITE_MB = 50
     arquivos = st.file_uploader(
-        "Selecione arquivos Excel",
+        f"Selecione arquivos Excel (máx. {_LIMITE_MB} MB por arquivo)",
         type=["xlsx", "xls"],
         accept_multiple_files=True
     )
@@ -265,6 +292,14 @@ def render():
             st.warning("Selecione arquivos")
             return
 
+        arquivos_grandes = [a.name for a in arquivos if a.size > _LIMITE_MB * 1024 * 1024]
+        if arquivos_grandes:
+            st.error(
+                f"Arquivo(s) acima de {_LIMITE_MB} MB não são aceitos: "
+                + ", ".join(arquivos_grandes)
+            )
+            return
+
         if tipo_importacao == "Devolução + Monitoramento" and arquivo_monitor_secundario is None:
             st.warning("Selecione o arquivo de Monitoramento de Pontualidade")
             return
@@ -286,7 +321,15 @@ def render():
             ]
 
             for i, future in enumerate(as_completed(futures)):
-                r = future.result()
+                try:
+                    r = future.result()
+                except Exception as exc:
+                    r = {
+                        "arquivo": "desconhecido",
+                        "status": f"Erro interno: {type(exc).__name__}: {exc}",
+                        "registros": 0,
+                        "tempo": 0,
+                    }
 
                 registros = r["registros"] or 0
                 total_registros += registros

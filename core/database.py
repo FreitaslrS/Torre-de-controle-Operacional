@@ -18,8 +18,17 @@ load_dotenv()
 # Elimina PoolError e SSL closed de uma vez.
 # =========================
 
+_CONNECT_TIMEOUT = 10  # segundos — evita que o app trave em cold start do Neon
+
+
 def _conectar(url_env):
-    return psycopg2.connect(os.getenv(url_env), sslmode="require")
+    url = os.getenv(url_env)
+    if not url:
+        raise EnvironmentError(
+            f"Variável de ambiente '{url_env}' não configurada. "
+            "Verifique o .env (local) ou os Secrets do Streamlit Cloud."
+        )
+    return psycopg2.connect(url, sslmode="require", connect_timeout=_CONNECT_TIMEOUT)
 
 
 @contextmanager
@@ -38,7 +47,8 @@ def _conn(url_env):
 def _com_retry(fn):
     try:
         return fn()
-    except psycopg2.OperationalError:
+    except psycopg2.OperationalError as e:
+        logger.warning("Erro operacional no banco, tentando novamente: %s", e)
         return fn()
 
 
