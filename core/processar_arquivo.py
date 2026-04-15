@@ -336,6 +336,16 @@ def _persistir_produtividade(df_agg, nome_arquivo):
         cur.close()
 
 
+def _agregar_tempo_processamento(df):
+    return df.groupby(["estado", "ponto_entrada", "hiata", "cliente", "data"]).agg(
+        qtd_total      = ("waybill",     "count"),
+        qtd_dentro_sla = ("status",      lambda x: (x == "dentro_sla").sum()),
+        qtd_fora_sla   = ("status",      lambda x: (x == "fora_sla").sum()),
+        qtd_sem_saida  = ("status",      lambda x: (x == "sem_saida").sum()),
+        tempo_medio_h  = ("tempo_horas", lambda x: x.dropna().mean() if x.dropna().any() else None)
+    ).reset_index()
+
+
 def importar_tempo_processamento(arquivo):
     # Lê só colunas necessárias
     df = xlsx_para_dataframe(
@@ -373,14 +383,7 @@ def importar_tempo_processamento(arquivo):
 
     df["status"] = df.apply(_classificar_status_sla, axis=1)
 
-    # Agrega — de 178k linhas para ~500
-    agg = df.groupby(["estado", "ponto_entrada", "hiata", "cliente", "data"]).agg(
-        qtd_total      = ("waybill",     "count"),
-        qtd_dentro_sla = ("status",      lambda x: (x == "dentro_sla").sum()),
-        qtd_fora_sla   = ("status",      lambda x: (x == "fora_sla").sum()),
-        qtd_sem_saida  = ("status",      lambda x: (x == "sem_saida").sum()),
-        tempo_medio_h  = ("tempo_horas", lambda x: x.dropna().mean() if x.dropna().any() else None)
-    ).reset_index()
+    agg = _agregar_tempo_processamento(df)
 
     agg["data_snapshot"]   = datetime.now(timezone.utc).date()
     agg["nome_arquivo"]    = arquivo.name
@@ -407,12 +410,34 @@ def _persistir_tempo_processamento(agg, nome_arquivo):
         cur.close()
 
 
+def _extrair_data_criacao(waybill):
+    try:
+        w = str(waybill).strip()
+        return pd.Timestamp(int("20" + w[2:4]), int(w[4:6]), int(w[6:8]))
+    except Exception:
+        return None
+
+
+def _persistir_p90_arquivo(agg, nome_arquivo):
+    colunas = [
+        "estado", "semana", "ano", "cliente", "p90_dias",
+        "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
+    ]
+    values = [tuple(None if pd.isna(v) else v for v in row)
+              for row in agg[colunas].itertuples(index=False, name=None)]
+    with _conn("DATABASE_URL_DEVOLUCOES") as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [nome_arquivo])
+        execute_values(cur, f"INSERT INTO p90_semanal ({','.join(colunas)}) VALUES %s", values)
+        conn.commit()
+        cur.close()
+
+
 # ================================
 # 📊 DEVOLUÇÃO — P90
 # ================================
 def importar_p90(arquivo, data_ref):
     df = xlsx_para_dataframe(arquivo)
-
     if df.empty:
         return 0
 
@@ -421,43 +446,23 @@ def importar_p90(arquivo, data_ref):
         "data_operacao", "proximo_ponto", "operador",
         "ponto_operacao", "estado", "regiao"
     ]
-
-    # Filtra só "Recebido de devolução"
     df = df[df["status"] == "Recebido de devolução"].copy()
-
     if df.empty:
         return 0
 
     df["data_operacao"] = pd.to_datetime(df["data_operacao"], errors="coerce")
     df = df[df["data_operacao"].notna()]
-
-    # Extrai data de criação do código do waybill (AJ AAMMDD...)
-    def extrair_data_criacao(waybill):
-        try:
-            w = str(waybill).strip()
-            ano = int("20" + w[2:4])
-            mes = int(w[4:6])
-            dia = int(w[6:8])
-            return pd.Timestamp(ano, mes, dia)
-        except Exception:
-            return None
-
-    df["data_criacao"] = df["waybill"].apply(extrair_data_criacao)
+    df["data_criacao"] = df["waybill"].apply(_extrair_data_criacao)
     df = df[df["data_criacao"].notna()]
-
-    # Dias corridos: criação → recebimento devolução
     df["dias"] = (df["data_operacao"] - df["data_criacao"]).dt.days
     df = df[df["dias"] >= 0]
-
     if df.empty:
         return 0
 
-    # Semana e ano forçados pela data de referência selecionada pelo usuário
     ref_ts = pd.Timestamp(data_ref)
     df["semana"] = ref_ts.strftime("w%V")
     df["ano"]    = int(ref_ts.year)
 
-    # Agrega por estado + semana + ano + cliente
     agg = (
         df.groupby(["estado", "semana", "ano", "cliente"])
         .agg(
@@ -466,26 +471,11 @@ def importar_p90(arquivo, data_ref):
         )
         .reset_index()
     )
-
     agg["data_referencia"] = data_ref
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
 
-    with _conn("DATABASE_URL_DEVOLUCOES") as conn:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [arquivo.name])
-        colunas = [
-            "estado", "semana", "ano", "cliente", "p90_dias",
-            "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
-        ]
-        values = [
-            tuple(None if pd.isna(v) else v for v in row)
-            for row in agg[colunas].itertuples(index=False, name=None)
-        ]
-        execute_values(cur, f"INSERT INTO p90_semanal ({','.join(colunas)}) VALUES %s", values)
-        conn.commit()
-        cur.close()
-
+    _persistir_p90_arquivo(agg, arquivo.name)
     limpar_historico_antigo()
     return len(agg)
 
@@ -777,32 +767,9 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
     motivos_agg = _agregar_motivos(df, "estado", "cliente", data_ref, arquivo.name, agora)
     dsp_agg     = _agregar_dsp_sem3tent(df, "estado", "cliente", data_ref, arquivo.name, agora)
 
-    colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
-    colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
-    colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
-
     with _conn("DATABASE_URL_DEVOLUCOES") as conn:
         cur = conn.cursor()
-        for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
-            cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
-        if not sla_agg.empty:
-            execute_values(cur,
-                f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
-                [tuple(None if pd.isna(v) else v for v in row)
-                 for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
-            )
-        if not motivos_agg.empty:
-            execute_values(cur,
-                f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
-                [tuple(None if pd.isna(v) else v for v in row)
-                 for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
-            )
-        if not dsp_agg.empty:
-            execute_values(cur,
-                f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
-                [tuple(None if pd.isna(v) else v for v in row)
-                 for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
-            )
+        _salvar_sla_motivos_dsp(cur, df, data_ref, arquivo.name, agora)
         conn.commit()
         cur.close()
 
