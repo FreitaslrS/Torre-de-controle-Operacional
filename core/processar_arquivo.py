@@ -306,16 +306,19 @@ def _transformar_produtividade(df):
     )
 
 
-def importar_produtividade(arquivo):
+def _ler_produtividade(arquivo):
     df = xlsx_para_dataframe(arquivo, usecols=[3, 8, 20])
     df.columns = ["cliente", "data_hora", "operador"]
+    return df
+
+
+def importar_produtividade(arquivo):
+    df = _ler_produtividade(arquivo)
     if df.empty:
         return 0
-
     df_agg = _transformar_produtividade(df)
     if df_agg.empty:
         return 0
-
     df_agg["nome_arquivo"]    = arquivo.name
     df_agg["data_importacao"] = datetime.now(timezone.utc)
     _persistir_produtividade(df_agg, arquivo.name)
@@ -440,24 +443,28 @@ def _transformar_p90(df, data_ref):
     )
 
 
-# ================================
-# 📊 DEVOLUÇÃO — P90
-# ================================
-def importar_p90(arquivo, data_ref):
+def _ler_p90(arquivo):
     df = xlsx_para_dataframe(arquivo)
     if df.empty:
-        return 0
-
+        return df
     df.columns = [
         "waybill", "status", "tipo_operacao", "cliente",
         "data_operacao", "proximo_ponto", "operador",
         "ponto_operacao", "estado", "regiao"
     ]
+    return df
 
+
+# ================================
+# 📊 DEVOLUÇÃO — P90
+# ================================
+def importar_p90(arquivo, data_ref):
+    df = _ler_p90(arquivo)
+    if df.empty:
+        return 0
     agg = _transformar_p90(df, data_ref)
     if agg.empty:
         return 0
-
     agg["data_referencia"] = data_ref
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
