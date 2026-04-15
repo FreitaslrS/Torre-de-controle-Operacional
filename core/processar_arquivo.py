@@ -590,6 +590,41 @@ def _agregar_motivos(df, col_estado, col_cliente, data_ref, nome_arquivo, agora)
     return agg
 
 
+def _salvar_p90(cur, df, semana, ano, data_ref, nome_arq, agora):
+    """Agrega e persiste p90_semanal a partir de dev_detalhado. Recebe cursor aberto."""
+    cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [nome_arq])
+    df_src = df[df["status"] == "Recebido de devolução"].copy()
+    if df_src.empty:
+        return
+    df_src["estado_p90"] = df_src["estado_dest"].fillna(df_src["estado"])
+    df_src = df_src[df_src["dias_dev"] >= 0].dropna(subset=["estado_p90", "dias_dev"])
+    if df_src.empty:
+        return
+    p90_agg = (
+        df_src.groupby(["estado_p90", "cliente"])
+        .agg(
+            p90_dias    = ("dias_dev", lambda x: round(float(np.percentile(x, 90)), 1)),
+            qtd_pedidos = ("dias_dev", "count")
+        )
+        .reset_index()
+        .rename(columns={"estado_p90": "estado"})
+    )
+    p90_agg["semana"]          = semana
+    p90_agg["ano"]             = ano
+    p90_agg["data_referencia"] = data_ref
+    p90_agg["nome_arquivo"]    = nome_arq
+    p90_agg["data_importacao"] = agora
+    colunas_p90 = [
+        "estado", "semana", "ano", "cliente", "p90_dias",
+        "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
+    ]
+    execute_values(cur,
+        f"INSERT INTO p90_semanal ({','.join(colunas_p90)}) VALUES %s",
+        [tuple(_val(v) for v in row)
+         for row in p90_agg[colunas_p90].itertuples(index=False, name=None)]
+    )
+
+
 def _agregar_dsp_sem3tent(df, col_estado, col_cliente, data_ref, nome_arquivo, agora):
     """Agrega DSPs sem 3 tentativas."""
     cols_req = ["motivo", "tent1", "tent3", "assinatura"]
@@ -887,35 +922,7 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
         )
 
         # ── Salva p90_semanal ──────────────────────────────────────────
-        cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [nome_arq])
-        df_p90_src = df[df["status"] == "Recebido de devolução"].copy()
-        if not df_p90_src.empty:
-            df_p90_src["estado_p90"] = df_p90_src["estado_dest"].fillna(df_p90_src["estado"])
-            df_p90_src = df_p90_src[df_p90_src["dias_dev"] >= 0].dropna(subset=["estado_p90", "dias_dev"])
-            if not df_p90_src.empty:
-                p90_agg = (
-                    df_p90_src.groupby(["estado_p90", "cliente"])
-                    .agg(
-                        p90_dias    = ("dias_dev", lambda x: round(float(np.percentile(x, 90)), 1)),
-                        qtd_pedidos = ("dias_dev", "count")
-                    )
-                    .reset_index()
-                    .rename(columns={"estado_p90": "estado"})
-                )
-                p90_agg["semana"]          = semana
-                p90_agg["ano"]             = ano
-                p90_agg["data_referencia"] = data_ref
-                p90_agg["nome_arquivo"]    = nome_arq
-                p90_agg["data_importacao"] = agora
-                colunas_p90 = [
-                    "estado", "semana", "ano", "cliente", "p90_dias",
-                    "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
-                ]
-                execute_values(cur,
-                    f"INSERT INTO p90_semanal ({','.join(colunas_p90)}) VALUES %s",
-                    [tuple(_val(v) for v in row)
-                     for row in p90_agg[colunas_p90].itertuples(index=False, name=None)]
-                )
+        _salvar_p90(cur, df, semana, ano, data_ref, nome_arq, agora)
 
         # ── Salva dev_sla_semanal, dev_motivos_semanal, dev_dsp_sem3tent ─
         for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
