@@ -86,29 +86,33 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Filtros</span>
 </div>""", unsafe_allow_html=True)
 
-    col_f1, col_f2, col_f3 = st.columns(3)
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     remover_estados  = col_f1.multiselect("Remover Estados",  options=sorted(df["estado"].dropna().unique()),  key="hist_rem_est")
     remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df["cliente"].dropna().unique()), key="hist_rem_cli")
-    faixa_filtro     = col_f3.selectbox("Filtro de Backlog", ["Todos", "+24h", "+48h", "+72h"], key="hist_faixa")
+    faixa_horas      = col_f3.selectbox("Filtro por Horas",         ["Todos", "Até 24h", "+24h", "+48h", "+72h"],                                                          key="hist_faixa_h")
+    faixa_dias       = col_f4.selectbox("Filtro por Faixa de Dias", ["Todos", "1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"], key="hist_faixa_d")
 
     df_f = df.copy()
     if remover_estados:
         df_f = df_f[~df_f["estado"].isin(remover_estados)]
     if remover_clientes:
         df_f = df_f[~df_f["cliente"].isin(remover_clientes)]
-    LIMITES = {"+24h": 24, "+48h": 48, "+72h": 72}
-    if faixa_filtro in LIMITES:
-        limite = LIMITES[faixa_filtro]
-        # usa horas_min quando disponível (importações novas), fallback para faixa
-        if df_f["horas_min"].notna().any():
-            df_f = df_f[df_f["horas_min"] > limite]
+    LIMITES = {"Até 24h": (None, 24), "+24h": (24, None), "+48h": (48, None), "+72h": (72, None)}
+    if faixa_horas in LIMITES:
+        lo, hi = LIMITES[faixa_horas]
+        if usar_horas := df_f["horas_min"].notna().any():
+            if lo is not None: df_f = df_f[df_f["horas_min"] > lo]
+            if hi is not None: df_f = df_f[df_f["horas_max"] <= hi]
         else:
             faixas_fallback = {
+                "Até 24h": ["1 dia"],
                 "+24h": ["1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
                 "+48h": ["5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
                 "+72h": ["10-20 dias", "20-30 dias", "30+ dias"],
             }
-            df_f = df_f[df_f["faixa_backlog_snapshot"].isin(faixas_fallback[faixa_filtro])]
+            df_f = df_f[df_f["faixa_backlog_snapshot"].isin(faixas_fallback[faixa_horas])]
+    if faixa_dias != "Todos":
+        df_f = df_f[df_f["faixa_backlog_snapshot"] == faixa_dias]
 
     if df_f.empty:
         st.warning("Sem dados para o filtro selecionado.")
@@ -120,14 +124,20 @@ def render():
     # 📊 KPIs
     # =========================
     total_periodo = int(df_f["qtd"].sum())
-
     usar_horas = df_f["horas_min"].notna().any()
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total no Período", fmt_numero(total_periodo))
-    col2.metric(">24h", fmt_numero(_soma_acima(df_f, usar_horas, 24)))
-    col3.metric(">48h", fmt_numero(_soma_acima(df_f, usar_horas, 48)))
-    col4.metric(">72h", fmt_numero(_soma_acima(df_f, usar_horas, 72)))
+    col2.metric("+24h", fmt_numero(_soma_acima(df_f, usar_horas, 24)))
+    col3.metric("+48h", fmt_numero(_soma_acima(df_f, usar_horas, 48)))
+    col4.metric("+72h", fmt_numero(_soma_acima(df_f, usar_horas, 72)))
+
+    # KPIs por faixa de dias
+    _FAIXAS_DIAS = ["1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"]
+    kpi_cols = st.columns(len(_FAIXAS_DIAS))
+    for col, fx in zip(kpi_cols, _FAIXAS_DIAS):
+        qtd_fx = int(df_f.loc[df_f["faixa_backlog_snapshot"] == fx, "qtd"].sum())
+        col.metric(fx, fmt_numero(qtd_fx))
 
     st.divider()
 
