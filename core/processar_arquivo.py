@@ -1063,80 +1063,35 @@ def importar_coletas_saida(arquivo, data_ref):
     return _salvar_coletas(df, arquivo, data_ref, "saida")
 
 
-# ================================
-# 👥 PRESENÇA / DIÁRIO DE BORDO
-# ================================
-def importar_presenca(arquivo):
-    df_raw = xlsx_para_dataframe(arquivo, header=None)
+def _parse_linha_presenca(row, data_atual, nome_arquivo, data_importacao):
+    """Extrai tuplas de presenca_turno e presenca_diaria de uma linha do DataFrame."""
+    ts = pd.Timestamp(data_atual)
+    semana = str(ts.isocalendar()[1]).zfill(2)
+    ano    = int(ts.year)
+    turno  = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
 
-    if df_raw.empty:
-        return 0
+    if turno not in ("T1", "T2", "T3"):
+        return None, None
 
-    nome_arquivo = arquivo.name
-    data_importacao = datetime.now(timezone.utc)
+    def _i(idx): return _safe_int(row.iloc[idx] if len(row) > idx else None)
+    def _f(idx): return _safe_float(row.iloc[idx] if len(row) > idx else None)
 
-    rows_turno  = []
-    rows_diario = []
+    row_turno = (
+        data_atual, semana, ano, turno,
+        _i(2), _i(6), _i(12), _i(3), _i(4), _i(5),
+        _i(7), _i(8), _f(9), _f(10), _f(11),
+        nome_arquivo, data_importacao,
+    )
+    row_diario = (
+        data_atual, semana, ano,
+        _i(13), _i(14), _i(15), _i(16), _i(17),
+        nome_arquivo, data_importacao,
+    ) if turno == "T3" else None
 
-    data_atual = None
+    return row_turno, row_diario
 
-    for _, row in df_raw.iterrows():
-        # Coluna 0 é a data (merged cell — só vem preenchida na linha T1)
-        val_data = row.iloc[0] if len(row) > 0 else None
-        if pd.notna(val_data) and val_data != "":
-            try:
-                data_atual = pd.to_datetime(val_data).date()
-            except Exception as e:
-                print(f"⚠️ Linha ignorada (data inválida): {e}")
-                continue  # linha de cabeçalho ou inválida
 
-        if data_atual is None:
-            continue
-
-        turno = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
-        if turno not in ("T1", "T2", "T3"):
-            continue
-
-        semana = str(pd.Timestamp(data_atual).isocalendar()[1]).zfill(2)
-        ano    = int(pd.Timestamp(data_atual).year)
-
-        rows_turno.append((
-            data_atual,
-            semana,
-            ano,
-            turno,
-            _safe_int(row.iloc[2] if len(row) > 2 else None),   # produzido_turno
-            _safe_int(row.iloc[6] if len(row) > 6 else None),   # presenca_turno
-            _safe_int(row.iloc[12] if len(row) > 12 else None), # presenca_total
-            _safe_int(row.iloc[3] if len(row) > 3 else None),   # anjun
-            _safe_int(row.iloc[4] if len(row) > 4 else None),   # temporarios
-            _safe_int(row.iloc[5] if len(row) > 5 else None),   # diaristas_presenciais
-            _safe_int(row.iloc[7] if len(row) > 7 else None),   # faltas_anjun
-            _safe_int(row.iloc[8] if len(row) > 8 else None),   # faltas_temporarios
-            _safe_float(row.iloc[9] if len(row) > 9 else None), # perc_falta
-            _safe_float(row.iloc[10] if len(row) > 10 else None), # custo_diaristas
-            _safe_float(row.iloc[11] if len(row) > 11 else None), # custo_por_pedido
-            nome_arquivo,
-            data_importacao,
-        ))
-
-        if turno == "T3":
-            rows_diario.append((
-                data_atual,
-                semana,
-                ano,
-                _safe_int(row.iloc[13] if len(row) > 13 else None), # vol_tfk
-                _safe_int(row.iloc[14] if len(row) > 14 else None), # vol_shein
-                _safe_int(row.iloc[15] if len(row) > 15 else None), # vol_d2d
-                _safe_int(row.iloc[16] if len(row) > 16 else None), # vol_kwai
-                _safe_int(row.iloc[17] if len(row) > 17 else None), # vol_b2c
-                nome_arquivo,
-                data_importacao,
-            ))
-
-    if not rows_turno:
-        return 0
-
+def _persistir_presenca(rows_turno, rows_diario, nome_arquivo):
     with _conn("DATABASE_URL_OPERACIONAL") as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM presenca_turno  WHERE nome_arquivo = %s", [nome_arquivo])
@@ -1162,4 +1117,41 @@ def importar_presenca(arquivo):
         conn.commit()
         cur.close()
 
+
+# ================================
+# 👥 PRESENÇA / DIÁRIO DE BORDO
+# ================================
+def importar_presenca(arquivo):
+    df_raw = xlsx_para_dataframe(arquivo, header=None)
+    if df_raw.empty:
+        return 0
+
+    nome_arquivo    = arquivo.name
+    data_importacao = datetime.now(timezone.utc)
+    rows_turno      = []
+    rows_diario     = []
+    data_atual      = None
+
+    for _, row in df_raw.iterrows():
+        val_data = row.iloc[0] if len(row) > 0 else None
+        if pd.notna(val_data) and val_data != "":
+            try:
+                data_atual = pd.to_datetime(val_data).date()
+            except Exception as e:
+                print(f"⚠️ Linha ignorada (data inválida): {e}")
+                continue
+
+        if data_atual is None:
+            continue
+
+        rt, rd = _parse_linha_presenca(row, data_atual, nome_arquivo, data_importacao)
+        if rt:
+            rows_turno.append(rt)
+        if rd:
+            rows_diario.append(rd)
+
+    if not rows_turno:
+        return 0
+
+    _persistir_presenca(rows_turno, rows_diario, nome_arquivo)
     return len(rows_turno)
