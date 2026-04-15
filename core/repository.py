@@ -86,15 +86,10 @@ def buscar_backlog_resumo():
     return consultar_backlog("""
         SELECT
             estado, cliente,
-            SUM(qtd)                                                    AS qtd,
-            SUM(CASE WHEN faixa_backlog_snapshot != '1 dia'
-                THEN qtd ELSE 0 END)                                    AS b24,
-            SUM(CASE WHEN faixa_backlog_snapshot IN
-                ('1-5 dias','5-10 dias','10-20 dias','20-30 dias','30+ dias')
-                AND horas_min > 48 THEN qtd ELSE 0 END)                 AS b48,
-            SUM(CASE WHEN faixa_backlog_snapshot IN
-                ('1-5 dias','5-10 dias','10-20 dias','20-30 dias','30+ dias')
-                AND horas_min > 72 THEN qtd ELSE 0 END)                 AS b72
+            SUM(qtd)                                            AS qtd,
+            SUM(CASE WHEN horas_max > 24 THEN qtd ELSE 0 END)  AS b24,
+            SUM(CASE WHEN horas_max > 48 THEN qtd ELSE 0 END)  AS b48,
+            SUM(CASE WHEN horas_max > 72 THEN qtd ELSE 0 END)  AS b72
         FROM backlog_atual
         GROUP BY estado, cliente
     """)
@@ -295,14 +290,11 @@ def buscar_sla_por_estado():
     return consultar_backlog("""
         SELECT
             estado,
-            SUM(CASE WHEN faixa_backlog_snapshot = '1 dia'
-                THEN qtd ELSE 0 END)                                    AS "0-24h",
-            SUM(CASE WHEN faixa_backlog_snapshot = '1-5 dias'
-                THEN qtd ELSE 0 END)                                    AS "24-120h",
-            SUM(CASE WHEN faixa_backlog_snapshot IN
-                ('5-10 dias','10-20 dias','20-30 dias','30+ dias')
-                THEN qtd ELSE 0 END)                                    AS "5d+",
-            SUM(qtd)                                                    AS "Total"
+            SUM(CASE WHEN horas_max <= 24 THEN qtd ELSE 0 END) AS "Até 24h",
+            SUM(CASE WHEN horas_max > 24 THEN qtd ELSE 0 END)  AS "+24h",
+            SUM(CASE WHEN horas_max > 48 THEN qtd ELSE 0 END)  AS "+48h",
+            SUM(CASE WHEN horas_max > 72 THEN qtd ELSE 0 END)  AS "+72h",
+            SUM(qtd)                                            AS "Total"
         FROM backlog_atual
         GROUP BY estado
         ORDER BY "Total" DESC

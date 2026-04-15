@@ -88,7 +88,7 @@ def render():
     col_f1, col_f2 = st.columns(2)
     remover_estados  = col_f1.multiselect("Remover Estados",  options=sorted(df_resumo["estado"].unique()))
     remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df_resumo["cliente"].unique()))
-    faixa = st.selectbox("Filtro de Backlog", ["Todos", "1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"])
+    faixa = st.selectbox("Filtro de Backlog", ["Todos", "Até 24h", "+24h", "+48h", "+72h"])
 
     # =========================
     # 📊 DADOS — 1 query com cache, filtros em Python
@@ -99,8 +99,15 @@ def render():
         df_base = df_base[~df_base["estado"].isin(remover_estados)]
     if remover_clientes:
         df_base = df_base[~df_base["cliente"].isin(remover_clientes)]
-    if faixa != "Todos":
-        df_base = df_base[df_base["faixa_backlog_snapshot"] == faixa]
+
+    _faixas_acima = {
+        "Até 24h": lambda df: df[df["horas_max"] <= 24],
+        "+24h":    lambda df: df[df["horas_max"] > 24],
+        "+48h":    lambda df: df[df["horas_max"] > 48],
+        "+72h":    lambda df: df[df["horas_max"] > 72],
+    }
+    if faixa in _faixas_acima:
+        df_base = _faixas_acima[faixa](df_base)
 
     df_estado  = df_base.groupby("estado",  as_index=False)["qtd"].sum()
     df_cliente = df_base.groupby("cliente", as_index=False)["qtd"].sum()
