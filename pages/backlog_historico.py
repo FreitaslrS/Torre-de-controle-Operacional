@@ -18,11 +18,18 @@ def _soma_acima(df_f, usar_horas, horas):
     if usar_horas:
         return int(df_f.loc[df_f["horas_min"] > horas, "qtd"].sum())
     faixas_map = {
-        24: ["1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
-        48: ["5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
-        72: ["10-20 dias", "20-30 dias", "30+ dias"],
+        24:  ["1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
+        48:  ["5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
+        72:  ["10-20 dias", "20-30 dias", "30+ dias"],
+        96:  ["10-20 dias", "20-30 dias", "30+ dias"],
     }
-    return int(df_f.loc[df_f["faixa_backlog_snapshot"].isin(faixas_map[horas]), "qtd"].sum())
+    return int(df_f.loc[df_f["faixa_backlog_snapshot"].isin(faixas_map.get(horas, [])), "qtd"].sum())
+
+
+def _soma_abaixo24(df_f, usar_horas):
+    if usar_horas:
+        return int(df_f.loc[df_f["horas_max"] <= 24, "qtd"].sum())
+    return int(df_f.loc[df_f["faixa_backlog_snapshot"] == "1 dia", "qtd"].sum())
 
 
 @st.cache_data(show_spinner=False)
@@ -126,11 +133,13 @@ def render():
     total_periodo = int(df_f["qtd"].sum())
     usar_horas = df_f["horas_min"].notna().any()
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     col1.metric("Total no Período", fmt_numero(total_periodo))
-    col2.metric("+24h", fmt_numero(_soma_acima(df_f, usar_horas, 24)))
-    col3.metric("+48h", fmt_numero(_soma_acima(df_f, usar_horas, 48)))
-    col4.metric("+72h", fmt_numero(_soma_acima(df_f, usar_horas, 72)))
+    col2.metric("<24H",  fmt_numero(_soma_abaixo24(df_f, usar_horas)))
+    col3.metric("+24H",  fmt_numero(_soma_acima(df_f, usar_horas, 24)))
+    col4.metric("+48H",  fmt_numero(_soma_acima(df_f, usar_horas, 48)))
+    col5.metric("+72H",  fmt_numero(_soma_acima(df_f, usar_horas, 72)))
+    col6.metric("+96H",  fmt_numero(_soma_acima(df_f, usar_horas, 96)))
 
     # KPIs por faixa de dias
     _FAIXAS_DIAS = ["1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"]
