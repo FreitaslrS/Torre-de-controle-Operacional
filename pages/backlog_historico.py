@@ -18,10 +18,15 @@ def gerar_download(df, key_prefix):
     col1, col2 = st.columns(2)
     csv = df.to_csv(index=False).encode("utf-8")
     col1.download_button("CSV", csv, f"{key_prefix}.csv", "text/csv", key=f"{key_prefix}_csv")
-    buf = io.BytesIO()
-    df.to_excel(buf, index=False)
+
+    @st.cache_data(show_spinner=False)
+    def _to_excel(df_hash):
+        buf = io.BytesIO()
+        df_hash.to_excel(buf, index=False)
+        return buf.getvalue()
+
     col2.download_button(
-        "Excel", buf.getvalue(), f"{key_prefix}.xlsx",
+        "Excel", _to_excel(df), f"{key_prefix}.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key=f"{key_prefix}_excel"
     )

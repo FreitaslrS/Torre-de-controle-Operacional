@@ -2,7 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from core.database import consultar_backlog, consultar_processamento, consultar_operacional
+from core.repository import (
+    buscar_semanas_health_check,
+    buscar_sla_hub,
+    buscar_backlog_faixas_hc,
+    buscar_produtividade_turno_hc,
+)
 from utils.theme import grafico_barra, aplicar_layout_padrao
 from utils.style import tabela_padrao, aplicar_css_global, rodape_autoria, fmt_numero
 from utils.semana import semana_para_datas, datas_para_label
@@ -17,60 +22,6 @@ PALETA_PAGINA  = [COR_PRINCIPAL, COR_SECUNDARIA, COR_APOIO]
 COR_VERDE = COR_SECUNDARIA
 COR_AZUL  = "#053B31"
 COR_GELO  = COR_APOIO
-
-
-@st.cache_data(ttl=600)
-def _semanas_disponiveis_hc():
-    return consultar_processamento("""
-        SELECT DISTINCT
-            TO_CHAR(data, '"w"IW')            AS semana,
-            EXTRACT(YEAR FROM data)::INTEGER   AS ano
-        FROM tempo_processamento
-        ORDER BY ano DESC, semana DESC
-    """)
-
-
-@st.cache_data(ttl=600)
-def _sla_hub(data_inicio, data_fim):
-    return consultar_processamento("""
-        SELECT
-            SUM(qtd_total)      AS total,
-            SUM(qtd_dentro_sla) AS dentro,
-            SUM(qtd_fora_sla)   AS fora,
-            SUM(qtd_sem_saida)  AS sem_info,
-            ROUND(
-                (SUM(qtd_dentro_sla * tempo_medio_h) /
-                 NULLIF(SUM(qtd_dentro_sla), 0))::numeric, 2
-            )                   AS lead_medio_h
-        FROM tempo_processamento
-        WHERE data BETWEEN %s AND %s
-    """, [data_inicio, data_fim])
-
-
-@st.cache_data(ttl=600)
-def _backlog_faixas():
-    """Retorna backlog 24h e 48h em uma única query."""
-    return consultar_backlog("""
-        SELECT
-            estado,
-            pre_entrega,
-            SUM(CASE WHEN horas_backlog_snapshot > 24 THEN 1 ELSE 0 END) AS total_24,
-            SUM(CASE WHEN horas_backlog_snapshot > 48 THEN 1 ELSE 0 END) AS total_48
-        FROM backlog_atual
-        GROUP BY estado, pre_entrega
-        ORDER BY total_24 DESC
-    """)
-
-
-@st.cache_data(ttl=600)
-def _produtividade_turno(data_inicio, data_fim):
-    return consultar_operacional("""
-        SELECT turno, SUM(volumes) AS volumes
-        FROM produtividade
-        WHERE data BETWEEN %s AND %s
-        GROUP BY turno
-        ORDER BY turno
-    """, [data_inicio, data_fim])
 
 
 def render():
@@ -90,7 +41,7 @@ def render():
 """, unsafe_allow_html=True)
 
     # ── Seletor de semana ────────────────────────────────────────
-    df_sems = _semanas_disponiveis_hc()
+    df_sems = buscar_semanas_health_check()
     if df_sems.empty:
         st.warning("Sem dados. Importe os arquivos de Tempo de Processamento e Produtividade.")
         return
@@ -127,7 +78,7 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Performance de Saídas e Lead Time</span>
 </div>""", unsafe_allow_html=True)
 
-    df_sla = _sla_hub(data_inicio, data_fim)
+    df_sla = buscar_sla_hub(data_inicio, data_fim)
 
     if df_sla.empty or df_sla["total"].iloc[0] is None:
         st.warning("Sem dados de tempo de processamento para esta semana.")
@@ -147,7 +98,7 @@ def render():
         lead_fmt = f"{hh:02d}:{mm:02d}h"
 
         if comp_ativo:
-            df_sla_c   = _sla_hub(data_inicio_c, data_fim_c)
+            df_sla_c   = buscar_sla_hub(data_inicio_c, data_fim_c)
             total_c    = int(df_sla_c["total"].iloc[0]  or 0) if not df_sla_c.empty else 0
             dentro_c   = int(df_sla_c["dentro"].iloc[0] or 0) if not df_sla_c.empty else 0
             lead_c     = float(df_sla_c["lead_medio_h"].iloc[0] or 0) if not df_sla_c.empty else 0
@@ -205,7 +156,7 @@ def render():
 </div>""", unsafe_allow_html=True)
     st.caption("Snapshot atual — pacotes com mais de 24h no hub sem saída")
 
-    df_faixas = _backlog_faixas()
+    df_faixas = buscar_backlog_faixas_hc()
     df_24 = df_faixas[["estado", "pre_entrega", "total_24"]].rename(columns={"total_24": "total"})
     df_24 = df_24[df_24["total"] > 0]
 
@@ -285,7 +236,7 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produtividade por Turno</span>
 </div>""", unsafe_allow_html=True)
 
-    df_turno = _produtividade_turno(data_inicio, data_fim)
+    df_turno = buscar_produtividade_turno_hc(data_inicio, data_fim)
 
     if df_turno.empty:
         st.info("Sem dados de produtividade para esta semana.")

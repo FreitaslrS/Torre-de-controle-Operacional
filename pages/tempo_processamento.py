@@ -23,11 +23,6 @@ cores_pizza = {
     "Sem saída": COR_APOIO
 }
 
-traducao_status = {
-    "Até 24h": "Até 24h",
-    "> 24h": "> 24h",
-    "Sem saída": "Sem saída"
-}
 
 def render():
     aplicar_css_global()
@@ -124,10 +119,9 @@ def render():
                 {"status": "> 24h",     "qtd": int(df["qtd_fora_sla"].sum())},
                 {"status": "Sem saída", "qtd": int(df["qtd_sem_saida"].sum())},
             ])
-            df_pizza["status_label"] = df_pizza["status"].map(traducao_status)
             fig_pizza = grafico_pizza(
                 df_pizza,
-                names="status_label",
+                names="status",
                 values="qtd",
                 color="status",
                 color_map=cores_pizza
@@ -141,18 +135,21 @@ def render():
 </svg>
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Evolução por Dia</span>
 </div>""", unsafe_allow_html=True)
+            df["_tempo_pond"] = df["tempo_medio_h"] * df["qtd_total"]
             tabela_dia = (
                 df.groupby("data").agg(
                     dentro_sla  = ("qtd_dentro_sla", "sum"),
                     fora_sla    = ("qtd_fora_sla",   "sum"),
                     sem_saida   = ("qtd_sem_saida",  "sum"),
                     qtd_total   = ("qtd_total",      "sum"),
-                    tempo_medio = ("tempo_medio_h",  lambda x:
-                        (x * df.loc[x.index, "qtd_total"]).sum() /
-                        df.loc[x.index, "qtd_total"].sum()
-                    )
+                    _pond_sum   = ("_tempo_pond",    "sum"),
                 ).reset_index()
             )
+            tabela_dia["tempo_medio"] = (
+                tabela_dia["_pond_sum"] / tabela_dia["qtd_total"].replace(0, pd.NA)
+            )
+            tabela_dia.drop(columns=["_pond_sum"], inplace=True)
+            df.drop(columns=["_tempo_pond"], inplace=True)
             tabela_dia.rename(columns={"dentro_sla": "0-24h", "fora_sla": ">24h"}, inplace=True)
 
             def formatar_horas(h):

@@ -24,6 +24,54 @@ from core.processar_arquivo import (
 
 load_dotenv()
 
+
+@st.cache_data(ttl=60)
+def _carregar_historico():
+    dfs = [
+        consultar_historico("""
+            SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data_referencia) as data_referencia, 'Backlog' as tipo
+            FROM pedidos_resumo GROUP BY nome_arquivo"""),
+        consultar_operacional("""
+            SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data) as data_referencia, 'Produtividade' as tipo
+            FROM produtividade GROUP BY nome_arquivo"""),
+        consultar_processamento("""
+            SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data) as data_referencia, 'Tempo Processamento' as tipo
+            FROM tempo_processamento GROUP BY nome_arquivo"""),
+        consultar_devolucoes("""
+            SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data_referencia) as data_referencia, 'Devolução' as tipo
+            FROM dev_status_semanal GROUP BY nome_arquivo"""),
+        consultar_devolucoes("""
+            SELECT nome_arquivo, SUM(qtd_pedidos) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data_referencia) as data_referencia, 'Devolução - P90' as tipo
+            FROM p90_semanal GROUP BY nome_arquivo"""),
+        consultar_devolucoes("""
+            SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data_referencia) as data_referencia, 'Devolução - Monitoramento' as tipo
+            FROM dev_sla_semanal GROUP BY nome_arquivo"""),
+        consultar_operacional("""
+            SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                   CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Pacotes Grandes' as tipo
+            FROM pacotes_grandes GROUP BY nome_arquivo"""),
+        consultar_coletas("""
+            SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data_referencia) as data_referencia, CONCAT('Coletas — ', MAX(tipo)) as tipo
+            FROM coletas GROUP BY nome_arquivo"""),
+        consultar_devolucoes("""
+            SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data_referencia) as data_referencia, 'Devolução + Monitoramento' as tipo
+            FROM dev_detalhado GROUP BY nome_arquivo"""),
+        consultar_operacional("""
+            SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                   CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Presença / Diário de Bordo' as tipo
+            FROM presenca_turno GROUP BY nome_arquivo"""),
+    ]
+    return pd.concat(dfs, ignore_index=True).sort_values("data_importacao", ascending=False)
+
+
 def obter_senha():
     return os.getenv("SENHA_IMPORTACAO", "")
 
@@ -85,7 +133,7 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
 
         elif tipo_importacao == "Devolução + Monitoramento":
             if arquivo_secundario is None:
-                raise Exception("Arquivo de Monitoramento não selecionado")
+                raise ValueError("Arquivo de Monitoramento não selecionado")
             qtd = importar_devolucao_enriquecida(arquivo, arquivo_secundario, data_ref)
 
         elif tipo_importacao == "Coletas — Descarregamento em Perus":
@@ -101,7 +149,7 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
             qtd = importar_presenca(arquivo)
 
         else:
-            raise Exception("Tipo de importação inválido")
+            raise ValueError("Tipo de importação inválido")
 
         status = "Sucesso"
 
@@ -283,53 +331,6 @@ def render():
     # 📜 HISTÓRICO
     # ========================
     st.subheader("Histórico de Importações")
-
-    @st.cache_data(ttl=60)
-    def _carregar_historico():
-        from core.database import consultar_devolucoes, consultar_coletas
-        dfs = [
-            consultar_historico("""
-                SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
-                       MAX(data_referencia) as data_referencia, 'Backlog' as tipo
-                FROM pedidos_resumo GROUP BY nome_arquivo"""),
-            consultar_operacional("""
-                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
-                       MAX(data) as data_referencia, 'Produtividade' as tipo
-                FROM produtividade GROUP BY nome_arquivo"""),
-            consultar_processamento("""
-                SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
-                       MAX(data) as data_referencia, 'Tempo Processamento' as tipo
-                FROM tempo_processamento GROUP BY nome_arquivo"""),
-            consultar_devolucoes("""
-                SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
-                       MAX(data_referencia) as data_referencia, 'Devolução' as tipo
-                FROM dev_status_semanal GROUP BY nome_arquivo"""),
-            consultar_devolucoes("""
-                SELECT nome_arquivo, SUM(qtd_pedidos) as registros, MAX(data_importacao) as data_importacao,
-                       MAX(data_referencia) as data_referencia, 'Devolução - P90' as tipo
-                FROM p90_semanal GROUP BY nome_arquivo"""),
-            consultar_devolucoes("""
-                SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
-                       MAX(data_referencia) as data_referencia, 'Devolução - Monitoramento' as tipo
-                FROM dev_sla_semanal GROUP BY nome_arquivo"""),
-            consultar_operacional("""
-                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
-                       CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Pacotes Grandes' as tipo
-                FROM pacotes_grandes GROUP BY nome_arquivo"""),
-            consultar_coletas("""
-                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
-                       MAX(data_referencia) as data_referencia, CONCAT('Coletas — ', MAX(tipo)) as tipo
-                FROM coletas GROUP BY nome_arquivo"""),
-            consultar_devolucoes("""
-                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
-                       MAX(data_referencia) as data_referencia, 'Devolução + Monitoramento' as tipo
-                FROM dev_detalhado GROUP BY nome_arquivo"""),
-            consultar_operacional("""
-                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
-                       CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Presença / Diário de Bordo' as tipo
-                FROM presenca_turno GROUP BY nome_arquivo"""),
-        ]
-        return pd.concat(dfs, ignore_index=True).sort_values("data_importacao", ascending=False)
 
     df_hist = _carregar_historico()
 

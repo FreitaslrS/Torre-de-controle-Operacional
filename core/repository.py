@@ -961,3 +961,60 @@ def buscar_presenca_diaria(semana, ano):
         WHERE semana = %s AND ano = %s
         ORDER BY data
     """, [semana, ano])
+
+
+# =========================
+# 🏥 HEALTH CHECK
+# =========================
+@st.cache_data(ttl=600)
+def buscar_semanas_health_check():
+    return consultar_processamento("""
+        SELECT DISTINCT
+            TO_CHAR(data, '"w"IW')            AS semana,
+            EXTRACT(YEAR FROM data)::INTEGER   AS ano
+        FROM tempo_processamento
+        ORDER BY ano DESC, semana DESC
+    """)
+
+
+@st.cache_data(ttl=600)
+def buscar_sla_hub(data_inicio, data_fim):
+    return consultar_processamento("""
+        SELECT
+            SUM(qtd_total)      AS total,
+            SUM(qtd_dentro_sla) AS dentro,
+            SUM(qtd_fora_sla)   AS fora,
+            SUM(qtd_sem_saida)  AS sem_info,
+            ROUND(
+                (SUM(qtd_dentro_sla * tempo_medio_h) /
+                 NULLIF(SUM(qtd_dentro_sla), 0))::numeric, 2
+            )                   AS lead_medio_h
+        FROM tempo_processamento
+        WHERE data BETWEEN %s AND %s
+    """, [data_inicio, data_fim])
+
+
+@st.cache_data(ttl=600)
+def buscar_backlog_faixas_hc():
+    """Retorna backlog 24h e 48h em uma única query para o Health Check."""
+    return consultar_backlog("""
+        SELECT
+            estado,
+            pre_entrega,
+            SUM(CASE WHEN horas_backlog_snapshot > 24 THEN 1 ELSE 0 END) AS total_24,
+            SUM(CASE WHEN horas_backlog_snapshot > 48 THEN 1 ELSE 0 END) AS total_48
+        FROM backlog_atual
+        GROUP BY estado, pre_entrega
+        ORDER BY total_24 DESC
+    """)
+
+
+@st.cache_data(ttl=600)
+def buscar_produtividade_turno_hc(data_inicio, data_fim):
+    return consultar_operacional("""
+        SELECT turno, SUM(volumes) AS volumes
+        FROM produtividade
+        WHERE data BETWEEN %s AND %s
+        GROUP BY turno
+        ORDER BY turno
+    """, [data_inicio, data_fim])
