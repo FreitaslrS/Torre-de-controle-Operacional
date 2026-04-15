@@ -20,7 +20,7 @@ CARDS = [
     ("tempo",         "Tempo",             "SLA e tempo de processamento"),
     ("health_check",  "Health Check",      "Saúde operacional consolidada"),
     ("devolucoes",    "Devoluções",        "Pedidos devolvidos e P90"),
-    ("coletas",       "Coletas, Carregamento e Descarregamento", "Carregamento e descarregamento"),
+    ("coletas",       "Coletas, Carregamento e Descarregamento", "Carregamento e descarregamento", "Coletas"),
     ("importacao",    "Importação",        "Upload de planilhas"),
 ]
 
@@ -52,12 +52,10 @@ def _card_html(pagina, titulo, subtitulo):
     """
 
 
-def _render_card(pagina, titulo, subtitulo):
+def _render_card(pagina, titulo, subtitulo, btn_label=None):
     """Renderiza card visual + botão transparente por cima (opacity:0, mesmo tamanho)."""
-    # 1. Card visual
     st.markdown(_card_html(pagina, titulo, subtitulo), unsafe_allow_html=True)
-    # 2. Botão invisível (opacity:0) com mesma altura, puxado para cima para sobrepor o card
-    clicked = st.button(titulo, key=f"card_{pagina}", use_container_width=True)
+    clicked = st.button(btn_label or titulo, key=f"card_{pagina}", use_container_width=True)
     if clicked:
         st.session_state.page = pagina
         st.rerun()
@@ -113,18 +111,18 @@ def render():
     # Linha 1: 4 cards
     cols1 = st.columns(4)
     for i in range(4):
-        pagina, titulo, subtitulo = CARDS[i]
+        pagina, titulo, subtitulo, *rest = CARDS[i]
         with cols1[i]:
-            _render_card(pagina, titulo, subtitulo)
+            _render_card(pagina, titulo, subtitulo, rest[0] if rest else None)
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # Linha 2: 4 cards — mesma largura da linha 1
     cols2 = st.columns(4)
     for i, col in enumerate(cols2):
-        pagina, titulo, subtitulo = CARDS[4 + i]
+        pagina, titulo, subtitulo, *rest = CARDS[4 + i]
         with col:
-            _render_card(pagina, titulo, subtitulo)
+            _render_card(pagina, titulo, subtitulo, rest[0] if rest else None)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
