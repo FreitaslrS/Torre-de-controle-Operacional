@@ -20,7 +20,7 @@ CARDS = [
     ("tempo",         "Tempo",             "SLA e tempo de processamento"),
     ("health_check",  "Health Check",      "Saúde operacional consolidada"),
     ("devolucoes",    "Devoluções",        "Pedidos devolvidos e P90"),
-    ("coletas",       "Coletas",           "Carregamento e descarregamento"),
+    ("coletas",       "Coletas, Carregamento e Descarregamento", "Carregamento e descarregamento"),
     ("importacao",    "Importação",        "Upload de planilhas"),
 ]
 
