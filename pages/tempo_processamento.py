@@ -24,6 +24,13 @@ cores_pizza = {
 }
 
 
+def _formatar_horas(h):
+    if pd.isna(h): return "00:00"
+    horas   = int(h)
+    minutos = int((h - horas) * 60)
+    return f"{horas:02d}:{minutos:02d}"
+
+
 def render():
     aplicar_css_global()
 
@@ -152,13 +159,7 @@ def render():
             df.drop(columns=["_tempo_pond"], inplace=True)
             tabela_dia.rename(columns={"dentro_sla": "0-24h", "fora_sla": ">24h"}, inplace=True)
 
-            def formatar_horas(h):
-                if pd.isna(h): return "00:00"
-                horas   = int(h)
-                minutos = int((h - horas) * 60)
-                return f"{horas:02d}:{minutos:02d}"
-
-            tabela_dia["Média (h)"] = tabela_dia["tempo_medio"].apply(formatar_horas)
+            tabela_dia["Média (h)"] = tabela_dia["tempo_medio"].apply(_formatar_horas)
             tabela_dia["% SLA"] = (
                 tabela_dia["0-24h"] / tabela_dia["qtd_total"].replace(0, 1) * 100
             ).round(1).astype(str) + "%"

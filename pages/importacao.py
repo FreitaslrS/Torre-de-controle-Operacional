@@ -72,8 +72,9 @@ def _carregar_historico():
     return pd.concat(dfs, ignore_index=True).sort_values("data_importacao", ascending=False)
 
 
-def obter_senha():
-    return os.getenv("SENHA_IMPORTACAO", "")
+def _senha_configurada():
+    """Retorna a senha do .env. Bloqueia acesso se não estiver configurada."""
+    return os.getenv("SENHA_IMPORTACAO", "").strip()
 
 
 def verificar_senha():
@@ -82,6 +83,11 @@ def verificar_senha():
 
     if st.session_state.autenticado:
         return True
+
+    senha_correta = _senha_configurada()
+    if not senha_correta:
+        st.error("Importação bloqueada: SENHA_IMPORTACAO não configurada no ambiente.")
+        return False
 
     st.markdown("""
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
@@ -98,7 +104,7 @@ def verificar_senha():
 """, unsafe_allow_html=True)
     senha = st.text_input("Senha", type="password")
     if st.button("Entrar"):
-        if senha and senha == obter_senha():
+        if senha and senha == senha_correta:
             st.session_state.autenticado = True
             st.rerun()
         else:

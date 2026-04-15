@@ -14,19 +14,30 @@ COR_APOIO      = "#2B2D42"
 FAIXAS_ORDEM = ["1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"]
 
 
+def _soma_acima(df_f, usar_horas, horas):
+    if usar_horas:
+        return int(df_f.loc[df_f["horas_min"] > horas, "qtd"].sum())
+    faixas_map = {
+        24: ["1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
+        48: ["5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
+        72: ["10-20 dias", "20-30 dias", "30+ dias"],
+    }
+    return int(df_f.loc[df_f["faixa_backlog_snapshot"].isin(faixas_map[horas]), "qtd"].sum())
+
+
+@st.cache_data(show_spinner=False)
+def _df_para_excel(df):
+    buf = io.BytesIO()
+    df.to_excel(buf, index=False)
+    return buf.getvalue()
+
+
 def gerar_download(df, key_prefix):
     col1, col2 = st.columns(2)
     csv = df.to_csv(index=False).encode("utf-8")
     col1.download_button("CSV", csv, f"{key_prefix}.csv", "text/csv", key=f"{key_prefix}_csv")
-
-    @st.cache_data(show_spinner=False)
-    def _to_excel(df_hash):
-        buf = io.BytesIO()
-        df_hash.to_excel(buf, index=False)
-        return buf.getvalue()
-
     col2.download_button(
-        "Excel", _to_excel(df), f"{key_prefix}.xlsx",
+        "Excel", _df_para_excel(df), f"{key_prefix}.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key=f"{key_prefix}_excel"
     )
@@ -112,22 +123,11 @@ def render():
 
     usar_horas = df_f["horas_min"].notna().any()
 
-    def _soma_acima(horas):
-        if usar_horas:
-            return int(df_f.loc[df_f["horas_min"] > horas, "qtd"].sum())
-        # fallback faixas de dias
-        faixas_map = {
-            24: ["1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
-            48: ["5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
-            72: ["10-20 dias", "20-30 dias", "30+ dias"],
-        }
-        return int(df_f.loc[df_f["faixa_backlog_snapshot"].isin(faixas_map[horas]), "qtd"].sum())
-
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total no Período", fmt_numero(total_periodo))
-    col2.metric(">24h", fmt_numero(_soma_acima(24)))
-    col3.metric(">48h", fmt_numero(_soma_acima(48)))
-    col4.metric(">72h", fmt_numero(_soma_acima(72)))
+    col2.metric(">24h", fmt_numero(_soma_acima(df_f, usar_horas, 24)))
+    col3.metric(">48h", fmt_numero(_soma_acima(df_f, usar_horas, 48)))
+    col4.metric(">72h", fmt_numero(_soma_acima(df_f, usar_horas, 72)))
 
     st.divider()
 
