@@ -89,7 +89,8 @@ def buscar_backlog_resumo():
             SUM(qtd)                                            AS qtd,
             SUM(CASE WHEN horas_max > 24 THEN qtd ELSE 0 END)  AS b24,
             SUM(CASE WHEN horas_max > 48 THEN qtd ELSE 0 END)  AS b48,
-            SUM(CASE WHEN horas_max > 72 THEN qtd ELSE 0 END)  AS b72
+            SUM(CASE WHEN horas_max > 72 THEN qtd ELSE 0 END)  AS b72,
+            SUM(CASE WHEN horas_max > 96 THEN qtd ELSE 0 END)  AS b96
         FROM backlog_atual
         GROUP BY estado, cliente
     """)
@@ -107,6 +108,7 @@ def buscar_sla_por_estado():
             SUM(CASE WHEN horas_max > 24 THEN qtd ELSE 0 END)  AS "+24h",
             SUM(CASE WHEN horas_max > 48 THEN qtd ELSE 0 END)  AS "+48h",
             SUM(CASE WHEN horas_max > 72 THEN qtd ELSE 0 END)  AS "+72h",
+            SUM(CASE WHEN horas_max > 96 THEN qtd ELSE 0 END)  AS "+96h",
             SUM(qtd)                                            AS "Total"
         FROM backlog_atual
         GROUP BY estado

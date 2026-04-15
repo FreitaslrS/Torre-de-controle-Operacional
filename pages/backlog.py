@@ -60,12 +60,13 @@ def render():
         p = valor / total if total else 0
         return "(!)" if p > 0.3 else "(~)" if p > 0.15 else "(ok)"
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     col1.metric("Total", fmt_numero(total))
-    col2.metric("+24h", f"{cor_kpi(b24, total)} {fmt_numero(b24)}")
-    col3.metric("+48h", f"{cor_kpi(b48, total)} {fmt_numero(b48)}")
-    col4.metric("+72h", f"{cor_kpi(b72, total)} {fmt_numero(b72)}")
-    col5.metric("% Crítico", f"{perc:.1f}%")
+    col2.metric("+24H", fmt_numero(b24))
+    col3.metric("+48H", fmt_numero(b48))
+    col4.metric("+72H", fmt_numero(b72))
+    col5.metric("+96H", fmt_numero(int(df_resumo["b96"].sum())))
+    col6.metric("% Crítico", f"{perc:.1f}%")
 
     # KPIs por faixa de dias
     _FAIXAS_DIAS = ["1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"]
@@ -98,7 +99,7 @@ def render():
     remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df_resumo["cliente"].unique()))
 
     col_f3, col_f4 = st.columns(2)
-    faixa_horas = col_f3.selectbox("Filtro por Horas",      ["Todos", "Até 24h", "+24h", "+48h", "+72h"], key="bk_faixa_h")
+    faixa_horas = col_f3.selectbox("Filtro por Horas",      ["Todos", "Até 24h", "+24h", "+48h", "+72h", "+96h"], key="bk_faixa_h")
     faixa_dias  = col_f4.selectbox("Filtro por Faixa de Dias", ["Todos", "1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"], key="bk_faixa_d")
 
     # =========================
@@ -116,6 +117,7 @@ def render():
         "+24h":    lambda df: df[df["horas_max"] > 24],
         "+48h":    lambda df: df[df["horas_max"] > 48],
         "+72h":    lambda df: df[df["horas_max"] > 72],
+        "+96h":    lambda df: df[df["horas_max"] > 96],
     }
     if faixa_horas in _faixas_acima:
         df_base = _faixas_acima[faixa_horas](df_base)

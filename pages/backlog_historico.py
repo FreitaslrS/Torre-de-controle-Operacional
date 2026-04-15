@@ -89,7 +89,7 @@ def render():
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     remover_estados  = col_f1.multiselect("Remover Estados",  options=sorted(df["estado"].dropna().unique()),  key="hist_rem_est")
     remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df["cliente"].dropna().unique()), key="hist_rem_cli")
-    faixa_horas      = col_f3.selectbox("Filtro por Horas",         ["Todos", "Até 24h", "+24h", "+48h", "+72h"],                                                          key="hist_faixa_h")
+    faixa_horas      = col_f3.selectbox("Filtro por Horas",         ["Todos", "Até 24h", "+24h", "+48h", "+72h", "+96h"],                                                          key="hist_faixa_h")
     faixa_dias       = col_f4.selectbox("Filtro por Faixa de Dias", ["Todos", "1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"], key="hist_faixa_d")
 
     df_f = df.copy()
@@ -97,7 +97,7 @@ def render():
         df_f = df_f[~df_f["estado"].isin(remover_estados)]
     if remover_clientes:
         df_f = df_f[~df_f["cliente"].isin(remover_clientes)]
-    LIMITES = {"Até 24h": (None, 24), "+24h": (24, None), "+48h": (48, None), "+72h": (72, None)}
+    LIMITES = {"Até 24h": (None, 24), "+24h": (24, None), "+48h": (48, None), "+72h": (72, None), "+96h": (96, None)}
     if faixa_horas in LIMITES:
         lo, hi = LIMITES[faixa_horas]
         if usar_horas := df_f["horas_min"].notna().any():
