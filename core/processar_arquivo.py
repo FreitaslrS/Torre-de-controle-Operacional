@@ -164,29 +164,39 @@ def limpar_base():
 
 def importar_excel(arquivo, data_referencia):
     # Lê só colunas necessárias
+    # AY=50 saida_hub2 | BG=58 saida_hub3 | BM=64 inbound_ponto | BT=71 assinatura
     df = xlsx_para_dataframe(
         arquivo,
-        usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 56]
+        usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 50, 56, 58, 64, 71]
     )
     df.columns = [
         "waybill", "estado", "cidade", "cliente",
         "pre_entrega", "ponto_entrada",
         "entrada_hub1", "saida_hub1", "proximo_ponto",
-        "entrada_hub2", "entrada_hub3"
+        "entrada_hub2", "saida_hub2",
+        "entrada_hub3", "saida_hub3",
+        "inbound_ponto", "assinatura"
     ]
 
     df["waybill"] = df["waybill"].astype(str).str.strip()
     df = df[df["waybill"].str.lower() != "nan"]
 
-    for col in ["entrada_hub1", "saida_hub1", "entrada_hub2", "entrada_hub3"]:
+    for col in ["entrada_hub1", "saida_hub1",
+                "entrada_hub2", "saida_hub2",
+                "entrada_hub3", "saida_hub3",
+                "inbound_ponto", "assinatura"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
-    # Filtra só backlog real (parado no hub1)
+    # Backlog real: entrou no hub1, não saiu, não avançou na cadeia e não foi entregue
     df_backlog = df[
         df["entrada_hub1"].notna() &
         df["saida_hub1"].isna() &
         df["entrada_hub2"].isna() &
-        df["entrada_hub3"].isna()
+        df["saida_hub2"].isna() &
+        df["entrada_hub3"].isna() &
+        df["saida_hub3"].isna() &
+        df["inbound_ponto"].isna() &
+        df["assinatura"].isna()
     ].copy()
 
     if df_backlog.empty:
