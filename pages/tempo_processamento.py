@@ -8,7 +8,7 @@ from core.repository import (
 )
 
 from utils.theme import grafico_barra, grafico_pizza
-from utils.style import tabela_padrao, rodape_autoria
+from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global, fmt_numero
 
 # ── Paleta Tempo de Processamento ────────────────────────────────────
 COR_PRINCIPAL  = "#F0A202"   # Amarelo Anjun — cor dominante desta página
@@ -30,7 +30,6 @@ traducao_status = {
 }
 
 def render():
-    from utils.style import aplicar_css_global
     aplicar_css_global()
 
     st.markdown("""
@@ -66,9 +65,9 @@ def render():
         return
 
     tab1, tab2, tab3 = st.tabs([
-        "📊 SLA Hub",
-        "📦 Hiatas H001",
-        "🔗 Consolidado Operacional"
+        "SLA Hub",
+        "Hiatas H001",
+        "Consolidado Operacional"
     ])
 
     with tab1:
@@ -91,20 +90,20 @@ def render():
         col1, col2 = st.columns(2)
 
         with col1:
-            st.metric("📊 SLA 24h", f"{perc_sla:.1f}%")
+            st.metric("SLA 24h", f"{perc_sla:.1f}%")
             if perc_sla < 70:
-                st.error("🚨 SLA crítico")
+                st.error("SLA crítico")
             elif perc_sla < 85:
-                st.warning("⚠️ SLA em atenção")
+                st.warning("SLA em atenção")
             else:
-                st.success("✅ SLA saudável")
+                st.success("SLA saudável")
 
         with col2:
-            st.metric("⏱️ Tempo médio", f"{tempo_medio:.1f}h")
+            st.metric("Tempo médio", f"{tempo_medio:.1f}h")
             if tempo_medio > 24:
-                st.error("🚨 Tempo médio acima de 24h")
+                st.error("Tempo médio acima de 24h")
             else:
-                st.success("✅ Tempo médio dentro do SLA")
+                st.success("Tempo médio dentro do SLA")
 
         st.divider()
 
@@ -256,7 +255,7 @@ def render():
         # =========================
         # 📊 HIATA H001 POR DIA
         # =========================
-        st.subheader("📊 Volume de Hiatas H001 por Dia")
+        st.subheader("Volume de Hiatas H001 por Dia")
 
         df_hiata = buscar_hiata_por_dia(data_inicio, data_fim)
 
@@ -278,7 +277,7 @@ def render():
         # =========================
         # 📊 CONSOLIDAÇÃO OPERACIONAL
         # =========================
-        st.subheader("📊 Consolidação Operacional (Perus + TFK)")
+        st.subheader("Consolidação Operacional (Perus + TFK)")
 
         df_cons = buscar_consolidado_por_dia(None, None)
 
@@ -288,9 +287,9 @@ def render():
             media_total = df_cons["total_geral"].mean()
 
             col1, col2, col3 = st.columns(3)
-            col1.metric("📦 Perus", f"{media_perus:.0f}/dia")
-            col2.metric("🚚 TFK Direto", f"{media_tfk:.0f}/dia")
-            col3.metric("🔥 Total", f"{media_total:.0f}/dia")
+            col1.metric("Perus", f"{media_perus:.0f}/dia")
+            col2.metric("TFK Direto", f"{media_tfk:.0f}/dia")
+            col3.metric("Total", f"{media_total:.0f}/dia")
 
             for col in ["total_perus", "total_tfk", "total_geral"]:
                 df_cons[col] = df_cons[col].fillna(0).astype(int)

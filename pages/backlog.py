@@ -2,23 +2,31 @@ import streamlit as st
 import plotly.express as px
 import pandas as pd
 import io
+import json
+import os as _os
 from core.repository import (
     buscar_backlog_resumo,
-    buscar_backlog_paginado,
     carregar_backlog_atual_completo,
+    buscar_sla_por_estado,
 )
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao, rodape_autoria
+from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global, fmt_numero
 
-# ── Paleta Backlog Atual ──────────────────────────────────────────────
-COR_PRINCIPAL  = "#009640"   # Verde Anjun — cor dominante desta página
-COR_SECUNDARIA = "#053B31"   # Verde escuro — destaque (1ª barra)
-COR_APOIO      = "#2B2D42"   # Navy — elementos neutros
-PALETA_PAGINA  = [COR_PRINCIPAL, COR_SECUNDARIA, COR_APOIO]
+COR_PRINCIPAL  = "#009640"
+COR_SECUNDARIA = "#053B31"
+COR_APOIO      = "#2B2D42"
+
+_GEOJSON_PATH = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "assets", "brasil_estados.json")
+
+@st.cache_resource
+def _carregar_geojson():
+    if not _os.path.exists(_GEOJSON_PATH):
+        return None
+    with open(_GEOJSON_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
 
 def render():
-    from utils.style import aplicar_css_global
-
     aplicar_css_global()
 
     st.markdown("""
@@ -50,28 +58,22 @@ def render():
     perc = (b72 / total * 100) if total else 0
 
     def cor_kpi(valor, total):
-        perc_local = valor / total if total else 0
-        if perc_local > 0.3:
-            return "🔴"
-        elif perc_local > 0.15:
-            return "🟡"
-        else:
-            return "🟢"
+        p = valor / total if total else 0
+        return "(!)" if p > 0.3 else "(~)" if p > 0.15 else "(ok)"
 
     col1, col2, col3, col4, col5 = st.columns(5)
-
-    col1.metric("Total", total)
-    col2.metric(">24h", f"{cor_kpi(b24, total)} {b24}")
-    col3.metric(">48h", f"{cor_kpi(b48, total)} {b48}")
-    col4.metric(">72h", f"{cor_kpi(b72, total)} {b72}")
+    col1.metric("Total", fmt_numero(total))
+    col2.metric(">24h", f"{cor_kpi(b24, total)} {fmt_numero(b24)}")
+    col3.metric(">48h", f"{cor_kpi(b48, total)} {fmt_numero(b48)}")
+    col4.metric(">72h", f"{cor_kpi(b72, total)} {fmt_numero(b72)}")
     col5.metric("% Crítico", f"{perc:.1f}%")
 
     if perc > 30:
-        st.error("🚨 Backlog crítico!")
+        st.error("Backlog crítico!")
     elif perc > 15:
-        st.warning("⚠️ Backlog em atenção")
+        st.warning("Backlog em atenção")
     else:
-        st.success("✅ Operação controlada")
+        st.success("Operação controlada")
 
     st.divider()
 
@@ -85,21 +87,9 @@ def render():
 </div>""", unsafe_allow_html=True)
 
     col_f1, col_f2 = st.columns(2)
-
-    remover_estados = col_f1.multiselect(
-        "Remover Estados",
-        options=sorted(df_resumo["estado"].unique())
-    )
-
-    remover_clientes = col_f2.multiselect(
-        "Remover Clientes",
-        options=sorted(df_resumo["cliente"].unique())
-    )
-
-    faixa = st.selectbox(
-        "Filtro de Backlog",
-        ["Todos", "0-24h", "24-48h", "48-72h", "72h+"]
-    )
+    remover_estados  = col_f1.multiselect("Remover Estados",  options=sorted(df_resumo["estado"].unique()))
+    remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df_resumo["cliente"].unique()))
+    faixa = st.selectbox("Filtro de Backlog", ["Todos", "0-24h", "24-48h", "48-72h", "72h+"])
 
     # =========================
     # 📊 DADOS — 1 query com cache, filtros em Python
@@ -120,18 +110,12 @@ def render():
     if faixa in _faixa_map:
         df_base = df_base[_faixa_map[faixa](df_base["horas_backlog_snapshot"])]
 
-    df_estado = (df_base.groupby("estado", as_index=False)["waybill"]
-                        .count().rename(columns={"waybill": "qtd"}))
-
-    df_cliente = (df_base.groupby("cliente", as_index=False)["waybill"]
-                         .count().rename(columns={"waybill": "qtd"}))
-
-    df_pre = (df_base.groupby("pre_entrega", as_index=False)["waybill"]
-                     .count().rename(columns={"waybill": "qtd"})
-                     .sort_values("qtd", ascending=False)
-                     .head(10))
-
-    _pp = df_base["proximo_ponto"].replace("", None).fillna("Sem informação")
+    df_estado  = df_base.groupby("estado",  as_index=False)["waybill"].count().rename(columns={"waybill": "qtd"})
+    df_cliente = df_base.groupby("cliente", as_index=False)["waybill"].count().rename(columns={"waybill": "qtd"})
+    df_pre     = (df_base.groupby("pre_entrega", as_index=False)["waybill"]
+                         .count().rename(columns={"waybill": "qtd"})
+                         .sort_values("qtd", ascending=False).head(10))
+    _pp        = df_base["proximo_ponto"].replace("", None).fillna("Sem informação")
     df_proximo = (df_base.assign(proximo_ponto=_pp)
                          .groupby("proximo_ponto", as_index=False)["waybill"]
                          .count().rename(columns={"waybill": "qtd"}))
@@ -139,42 +123,21 @@ def render():
     # =========================
     # 📊 GRÁFICOS
     # =========================
-    from utils.theme import grafico_barra
+    df_estado_sorted  = df_estado.sort_values("qtd", ascending=False)
+    df_cliente_sorted = df_cliente.sort_values("qtd", ascending=False)
 
-    df_estado_sorted = df_estado.sort_values("qtd", ascending=False)
-
-    cores = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_estado_sorted) - 1)
-
-    fig_estado = grafico_barra(
-        df_estado_sorted,
-        x="estado",
-        y="qtd",
-        text="qtd"
-    )
-
+    fig_estado = grafico_barra(df_estado_sorted, x="estado", y="qtd", text="qtd")
     fig_estado.update_traces(
-        marker_color=cores,
+        marker_color=[COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_estado_sorted) - 1),
         hovertemplate="<b>%{x}</b><br>Volume: %{y}<extra></extra>"
     )
 
-    df_cliente_sorted = df_cliente.sort_values("qtd", ascending=False)
-
-    cores = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_cliente_sorted) - 1)
-
-    fig_cliente = grafico_barra(
-        df_cliente_sorted,
-        x="cliente",
-        y="qtd",
-        text="qtd"
+    fig_cliente = grafico_barra(df_cliente_sorted, x="cliente", y="qtd", text="qtd")
+    fig_cliente.update_traces(
+        marker_color=[COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_cliente_sorted) - 1)
     )
 
-    fig_cliente.update_traces(marker_color=cores)
-
-    # =========================
-    # 📊 EXIBE
-    # =========================
     col_g1, col_g2 = st.columns(2)
-
     with col_g1:
         st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -207,25 +170,15 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Distribuição Geográfica</span>
 </div>""", unsafe_allow_html=True)
 
-    import json, os as _os
-
-    _geojson_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "assets", "brasil_estados.json")
-
-    if _os.path.exists(_geojson_path):
-        with open(_geojson_path, encoding="utf-8") as _f:
-            _geojson_brasil = json.load(_f)
-
+    _geojson_brasil = _carregar_geojson()
+    if _geojson_brasil:
         fig_mapa = px.choropleth(
             df_estado,
             geojson=_geojson_brasil,
             locations="estado",
             featureidkey="properties.sigla",
             color="qtd",
-            color_continuous_scale=[
-                [0,   "#e8f5e9"],
-                [0.4, "#009640"],
-                [1,   "#053B31"]
-            ],
+            color_continuous_scale=[[0, "#e8f5e9"], [0.4, "#009640"], [1, "#053B31"]],
             labels={"qtd": "Volume", "estado": "Estado"},
             hover_name="estado",
             hover_data={"qtd": True, "estado": False}
@@ -260,8 +213,7 @@ def render():
 </svg>
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Próximo Ponto</span>
 </div>""", unsafe_allow_html=True)
-        df_proximo_sorted = df_proximo.sort_values("qtd", ascending=False).reset_index(drop=True)
-        df_proximo_fmt = df_proximo_sorted.copy()
+        df_proximo_fmt = df_proximo.sort_values("qtd", ascending=False).reset_index(drop=True).copy()
         df_proximo_fmt.columns = ["Próximo Ponto / 下一站", "Qtd / 数量"]
         tabela_padrao(df_proximo_fmt)
 
@@ -288,10 +240,7 @@ def render():
 </svg>
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Backlog por Estado (SLA)</span>
 </div>""", unsafe_allow_html=True)
-
-    from core.repository import buscar_sla_por_estado
-    tabela_estado = buscar_sla_por_estado()
-    tabela_padrao(tabela_estado)
+    tabela_padrao(buscar_sla_por_estado())
 
     st.divider()
 
@@ -306,173 +255,23 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Download Waybills em Backlog</span>
 </div>""", unsafe_allow_html=True)
 
-    df_detalhe_full = buscar_backlog_paginado(limit=100000)
-
-    def formatar_tempo(h):
-        if pd.isna(h):
-            return "—"
-        elif h <= 72:
-            return f"{int(h)}h"
-        else:
-            dias = h / 24
-            return f"{dias:.1f} dias"
-
-    df_export = df_detalhe_full[[
-        "waybill", "estado", "cliente", "cidade",
-        "pre_entrega", "proximo_ponto", "horas_backlog_snapshot"
-    ]].copy()
-    df_export["tempo_backlog"] = df_export["horas_backlog_snapshot"].apply(formatar_tempo)
+    df_export = df_base[["waybill", "estado", "cliente", "cidade",
+                          "pre_entrega", "proximo_ponto", "horas_backlog_snapshot"]].copy()
+    df_export["tempo_backlog"] = df_export["horas_backlog_snapshot"].apply(
+        lambda h: "—" if pd.isna(h) else (f"{int(h)}h" if h <= 72 else f"{h/24:.1f} dias")
+    )
     df_export = df_export.drop(columns=["horas_backlog_snapshot"])
-    df_export.columns = [
-        "Waybill", "Estado", "Cliente", "Cidade",
-        "Pré-entrega", "Próximo Ponto", "Tempo em Backlog"
-    ]
+    df_export.columns = ["Waybill", "Estado", "Cliente", "Cidade",
+                         "Pré-entrega", "Próximo Ponto", "Tempo em Backlog"]
     df_export = df_export.sort_values("Waybill")
 
     buffer = io.BytesIO()
     df_export.to_excel(buffer, index=False)
     st.download_button(
-        label=f"⬇️ Baixar Excel ({len(df_export)} waybills)",
+        label=f"Baixar Excel ({fmt_numero(len(df_export))} waybills)",
         data=buffer.getvalue(),
         file_name="backlog_waybills.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
     rodape_autoria()
-
-
-# =========================
-# 🔥 TELEGRAM
-# =========================
-
-import pandas as pd
-import requests
-import os
-
-TOKEN = "8632831814:AAHU8LIDCP2iI6ZZ03j_F3i7y21XVunbTIM"
-CHAT_ID = 8752000601
-
-
-def enviar_telegram(texto):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": texto
-    })
-
-    print(requests.get(url).json())
-
-
-def enviar_imagem(caminho):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-
-    with open(caminho, "rb") as img:
-        requests.post(url, files={"photo": img}, data={
-            "chat_id": CHAT_ID
-        })
-
-
-def calcular_resumo(df_estado, df_cliente):
-    total = df_cliente["qtd"].sum()
-
-    top_clientes = df_cliente.sort_values("qtd", ascending=False).head(2)
-
-    return {
-        "total": int(total),
-        "top1": f"{top_clientes.iloc[0]['cliente']}: {top_clientes.iloc[0]['qtd']}",
-        "top2": f"{top_clientes.iloc[1]['cliente']}: {top_clientes.iloc[1]['qtd']}",
-    }
-
-
-def gerar_texto(df_cliente):
-    from datetime import datetime
-
-    data = datetime.now().strftime("%d/%m/%Y")
-
-    total = df_cliente["qtd"].sum()
-
-    top = df_cliente.sort_values("qtd", ascending=False).head(4)
-
-    linhas = []
-    for i, row in top.iterrows():
-        perc = (row["qtd"] / total) * 100 if total else 0
-        emoji = "🔴" if perc > 30 else "🟡" if perc > 15 else "🟢"
-
-        linhas.append(f"{row['cliente']}: {int(row['qtd'])} (~{perc:.0f}%) {emoji}")
-
-    concentracao = ((top.iloc[0]["qtd"] + top.iloc[1]["qtd"]) / total * 100) if total else 0
-
-    analise = "🔴 MUITO concentrado" if concentracao > 70 else "🟡 moderado" if concentracao > 40 else "🟢 distribuído"
-
-    texto = f"""
-📊 BACKLOG AUTOMÁTICO
-📅 {data}
-
-📦 GERAL
-Total: ≈{int(total)}
-
-{chr(10).join(linhas)}
-
-➡️ Top 2 = ~{concentracao:.0f}% do backlog
-➡️ {analise}
-"""
-
-    return texto
-
-def gerar_b2c(df_cliente):
-
-    excluir = ["Kwai", "Shein", "Shein D2D", "Szanjun", "Temu D2D", "Temu W2D"]
-
-    df_b2c = df_cliente[~df_cliente["cliente"].isin(excluir)]
-
-    top_b2c = df_b2c.sort_values("qtd", ascending=False).head(5)
-
-    linhas = []
-    for _, row in top_b2c.iterrows():
-        linhas.append(f"{row['cliente']}: {int(row['qtd'])}")
-
-    return "\n".join(linhas)
-
-def gerar_texto_completo(df_cliente):
-    base = gerar_texto(df_cliente)
-    b2c = gerar_b2c(df_cliente)
-
-    return base + f"""
-
-📦 B2C
-{b2c}
-"""
-
-def enviar_excel(df):
-
-    caminho = "temp/waybills.xlsx"
-    df.to_excel(caminho, index=False)
-
-    url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-
-    with open(caminho, "rb") as file:
-        requests.post(url, files={"document": file}, data={
-            "chat_id": CHAT_ID
-        })
-
-def salvar_graficos(fig_estado, fig_cliente, fig_proximo):
-    os.makedirs("temp", exist_ok=True)
-
-    fig_estado.write_image("temp/estado.png")
-    fig_cliente.write_image("temp/cliente.png")
-    fig_proximo.write_image("temp/proximo.png")
-
-
-def gerar_e_enviar_relatorio(df_estado, df_cliente, fig_estado, fig_cliente, fig_proximo):
-
-    texto = gerar_texto_completo(df_cliente)
-
-    salvar_graficos(fig_estado, fig_cliente, fig_proximo)
-
-    enviar_telegram(texto)
-
-    enviar_imagem("temp/estado.png")
-    enviar_imagem("temp/cliente.png")
-    enviar_imagem("temp/proximo.png")
-
-    enviar_excel(df_cliente)

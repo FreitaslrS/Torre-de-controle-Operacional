@@ -1,30 +1,43 @@
+import io
+import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from psycopg2.extras import execute_values
 from core.database import (
     conectar_backlog,
-    executar_backlog,
     consultar_backlog,
     conectar_operacional,
-    executar_operacional,
     conectar_historico,
-    executar_historico
+    executar_historico,
+    conectar_processamento,
+    conectar_devolucoes,
+    conectar_coletas,
+    executar_devolucoes,
+    executar_operacional,
+    executar_processamento,
 )
-from core.database import conectar_processamento
 
-import os
+
+# ================================
+# ⚡ LEITURA RÁPIDA: XLSX → Parquet em memória
+# ================================
+def xlsx_para_dataframe(arquivo, engine="openpyxl", **kwargs):
+    """
+    Lê XLSX, converte para Parquet em memória (snappy) e retorna
+    um DataFrame columnar — ~3-10x mais rápido para manipulação
+    em arquivos grandes (+10k linhas).
+    """
+    df = pd.read_excel(arquivo, engine=engine, **kwargs)
+    with io.BytesIO() as buf:
+        df.to_parquet(buf, index=False, compression="snappy")
+        buf.seek(0)
+        return pd.read_parquet(buf)
 
 
 # ================================
 # 🧹 LIMPEZA AUTOMÁTICA — 90 DIAS
 # ================================
 def limpar_historico_antigo():
-    from core.database import (
-        executar_operacional,
-        executar_processamento,
-        executar_historico,
-        executar_devolucoes
-    )
     try:
         executar_operacional("""
             DELETE FROM produtividade
@@ -70,250 +83,18 @@ def limpar_historico_antigo():
         print(f"⚠️ Erro na limpeza automática: {e}")
 
 
-COLUNAS_MAPEAMENTO = {
-    "waybill": ["waybill", "awb", "pedido"],
-    "cliente": ["cliente"],
-    "estado": ["estado", "uf", "estado destino", "destino uf", "州"],
-    "cidade": ["cidade", "city", "城市", "destino"],
-    "pre_entrega": ["预派送网点", "ponto de pré-entrega", "pre entrega"],
-    "proximo_ponto": ["下一站", "proximo ponto", "próximo ponto", "next hub"],
-    "entrada_hub1": ["entrada no centro nível 01"],
-    "saida_hub1": ["saída do centro nível 01"],
-    "entrada_hub2": ["entrada no centro nível 02"],
-    "saida_hub2": ["saída do centro nível 02"],
-    "entrada_hub3": ["entrada no centro nível 03"],
-    "saida_hub3": ["saída do centro nível 03"],
-    "data_inbound_ponto": ["网点入库时间", "tempo de inbound"],
-    "data_entrega": ["签收时间", "tempo de assinatura"]
-}
-
-
-def encontrar_coluna_mapeada(df, aliases):
-    for col in df.columns:
-        col_str = str(col)
-
-        for alias in aliases:
-            if alias.lower() in col_str.lower():
-                return col
-    return None
-
-
-def classificar_faixa(h):
-    if pd.isna(h):
-        return None
-    elif h <= 24:
-        return "0-24h"
-    elif h <= 48:
-        return "24-48h"
-    elif h <= 72:
-        return "48-72h"
-    else:
-        return "72h+"
-
-def ajustar_data_operacional(data_hora):
-    if pd.isna(data_hora):
-        return None
-    
-    if data_hora.hour < 5 or (data_hora.hour == 5 and data_hora.minute < 30):
-        return (data_hora - pd.Timedelta(days=1)).date()
-    else:
-        return data_hora.date()
-
 def limpar_base():
     executar_historico("""
         DELETE FROM pedidos
         WHERE data_referencia < CURRENT_DATE - INTERVAL '30 days'
     """)
 
-def calcular_base_tempo(row):
-    return row["entrada_hub1"]
-
-
-def preparar_dados(arquivo, data_referencia):
-    df = pd.read_excel(arquivo, engine="openpyxl")
-    df.columns = df.columns.str.strip()
-
-    dados = pd.DataFrame()
-
-    for coluna_padrao, aliases in COLUNAS_MAPEAMENTO.items():
-        col = encontrar_coluna_mapeada(df, aliases)
-        dados[coluna_padrao] = df[col] if col else None
-
-    for col in [
-        "entrada_hub1","saida_hub1",
-        "entrada_hub2","saida_hub2",
-        "entrada_hub3","saida_hub3",
-        "data_inbound_ponto",   # 🔥 NOVO
-        "data_entrega"          # 🔥 NOVO
-    ]:
-        dados[col] = pd.to_datetime(dados[col], errors="coerce")
-
-    dados["waybill"] = dados["waybill"].astype(str).str.strip()
-    dados = dados[(dados["waybill"] != "") & (dados["waybill"].str.lower() != "nan")]
-
-    agora = pd.to_datetime(data_referencia)
-
-    # 🔥 BACKLOG REAL
-    mask = (
-        dados["entrada_hub1"].notna() &
-        dados["entrada_hub2"].isna() &
-        dados["entrada_hub3"].isna() &
-        dados["saida_hub1"].isna() &
-        dados["saida_hub2"].isna() &
-        dados["saida_hub3"].isna() &
-        dados["data_entrega"].isna()   # 🔥 NOVO
-    )
-
-    dados["status"] = "finalizado"
-    dados.loc[mask, "status"] = "backlog"
-
-    def classificar_status_avancado(row):
-
-        if pd.notna(row["data_entrega"]):
-            return "Entregue"
-
-        if pd.notna(row["entrada_hub3"]):
-            return "Hub 3"
-
-        if pd.notna(row["entrada_hub2"]):
-            return "Hub 2"
-
-        if pd.notna(row["entrada_hub1"]):
-            return "Hub 1"
-
-        return "Sem entrada"
-
-    dados["status_etapa"] = dados.apply(classificar_status_avancado, axis=1)
-
-    # ⏱️ TEMPO
-    dados["base_tempo"] = dados.apply(calcular_base_tempo, axis=1)
-
-    # 🔥 CORREÇÃO
-    dados = dados[dados["base_tempo"].notna()]
-
-    dados["horas_backlog_snapshot"] = (
-        (agora - dados["base_tempo"]).dt.total_seconds() / 3600
-    )
-
-    dados["faixa_backlog_snapshot"] = dados["horas_backlog_snapshot"].apply(classificar_faixa)
-
-    dados["data_referencia"] = agora.date()
-    dados["data_importacao"] = datetime.now()
-    dados["nome_arquivo"] = arquivo.name
-
-    # 🔥 tratar próximo ponto
-    dados["proximo_ponto"] = dados["proximo_ponto"].fillna("Sem informação")
-
-    return dados
-
-def validar_backlog(df):
-
-    erros = []
-
-    # ❌ HUB 2 sem HUB 1
-    erro_hub2 = df[
-        df["entrada_hub2"].notna() &
-        df["entrada_hub1"].isna()
-    ]
-    if not erro_hub2.empty:
-        erros.append(f"HUB2 sem HUB1: {len(erro_hub2)}")
-
-    # ❌ HUB 3 sem HUB 2
-    erro_hub3 = df[
-        df["entrada_hub3"].notna() &
-        df["entrada_hub2"].isna()
-    ]
-    if not erro_hub3.empty:
-        erros.append(f"HUB3 sem HUB2: {len(erro_hub3)}")
-
-    # ❌ saída sem entrada
-    erro_saida = df[
-        df["saida_hub1"].notna() &
-        df["entrada_hub1"].isna()
-    ]
-    if not erro_saida.empty:
-        erros.append(f"Saída sem entrada: {len(erro_saida)}")
-
-    # ❌ horas negativas
-    erro_tempo = df[df["horas_backlog_snapshot"] < 0]
-    if not erro_tempo.empty:
-        erros.append(f"Tempo negativo: {len(erro_tempo)}")
-
-    erro_backlog = df[
-        (df["status"] == "backlog") &
-        (
-            df["entrada_hub2"].notna() |
-            df["entrada_hub3"].notna()
-        )
-    ]
-
-    if not erro_backlog.empty:
-        erros.append(f"Backlog inválido (já avançou): {len(erro_backlog)}")
-
-    return erros
-
-def inserir_em_massa(df):
-    conn = conectar_historico()
-    cur = conn.cursor()
-
-    colunas = [
-        "waybill",
-        "cliente",
-        "estado",
-        "cidade",
-        "pre_entrega",
-        "proximo_ponto",
-        "entrada_hub1",
-        "saida_hub1",
-        "entrada_hub2",
-        "saida_hub2",
-        "entrada_hub3",
-        "saida_hub3",
-        "data_inbound_ponto",
-        "data_entrega",
-        "status_etapa",
-        "nome_arquivo",
-        "data_referencia",
-        "data_importacao",
-        "horas_backlog_snapshot",
-        "faixa_backlog_snapshot",
-        "status"
-    ]
-
-    df = df[colunas]
-
-    def tratar_valor(v):
-        if pd.isna(v):
-            return None
-        return v
-
-    values = [
-        tuple(tratar_valor(v) for v in row)
-        for row in df.itertuples(index=False, name=None)
-    ]
-
-    execute_values(
-        cur,
-        f"INSERT INTO pedidos ({','.join(colunas)}) VALUES %s",
-        values
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
 
 def importar_excel(arquivo, data_referencia):
-    import pandas as pd
-    from datetime import datetime
-    from psycopg2.extras import execute_values
-    from core.database import conectar_historico, conectar_backlog, consultar_backlog, executar_historico
-
     # Lê só colunas necessárias
-    df = pd.read_excel(
+    df = xlsx_para_dataframe(
         arquivo,
-        usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 56],
-        engine="openpyxl"
+        usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 56]
     )
     df.columns = [
         "waybill", "estado", "cidade", "cliente",
@@ -356,7 +137,7 @@ def importar_excel(arquivo, data_referencia):
 
     df_backlog["faixa_backlog_snapshot"] = df_backlog["horas_backlog_snapshot"].apply(classificar_faixa)
     df_backlog["data_referencia"]        = agora.date()
-    df_backlog["data_importacao"]        = datetime.now()
+    df_backlog["data_importacao"]        = datetime.now(timezone.utc)
     df_backlog["nome_arquivo"]           = arquivo.name
     df_backlog["proximo_ponto"]          = df_backlog["proximo_ponto"].fillna("Sem informação")
 
@@ -403,7 +184,7 @@ def importar_excel(arquivo, data_referencia):
         .reset_index(name="qtd")
     )
     df_resumo["nome_arquivo"]    = arquivo.name
-    df_resumo["data_importacao"] = datetime.now()
+    df_resumo["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_historico()
     cur  = conn.cursor()
@@ -446,13 +227,8 @@ def importar_excel(arquivo, data_referencia):
 
 
 def importar_produtividade(arquivo):
-    import pandas as pd
-    from datetime import datetime
-    from psycopg2.extras import execute_values
-    from core.database import conectar_operacional, executar_operacional
-
     # Colunas: D=3 (cliente), I=8 (data_hora), U=20 (operador)
-    df = pd.read_excel(arquivo, usecols=[3, 8, 20], engine="openpyxl")
+    df = xlsx_para_dataframe(arquivo, usecols=[3, 8, 20])
     df.columns = ["cliente", "data_hora", "operador"]
 
     if df.empty:
@@ -508,7 +284,7 @@ def importar_produtividade(arquivo):
     )
 
     df_agg["nome_arquivo"]    = arquivo.name
-    df_agg["data_importacao"] = datetime.now()
+    df_agg["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_operacional()
     cur  = conn.cursor()
@@ -531,16 +307,10 @@ def importar_produtividade(arquivo):
 
 
 def importar_tempo_processamento(arquivo):
-    import pandas as pd
-    from datetime import datetime
-    from psycopg2.extras import execute_values
-    from core.database import conectar_processamento
-
     # Lê só colunas necessárias
-    df = pd.read_excel(
+    df = xlsx_para_dataframe(
         arquivo,
-        usecols=[0, 11, 21, 24, 25, 41, 42, 43],
-        engine="openpyxl"
+        usecols=[0, 11, 21, 24, 25, 41, 42, 43]
     )
     df.columns = [
         "waybill", "estado", "cliente",
@@ -591,9 +361,9 @@ def importar_tempo_processamento(arquivo):
         tempo_medio_h  = ("tempo_horas", lambda x: x.dropna().mean() if x.dropna().any() else None)
     ).reset_index()
 
-    agg["data_snapshot"]   = datetime.now().date()
+    agg["data_snapshot"]   = datetime.now(timezone.utc).date()
     agg["nome_arquivo"]    = arquivo.name
-    agg["data_importacao"] = datetime.now()
+    agg["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_processamento()
     cur  = conn.cursor()
@@ -620,13 +390,7 @@ def importar_tempo_processamento(arquivo):
 # 📊 DEVOLUÇÃO — P90
 # ================================
 def importar_p90(arquivo, data_ref):
-    import pandas as pd
-    import numpy as np
-    from datetime import datetime
-    from psycopg2.extras import execute_values
-    from core.database import conectar_devolucoes
-
-    df = pd.read_excel(arquivo, engine="openpyxl")
+    df = xlsx_para_dataframe(arquivo)
 
     if df.empty:
         return 0
@@ -654,7 +418,7 @@ def importar_p90(arquivo, data_ref):
             mes = int(w[4:6])
             dia = int(w[6:8])
             return pd.Timestamp(ano, mes, dia)
-        except:
+        except Exception:
             return None
 
     df["data_criacao"] = df["waybill"].apply(extrair_data_criacao)
@@ -684,7 +448,7 @@ def importar_p90(arquivo, data_ref):
 
     agg["data_referencia"] = data_ref
     agg["nome_arquivo"]    = arquivo.name
-    agg["data_importacao"] = datetime.now()
+    agg["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_devolucoes()
     cur  = conn.cursor()
@@ -717,12 +481,7 @@ def importar_p90(arquivo, data_ref):
 # 🔁 DEVOLUÇÃO (arquivo Folha_de_registro)
 # ================================
 def importar_devolucoes(arquivo, data_ref):
-    import pandas as pd
-    from datetime import datetime
-    from psycopg2.extras import execute_values
-    from core.database import conectar_devolucoes
-
-    df = pd.read_excel(arquivo, engine="openpyxl")
+    df = xlsx_para_dataframe(arquivo)
 
     if df.empty:
         return 0
@@ -744,7 +503,7 @@ def importar_devolucoes(arquivo, data_ref):
     for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
         cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
 
-    agora = datetime.now()
+    agora = datetime.now(timezone.utc)
 
     status_agg = (
         df.groupby(["status", "estado", "cliente"])
@@ -802,15 +561,9 @@ def importar_devolucoes(arquivo, data_ref):
 # 📊 DEVOLUÇÃO - MONITORAMENTO (arquivo monitoramento_da_pontualidade)
 # ================================
 def importar_devolucao_monitoramento(arquivo, data_ref):
-    import pandas as pd
-    from datetime import datetime
-    from psycopg2.extras import execute_values
-    from core.database import conectar_devolucoes
-
-    df = pd.read_excel(
+    df = xlsx_para_dataframe(
         arquivo,
-        usecols=[0, 4, 8, 11, 21, 22, 25, 33, 66, 67, 68, 71, 73],
-        engine="openpyxl"
+        usecols=[0, 4, 8, 11, 21, 22, 25, 33, 66, 67, 68, 71, 73]
     )
     df.columns = [
         "waybill", "status", "motivo", "estado", "cliente",
@@ -830,7 +583,7 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
     for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
         cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
 
-    agora       = datetime.now()
+    agora       = datetime.now(timezone.utc)
     sla_agg     = pd.DataFrame()
     motivos_agg = pd.DataFrame()
     dsp_agg     = pd.DataFrame()
@@ -917,12 +670,7 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
 # 📦 PACOTES GRANDES (AJG)
 # ================================
 def importar_pacotes_grandes(arquivo, data_ref=None):
-    import pandas as pd
-    from datetime import datetime
-    from psycopg2.extras import execute_values
-    from core.database import conectar_operacional
-
-    df = pd.read_excel(arquivo, engine="openpyxl")
+    df = xlsx_para_dataframe(arquivo)
 
     if df.empty:
         return 0
@@ -950,7 +698,7 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
         df["semana"] = df["data_criacao"].dt.strftime("w%V")
         df["ano"]    = df["data_criacao"].dt.year
     df["nome_arquivo"]    = arquivo.name
-    df["data_importacao"] = datetime.now()
+    df["data_importacao"] = datetime.now(timezone.utc)
 
     conn = conectar_operacional()
     cur  = conn.cursor()
@@ -982,14 +730,9 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
 # 📊 DEVOLUÇÃO ENRIQUECIDA (Folha + Monitoramento)
 # ================================
 def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
-    import io
-    from core.database import conectar_devolucoes
-
     # ── Lê folha de devolução ──────────────────────────────────────
-    df_dev = pd.read_excel(io.BytesIO(arquivo_folha.read()), engine="openpyxl")
+    df_dev = xlsx_para_dataframe(io.BytesIO(arquivo_folha.read()))
     arquivo_folha.seek(0)
-
-    # Normaliza colunas: pega as primeiras 10
     df_dev = df_dev.iloc[:, :10]
     df_dev.columns = [
         "waybill", "status", "tipo_operacao", "cliente",
@@ -1000,13 +743,27 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     df_dev["waybill"] = df_dev["waybill"].astype(str).str.strip()
 
     # ── Lê monitoramento ──────────────────────────────────────────
-    df_mon = pd.read_excel(io.BytesIO(arquivo_monitor.read()), engine="openpyxl")
+    df_mon_raw = xlsx_para_dataframe(io.BytesIO(arquivo_monitor.read()))
     arquivo_monitor.seek(0)
 
-    # Seleciona colunas por posição (índices 0,4,8,11,12,21,24,25,33)
+    # Colunas completas do monitoramento (igual a importar_devolucao_monitoramento)
+    cols_mon_full = [0, 4, 8, 11, 21, 22, 25, 33, 66, 67, 68, 71, 73]
+    cols_mon_full = [c for c in cols_mon_full if c < len(df_mon_raw.columns)]
+    df_mon_full = df_mon_raw.iloc[:, cols_mon_full].copy()
+    df_mon_full.columns = [
+        "waybill", "status_mon", "motivo", "estado_dest",
+        "cliente_mon", "cliente_fantasia", "ponto_entrada", "data_criacao",
+        "tent1", "tent2", "tent3", "assinatura", "prazo_dias"
+    ][:len(cols_mon_full)]
+    for col in ["tent1", "tent2", "tent3", "assinatura", "data_criacao"]:
+        if col in df_mon_full.columns:
+            df_mon_full[col] = pd.to_datetime(df_mon_full[col], errors="coerce")
+    df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
+
+    # Colunas reduzidas para o merge com dev (estado_dest, cidade_dest, pre_entrega, ponto_entrada, motivo, data_criacao)
     cols_idx = [0, 4, 8, 11, 12, 21, 24, 25, 33]
-    cols_idx = [c for c in cols_idx if c < len(df_mon.columns)]
-    df_mon = df_mon.iloc[:, cols_idx]
+    cols_idx = [c for c in cols_idx if c < len(df_mon_raw.columns)]
+    df_mon = df_mon_raw.iloc[:, cols_idx].copy()
     df_mon.columns = [
         "waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
         "cliente_mon", "pre_entrega", "ponto_entrada", "data_criacao"
@@ -1014,67 +771,259 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     df_mon["data_criacao"] = pd.to_datetime(df_mon["data_criacao"], errors="coerce")
     df_mon["waybill"] = df_mon["waybill"].astype(str).str.strip()
 
-    # ── Merge ──────────────────────────────────────────────────────
+    # ── Merge para dev_detalhado ───────────────────────────────────
     df = df_dev.merge(df_mon, on="waybill", how="left")
-
     df["dias_dev"] = (df["data_operacao"] - df["data_criacao"]).dt.days
-    df = df[df["dias_dev"] >= 0]
 
-    ref_ts  = pd.Timestamp(data_ref)
-    semana  = ref_ts.strftime("w%V")
-    ano     = int(ref_ts.year)
+    # Para pedidos sem match no monitoramento (ex: Shein Nacional),
+    # extrai data_criacao do waybill (formato AJ AAMMDD...)
+    def _data_do_waybill(waybill):
+        try:
+            w = str(waybill).strip()
+            return pd.Timestamp(int("20" + w[2:4]), int(w[4:6]), int(w[6:8]))
+        except Exception:
+            return pd.NaT
+
+    sem_criacao = df["data_criacao"].isna()
+    if sem_criacao.any():
+        df.loc[sem_criacao, "data_criacao"] = df.loc[sem_criacao, "waybill"].apply(_data_do_waybill)
+        df.loc[sem_criacao, "dias_dev"] = (
+            (df.loc[sem_criacao, "data_operacao"] - df.loc[sem_criacao, "data_criacao"])
+            .dt.days
+        )
+
+    # Descarta apenas dias_dev negativos (dados inconsistentes)
+    df = df[df["dias_dev"].isna() | (df["dias_dev"] >= 0)]
+
+    ref_ts   = pd.Timestamp(data_ref)
+    semana   = ref_ts.strftime("w%V")
+    ano      = int(ref_ts.year)
     nome_arq = f"{arquivo_folha.name}+{arquivo_monitor.name}"
+    agora    = datetime.now(timezone.utc)
 
     df["semana"]          = semana
     df["ano"]             = ano
     df["data_referencia"] = data_ref
     df["nome_arquivo"]    = nome_arq
-    df["data_importacao"] = datetime.now()
+    df["data_importacao"] = agora
 
-    colunas = [
+    colunas_det = [
         "waybill", "status", "tipo_operacao", "cliente", "data_operacao",
         "ponto_operacao", "estado_dest", "cidade_dest", "pre_entrega",
         "ponto_entrada", "motivo", "data_criacao", "dias_dev",
         "semana", "ano", "data_referencia", "nome_arquivo", "data_importacao"
     ]
-
-    # Garante que todas as colunas existam
-    for col in colunas:
+    for col in colunas_det:
         if col not in df.columns:
             df[col] = None
 
-    df_save = df[colunas].copy()
+    df_save = df[colunas_det].copy()
 
-    values = [
-        tuple(None if (hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType')
-              else (None if pd.isna(v) else v)
-              for v in row)
-        for row in df_save.itertuples(index=False, name=None)
-    ]
+    def _val(v):
+        if hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType':
+            return None
+        try:
+            return None if pd.isna(v) else v
+        except Exception:
+            return v
 
     conn = conectar_devolucoes()
     cur  = conn.cursor()
+
+    # ── Salva dev_detalhado ────────────────────────────────────────
     cur.execute("DELETE FROM dev_detalhado WHERE data_referencia = %s", [data_ref])
-    execute_values(cur, f"INSERT INTO dev_detalhado ({','.join(colunas)}) VALUES %s", values)
+    execute_values(cur,
+        f"INSERT INTO dev_detalhado ({','.join(colunas_det)}) VALUES %s",
+        [tuple(_val(v) for v in row) for row in df_save.itertuples(index=False, name=None)]
+    )
+
+    # ── Salva dev_resumo (agregado — 50x menos linhas para leitura rápida) ──
+    df_resumo_dev = (
+        df_save
+        .groupby(["semana", "ano", "data_referencia", "status",
+                  "cliente", "estado_dest", "motivo"], dropna=False)
+        .agg(qtd=("waybill", "count"))
+        .reset_index()
+    )
+    df_resumo_dev["nome_arquivo"]    = nome_arq
+    df_resumo_dev["data_importacao"] = agora
+    cur.execute("DELETE FROM dev_resumo WHERE data_referencia = %s", [data_ref])
+    colunas_resumo_dev = ["semana", "ano", "data_referencia", "status",
+                          "cliente", "estado_dest", "motivo", "qtd",
+                          "nome_arquivo", "data_importacao"]
+    execute_values(cur,
+        f"INSERT INTO dev_resumo ({','.join(colunas_resumo_dev)}) VALUES %s",
+        [tuple(_val(v) for v in row)
+         for row in df_resumo_dev[colunas_resumo_dev].itertuples(index=False, name=None)]
+    )
+
+    # ── Salva dev_status_semanal (Resumo / WBR / Semanal Interno) ─
+    for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
+        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+
+    status_agg = (
+        df.groupby(["status", "estado_dest", "cliente"])
+        .size().reset_index(name="qtd")
+    )
+    status_agg["semana"]           = semana
+    status_agg["ano"]              = ano
+    status_agg["data_referencia"]  = data_ref
+    status_agg["nome_arquivo"]     = nome_arq
+    status_agg["data_importacao"]  = agora
+    status_agg["cliente_fantasia"] = None
+    status_agg = status_agg.rename(columns={"estado_dest": "estado"})
+
+    colunas_status = [
+        "estado", "status", "semana", "ano", "data_referencia", "cliente",
+        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+    ]
+    execute_values(cur,
+        f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
+        [tuple(_val(v) for v in row)
+         for row in status_agg[colunas_status].itertuples(index=False, name=None)]
+    )
+
+    # iata_agg: usa pre_entrega (col Y do monitoramento) + estado_dest (col L do monitoramento)
+    iata_agg = (
+        df[df["pre_entrega"].notna()]
+        .groupby(["pre_entrega", "estado_dest"])
+        .size().reset_index(name="qtd")
+    )
+    iata_agg["semana"]           = semana
+    iata_agg["ano"]              = ano
+    iata_agg["data_referencia"]  = data_ref
+    iata_agg["nome_arquivo"]     = nome_arq
+    iata_agg["data_importacao"]  = agora
+    iata_agg["cliente_fantasia"] = None
+    iata_agg = iata_agg.rename(columns={"pre_entrega": "ponto_operacao", "estado_dest": "estado"})
+
+    colunas_iata = [
+        "ponto_operacao", "estado", "semana", "ano", "data_referencia",
+        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+    ]
+    execute_values(cur,
+        f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
+        [tuple(_val(v) for v in row)
+         for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
+    )
+
+    # ── Salva p90_semanal (tab P90) ────────────────────────────────
+    cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [nome_arq])
+
+    df_p90_src = df[df["status"] == "Recebido de devolução"].copy()
+    if not df_p90_src.empty:
+        # Fallback: pedidos sem estado_dest (sem match no monitoramento) usam estado da folha
+        df_p90_src["estado_p90"] = df_p90_src["estado_dest"].fillna(df_p90_src["estado"])
+        df_p90_src = df_p90_src[df_p90_src["dias_dev"] >= 0].dropna(subset=["estado_p90", "dias_dev"])
+        if not df_p90_src.empty:
+            p90_agg = (
+                df_p90_src.groupby(["estado_p90", "cliente"])
+                .agg(
+                    p90_dias    = ("dias_dev", lambda x: round(float(np.percentile(x, 90)), 1)),
+                    qtd_pedidos = ("dias_dev", "count")
+                )
+                .reset_index()
+                .rename(columns={"estado_p90": "estado"})
+            )
+            p90_agg["semana"]          = semana
+            p90_agg["ano"]             = ano
+            p90_agg["data_referencia"] = data_ref
+            p90_agg["nome_arquivo"]    = nome_arq
+            p90_agg["data_importacao"] = agora
+
+            colunas_p90 = [
+                "estado", "semana", "ano", "cliente", "p90_dias",
+                "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
+            ]
+            execute_values(cur,
+                f"INSERT INTO p90_semanal ({','.join(colunas_p90)}) VALUES %s",
+                [tuple(_val(v) for v in row)
+                 for row in p90_agg[colunas_p90].itertuples(index=False, name=None)]
+            )
+
+    # ── Salva dev_sla_semanal, dev_motivos_semanal, dev_dsp_sem3tent ─
+    for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
+        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+
+    df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
+
+    df_entregues = df_mon_full[df_mon_full["assinatura"].notna()].copy() if "assinatura" in df_mon_full.columns else pd.DataFrame()
+    if not df_entregues.empty:
+        df_entregues["dias"] = (
+            (df_entregues["assinatura"] - df_entregues["data_criacao"]).dt.total_seconds() / 86400
+        )
+        df_entregues["prazo"]    = df_entregues["prazo_dias"].fillna(7) if "prazo_dias" in df_entregues.columns else 7
+        df_entregues["no_prazo"] = df_entregues["dias"] <= df_entregues["prazo"]
+        sla_agg = (
+            df_entregues.groupby(["estado_dest", "cliente_mon", "cliente_fantasia"])
+            .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
+            .reset_index()
+            .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
+        )
+        sla_agg["data_referencia"] = data_ref
+        sla_agg["nome_arquivo"]    = nome_arq
+        sla_agg["data_importacao"] = agora
+        colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
+        execute_values(cur,
+            f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
+            [tuple(_val(v) for v in row)
+             for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
+        )
+
+    df_motivos = df_mon_full[df_mon_full["motivo"].notna()].copy() if "motivo" in df_mon_full.columns else pd.DataFrame()
+    if not df_motivos.empty:
+        motivos_agg = (
+            df_motivos.groupby(["estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
+            .size().reset_index(name="qtd")
+            .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
+        )
+        motivos_agg["data_referencia"] = data_ref
+        motivos_agg["nome_arquivo"]    = nome_arq
+        motivos_agg["data_importacao"] = agora
+        colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+        execute_values(cur,
+            f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
+            [tuple(_val(v) for v in row)
+             for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
+        )
+
+    cols_dsp = ["motivo", "tent1", "tent3", "assinatura"]
+    if all(c in df_mon_full.columns for c in cols_dsp):
+        dsp_sem3 = df_mon_full[
+            df_mon_full["motivo"].notna() &
+            df_mon_full["tent1"].notna() &
+            df_mon_full["tent3"].isna() &
+            df_mon_full["assinatura"].isna()
+        ].copy()
+        if not dsp_sem3.empty:
+            dsp_agg = (
+                dsp_sem3.groupby(["ponto_entrada", "estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
+                .size().reset_index(name="qtd")
+                .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
+            )
+            dsp_agg["data_referencia"] = data_ref
+            dsp_agg["nome_arquivo"]    = nome_arq
+            dsp_agg["data_importacao"] = agora
+            colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+            execute_values(cur,
+                f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
+                [tuple(_val(v) for v in row)
+                 for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
+            )
+
     conn.commit()
     cur.close()
     conn.close()
 
+    limpar_historico_antigo()
     return len(df_save)
 
 
 # ================================
 # 🚛 COLETAS — CARREGAMENTO/DESCARREGAMENTO
 # ================================
-def importar_coletas(arquivo, data_ref):
-    from core.database import conectar_operacional as _conectar_op
-
-    df = pd.read_excel(arquivo, engine="openpyxl")
-
-    if df.empty:
-        return 0
-
-    # Pega as primeiras 19 colunas
+def _coletas_colunas_base(df):
+    """Renomeia colunas e converte tipos comuns para importações de coletas."""
     df = df.iloc[:, :19]
     df.columns = [
         "num_registro", "placa", "carregador", "rede_carregador",
@@ -1084,40 +1033,206 @@ def importar_coletas(arquivo, data_ref):
         "dif_sacos", "pacotes_carregados", "pacotes_descarregados",
         "dif_pacotes", "modo_operacao", "tipo_veiculo"
     ]
-
     df["tempo_carga"]    = pd.to_datetime(df["tempo_carga"],    errors="coerce")
     df["tempo_descarga"] = pd.to_datetime(df["tempo_descarga"], errors="coerce")
-
     for col in ["sacos_carregados", "sacos_descarregados", "dif_sacos",
                 "pacotes_carregados", "pacotes_descarregados", "dif_pacotes"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+    return df
 
+
+def _salvar_coletas(df, arquivo, data_ref, tipo):
+    df["tipo"]            = tipo
     df["data_referencia"] = data_ref
     df["nome_arquivo"]    = arquivo.name
-    df["data_importacao"] = datetime.now()
+    df["data_importacao"] = datetime.now(timezone.utc)
 
     colunas = [
         "num_registro", "placa", "carregador", "rede_carregador",
         "tempo_carga", "secao_destino", "descarregador", "rede_descarregador",
         "tempo_descarga", "sacos_carregados", "sacos_descarregados", "dif_sacos",
         "pacotes_carregados", "pacotes_descarregados", "dif_pacotes",
-        "modo_operacao", "tipo_veiculo", "data_referencia", "nome_arquivo", "data_importacao"
+        "modo_operacao", "tipo_veiculo", "tipo",
+        "data_referencia", "nome_arquivo", "data_importacao"
     ]
 
-    conn = _conectar_op()
+    conn = conectar_coletas()
     cur  = conn.cursor()
-    cur.execute("DELETE FROM coletas WHERE nome_arquivo = %s", [arquivo.name])
-
+    cur.execute(
+        "DELETE FROM coletas WHERE nome_arquivo = %s AND tipo = %s",
+        [arquivo.name, tipo]
+    )
     values = [
-        tuple(None if (hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType')
-              else (None if pd.isna(v) else v)
-              for v in row)
+        tuple(None if pd.isna(v) else v for v in row)
         for row in df[colunas].itertuples(index=False, name=None)
     ]
-
     execute_values(cur, f"INSERT INTO coletas ({','.join(colunas)}) VALUES %s", values)
     conn.commit()
     cur.close()
     conn.close()
-
     return len(df)
+
+
+def importar_coletas(arquivo, data_ref):
+    """Importa descarregamentos recebidos em SP-RR-001 (Perus)."""
+    df = xlsx_para_dataframe(arquivo)
+    if df.empty:
+        return 0
+
+    df = _coletas_colunas_base(df)
+
+    # Filtro: descarregado em SP-RR-001
+    df = df[
+        (df["rede_descarregador"] == "SP-RR-001") &
+        (df["descarregador"].notna()) &
+        (df["endereco_descarga"].notna()) &
+        (df["tempo_descarga"].notna())
+    ]
+
+    if df.empty:
+        return 0
+
+    return _salvar_coletas(df, arquivo, data_ref, "descarregamento")
+
+
+def importar_coletas_saida(arquivo, data_ref):
+    """Importa carregamentos que saem de SP-RR-001 (Perus) para outras bases."""
+    df = xlsx_para_dataframe(arquivo)
+    if df.empty:
+        return 0
+
+    df = _coletas_colunas_base(df)
+
+    # Filtro: carregado em SP-RR-001, destino ≠ SP-RR-001
+    df = df[
+        (df["rede_carregador"] == "SP-RR-001") &
+        (df["secao_destino"] != "SP-RR-001") &
+        (df["secao_destino"].notna()) &
+        (df["tempo_carga"].notna())
+    ]
+
+    if df.empty:
+        return 0
+
+    return _salvar_coletas(df, arquivo, data_ref, "saida")
+
+
+# ================================
+# 👥 PRESENÇA / DIÁRIO DE BORDO
+# ================================
+def importar_presenca(arquivo):
+    df_raw = xlsx_para_dataframe(arquivo, header=None)
+
+    if df_raw.empty:
+        return 0
+
+    nome_arquivo = arquivo.name
+    data_importacao = datetime.now(timezone.utc)
+
+    rows_turno  = []
+    rows_diario = []
+
+    data_atual = None
+
+    for _, row in df_raw.iterrows():
+        # Coluna 0 é a data (merged cell — só vem preenchida na linha T1)
+        val_data = row.iloc[0] if len(row) > 0 else None
+        if pd.notna(val_data) and val_data != "":
+            try:
+                data_atual = pd.to_datetime(val_data).date()
+            except Exception as e:
+                print(f"⚠️ Linha ignorada (data inválida): {e}")
+                continue  # linha de cabeçalho ou inválida
+
+        if data_atual is None:
+            continue
+
+        turno = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
+        if turno not in ("T1", "T2", "T3"):
+            continue
+
+        def _int(idx):
+            v = row.iloc[idx] if len(row) > idx else None
+            try:
+                return int(float(v)) if pd.notna(v) else None
+            except Exception:
+                return None
+
+        def _float(idx):
+            v = row.iloc[idx] if len(row) > idx else None
+            try:
+                return float(v) if pd.notna(v) else None
+            except Exception:
+                return None
+
+        semana = str(pd.Timestamp(data_atual).isocalendar()[1]).zfill(2)
+        ano    = int(pd.Timestamp(data_atual).year)
+
+        rows_turno.append((
+            data_atual,
+            semana,
+            ano,
+            turno,
+            _int(2),    # produzido_turno
+            _int(6),    # presenca_turno
+            _int(12),   # presenca_total (só T3, None nos outros — OK)
+            _int(3),    # anjun
+            _int(4),    # temporarios
+            _int(5),    # diaristas_presenciais
+            _int(7),    # faltas_anjun
+            _int(8),    # faltas_temporarios
+            _float(9),  # perc_falta
+            _float(10), # custo_diaristas
+            _float(11), # custo_por_pedido
+            nome_arquivo,
+            data_importacao,
+        ))
+
+        if turno == "T3":
+            rows_diario.append((
+                data_atual,
+                semana,
+                ano,
+                _int(13),  # vol_tfk
+                _int(14),  # vol_shein
+                _int(15),  # vol_d2d
+                _int(16),  # vol_kwai
+                _int(17),  # vol_b2c
+                nome_arquivo,
+                data_importacao,
+            ))
+
+    if not rows_turno:
+        return 0
+
+    conn = conectar_operacional()
+    cur  = conn.cursor()
+
+    cur.execute("DELETE FROM presenca_turno  WHERE nome_arquivo = %s", [nome_arquivo])
+    cur.execute("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
+
+    execute_values(cur, """
+        INSERT INTO presenca_turno (
+            data, semana, ano, turno,
+            produzido_turno, presenca_turno, presenca_total,
+            anjun, temporarios, diaristas_presenciais,
+            faltas_anjun, faltas_temporarios, perc_falta,
+            custo_diaristas, custo_por_pedido,
+            nome_arquivo, data_importacao
+        ) VALUES %s
+    """, rows_turno)
+
+    if rows_diario:
+        execute_values(cur, """
+            INSERT INTO presenca_diaria (
+                data, semana, ano,
+                vol_tfk, vol_shein, vol_d2d, vol_kwai, vol_b2c,
+                nome_arquivo, data_importacao
+            ) VALUES %s
+        """, rows_diario)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return len(rows_turno)

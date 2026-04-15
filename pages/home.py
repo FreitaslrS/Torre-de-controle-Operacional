@@ -119,9 +119,9 @@ def render():
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-    # Linha 2: 4 cards centralizados
-    _, c1, c2, c3, c4, _ = st.columns([0.5, 1, 1, 1, 1, 0.5])
-    for i, col in enumerate([c1, c2, c3, c4]):
+    # Linha 2: 4 cards — mesma largura da linha 1
+    cols2 = st.columns(4)
+    for i, col in enumerate(cols2):
         pagina, titulo, subtitulo = CARDS[4 + i]
         with col:
             _render_card(pagina, titulo, subtitulo)

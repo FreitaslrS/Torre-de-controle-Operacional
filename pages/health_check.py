@@ -4,7 +4,8 @@ import plotly.express as px
 
 from core.database import consultar_backlog, consultar_processamento, consultar_operacional
 from utils.theme import grafico_barra, aplicar_layout_padrao
-from utils.style import tabela_padrao, aplicar_css_global, rodape_autoria
+from utils.style import tabela_padrao, aplicar_css_global, rodape_autoria, fmt_numero
+from utils.semana import semana_para_datas, datas_para_label
 
 # ── Paleta Health Check ───────────────────────────────────────────────
 COR_PRINCIPAL  = "#DE121C"   # Vermelho Anjun — cor dominante desta página
@@ -47,13 +48,17 @@ def _sla_hub(data_inicio, data_fim):
 
 
 @st.cache_data(ttl=600)
-def _backlog_faixa(horas):
-    return consultar_backlog(f"""
-        SELECT estado, COUNT(*) AS total, pre_entrega
+def _backlog_faixas():
+    """Retorna backlog 24h e 48h em uma única query."""
+    return consultar_backlog("""
+        SELECT
+            estado,
+            pre_entrega,
+            SUM(CASE WHEN horas_backlog_snapshot > 24 THEN 1 ELSE 0 END) AS total_24,
+            SUM(CASE WHEN horas_backlog_snapshot > 48 THEN 1 ELSE 0 END) AS total_48
         FROM backlog_atual
-        WHERE horas_backlog_snapshot > {horas}
         GROUP BY estado, pre_entrega
-        ORDER BY total DESC
+        ORDER BY total_24 DESC
     """)
 
 
@@ -69,7 +74,6 @@ def _produtividade_turno(data_inicio, data_fim):
 
 
 def render():
-    from utils.semana import semana_para_datas, datas_para_label
     aplicar_css_global()
 
     st.markdown("""
@@ -92,7 +96,7 @@ def render():
         return
 
     opcoes = [f"{r['semana']}/{int(r['ano'])}" for _, r in df_sems.iterrows()]
-    sem_sel = st.selectbox("📅 Semana de referência", opcoes, key="hc_semana")
+    sem_sel = st.selectbox("Semana de referência", opcoes, key="hc_semana")
     sem_str, ano_hc = sem_sel.split("/")
     ano_hc = int(ano_hc)
 
@@ -152,16 +156,16 @@ def render():
             total_c = dentro_c = lead_c = perc_sla_c = None
 
         col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns(5)
-        col_s1.metric("Total Processado", f"{total_a:,}",
+        col_s1.metric("Total Processado", fmt_numero(total_a),
                       delta=int(total_a - total_c) if comp_ativo else None)
-        col_s2.metric("✅ Dentro do SLA", f"{dentro_a:,}",
+        col_s2.metric("Dentro do SLA", fmt_numero(dentro_a),
                       delta=int(dentro_a - dentro_c) if comp_ativo else None)
         col_s3.metric("% SLA", f"{perc_sla_a}%",
                       delta=f"{round(perc_sla_a - perc_sla_c, 1)}%" if comp_ativo else None)
-        col_s4.metric("⏱️ Lead Time Médio", lead_fmt,
+        col_s4.metric("Lead Time Médio", lead_fmt,
                       delta=f"{round(lead_a - lead_c, 1)}h" if comp_ativo else None,
                       delta_color="inverse")
-        col_s5.metric("❌ Fora do SLA", f"{fora_a:,}", f"{pct_fora:.1f}%")
+        col_s5.metric("Fora do SLA", fmt_numero(fora_a), f"{pct_fora:.1f}%")
 
         total    = total_a
         dentro   = dentro_a
@@ -170,11 +174,11 @@ def render():
         pct_dentro = perc_sla_a
 
         if pct_dentro < 70:
-            st.error(f"🚨 SLA crítico: apenas {pct_dentro:.1f}% dentro do prazo")
+            st.error(f"SLA crítico: apenas {pct_dentro:.1f}% dentro do prazo")
         elif pct_dentro < 85:
-            st.warning(f"⚠️ SLA em atenção: {pct_dentro:.1f}% dentro do prazo")
+            st.warning(f"SLA em atenção: {pct_dentro:.1f}% dentro do prazo")
         else:
-            st.success(f"✅ SLA saudável: {pct_dentro:.1f}% dentro do prazo")
+            st.success(f"SLA saudável: {pct_dentro:.1f}% dentro do prazo")
 
         df_pizza_sla = pd.DataFrame([
             {"status": f"Dentro do Prazo ({pct_dentro:.1f}%)",  "qtd": dentro},
@@ -201,7 +205,9 @@ def render():
 </div>""", unsafe_allow_html=True)
     st.caption("Snapshot atual — pacotes com mais de 24h no hub sem saída")
 
-    df_24 = _backlog_faixa(24)
+    df_faixas = _backlog_faixas()
+    df_24 = df_faixas[["estado", "pre_entrega", "total_24"]].rename(columns={"total_24": "total"})
+    df_24 = df_24[df_24["total"] > 0]
 
     if df_24.empty:
         st.info("Sem dados de backlog. Importe o arquivo de backlog.")
@@ -240,7 +246,8 @@ def render():
 </div>""", unsafe_allow_html=True)
     st.caption("Snapshot atual — pacotes com mais de 48h no hub sem saída")
 
-    df_48 = _backlog_faixa(48)
+    df_48 = df_faixas[["estado", "pre_entrega", "total_48"]].rename(columns={"total_48": "total"})
+    df_48 = df_48[df_48["total"] > 0]
 
     if df_48.empty:
         st.info("Sem dados de backlog 48h.")
@@ -284,7 +291,7 @@ def render():
         st.info("Sem dados de produtividade para esta semana.")
     else:
         total_prod = int(df_turno["volumes"].sum())
-        st.metric("📦 Volume Total Processado / 处理总量", f"{total_prod:,}")
+        st.metric("Volume Total Processado", fmt_numero(total_prod))
 
         turno_map = {r["turno"]: int(r["volumes"]) for _, r in df_turno.iterrows()}
         t1 = turno_map.get("T1", 0)
@@ -292,9 +299,9 @@ def render():
         t3 = turno_map.get("T3", 0)
 
         col_t1, col_t2, col_t3 = st.columns(3)
-        col_t1.metric("🟢 Turno 1", f"{t1:,}", f"{t1/total_prod*100:.1f}%" if total_prod else "")
-        col_t2.metric("🔵 Turno 2", f"{t2:,}", f"{t2/total_prod*100:.1f}%" if total_prod else "")
-        col_t3.metric("⚪ Turno 3", f"{t3:,}", f"{t3/total_prod*100:.1f}%" if total_prod else "")
+        col_t1.metric("Turno 1", fmt_numero(t1), f"{t1/total_prod*100:.1f}%" if total_prod else "")
+        col_t2.metric("Turno 2", fmt_numero(t2), f"{t2/total_prod*100:.1f}%" if total_prod else "")
+        col_t3.metric("Turno 3", fmt_numero(t3), f"{t3/total_prod*100:.1f}%" if total_prod else "")
 
         color_map = {"T1": COR_SECUNDARIA, "T2": COR_APOIO, "T3": COR_PRINCIPAL}
         fig_turno = px.pie(

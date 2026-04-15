@@ -3,30 +3,25 @@ import time
 import pandas as pd
 from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-from core.database import executar_backlog
-from core.repository import salvar_log_importacao
-from core.processar_arquivo import importar_excel, importar_produtividade, limpar_base
-from core.database import conectar_backlog
-from core.database import (
-    consultar_historico,
-    consultar_operacional,
-    executar_historico,
-    executar_operacional
-)
-from core.processar_arquivo import importar_tempo_processamento
-from core.database import consultar_processamento
-
-@st.cache_resource
-
-def get_conexao():
-    return conectar_backlog()
-
-# =========================
-# 🔐 LOGIN
-# =========================
 import os
 from dotenv import load_dotenv
+
+from utils.style import rodape_autoria, aplicar_css_global
+from core.database import (
+    executar_backlog, executar_historico, executar_operacional,
+    consultar_historico, consultar_operacional, consultar_processamento,
+    consultar_devolucoes, consultar_coletas,
+    executar_processamento, executar_devolucoes, executar_coletas,
+)
+from core.repository import salvar_log_importacao
+from core.processar_arquivo import (
+    importar_excel, importar_produtividade, limpar_base,
+    importar_tempo_processamento, importar_devolucoes, importar_p90,
+    importar_devolucao_monitoramento, importar_devolucao_enriquecida,
+    importar_coletas, importar_coletas_saida,
+    importar_pacotes_grandes, importar_presenca,
+)
+
 load_dotenv()
 
 def obter_senha():
@@ -40,17 +35,26 @@ def verificar_senha():
     if st.session_state.autenticado:
         return True
 
-    st.title("🔐 Área Restrita")
-
-    senha = st.text_input("Digite a senha", type="password")
-
+    st.markdown("""
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+    <div>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Área Restrita</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Acesso restrito a usuários autorizados</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+    senha = st.text_input("Senha", type="password")
     if st.button("Entrar"):
-        if senha == obter_senha():
+        if senha and senha == obter_senha():
             st.session_state.autenticado = True
             st.rerun()
         else:
             st.error("Senha incorreta")
-
     return False
 
 
@@ -71,30 +75,30 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
             qtd = importar_tempo_processamento(arquivo)
 
         elif tipo_importacao == "Devolução":
-            from core.processar_arquivo import importar_devolucoes
             qtd = importar_devolucoes(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução - P90":
-            from core.processar_arquivo import importar_p90
             qtd = importar_p90(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução - Monitoramento":
-            from core.processar_arquivo import importar_devolucao_monitoramento
             qtd = importar_devolucao_monitoramento(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução + Monitoramento":
-            from core.processar_arquivo import importar_devolucao_enriquecida
             if arquivo_secundario is None:
                 raise Exception("Arquivo de Monitoramento não selecionado")
             qtd = importar_devolucao_enriquecida(arquivo, arquivo_secundario, data_ref)
 
-        elif tipo_importacao == "Coletas":
-            from core.processar_arquivo import importar_coletas
+        elif tipo_importacao == "Coletas — Descarregamento em Perus":
             qtd = importar_coletas(arquivo, data_ref)
 
+        elif tipo_importacao == "Coletas — Saída para Bases":
+            qtd = importar_coletas_saida(arquivo, data_ref)
+
         elif tipo_importacao == "Pacotes Grandes":
-            from core.processar_arquivo import importar_pacotes_grandes
             qtd = importar_pacotes_grandes(arquivo, data_ref)
+
+        elif tipo_importacao == "Presença / Diário de Bordo":
+            qtd = importar_presenca(arquivo)
 
         else:
             raise Exception("Tipo de importação inválido")
@@ -103,7 +107,7 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
 
     except Exception as e:
         qtd = 0
-        status = str(e)
+        status = f"Erro: {type(e).__name__}: {e}"
 
     tempo = time.time() - inicio
 
@@ -118,6 +122,8 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
 # 🎯 TELA
 # =========================
 def render():
+
+    aplicar_css_global()
 
     if not verificar_senha():
         return
@@ -136,9 +142,17 @@ def render():
 
     tipo_importacao = st.selectbox(
         "Tipo de Importação",
-        ["Backlog", "Produtividade", "Tempo de Processamento",
-         "Devolução", "Devolução - P90", "Devolução - Monitoramento",
-         "Devolução + Monitoramento", "Coletas", "Pacotes Grandes"]
+        [
+            "Backlog",
+            "Produtividade",
+            "Tempo de Processamento",
+            "Devolução + Monitoramento",
+            "Devolução - Monitoramento",
+            "Coletas — Descarregamento em Perus",
+            "Coletas — Saída para Bases",
+            "Pacotes Grandes",
+            "Presença / Diário de Bordo",
+        ]
     )
 
     # Uploader secundário para "Devolução + Monitoramento"
@@ -154,7 +168,10 @@ def render():
     # ========================
     # 📅 SELETOR DE DATA / SEMANA
     # ========================
-    TIPOS_SEMANAIS = {"Devolução", "Devolução - P90", "Devolução + Monitoramento", "Pacotes Grandes"}
+    TIPOS_SEMANAIS = {
+        "Devolução", "Devolução - P90", "Devolução + Monitoramento",
+        "Pacotes Grandes",
+    }
 
     if tipo_importacao in TIPOS_SEMANAIS:
         # Gera as últimas 52 semanas (segunda-feira de cada semana)
@@ -265,95 +282,56 @@ def render():
     # ========================
     # 📜 HISTÓRICO
     # ========================
-    st.subheader("📊 Histórico de Importações")
+    st.subheader("Histórico de Importações")
 
-    from core.database import consultar_backlog as consultar
+    @st.cache_data(ttl=60)
+    def _carregar_historico():
+        from core.database import consultar_devolucoes, consultar_coletas
+        dfs = [
+            consultar_historico("""
+                SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Backlog' as tipo
+                FROM pedidos_resumo GROUP BY nome_arquivo"""),
+            consultar_operacional("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data) as data_referencia, 'Produtividade' as tipo
+                FROM produtividade GROUP BY nome_arquivo"""),
+            consultar_processamento("""
+                SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data) as data_referencia, 'Tempo Processamento' as tipo
+                FROM tempo_processamento GROUP BY nome_arquivo"""),
+            consultar_devolucoes("""
+                SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Devolução' as tipo
+                FROM dev_status_semanal GROUP BY nome_arquivo"""),
+            consultar_devolucoes("""
+                SELECT nome_arquivo, SUM(qtd_pedidos) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Devolução - P90' as tipo
+                FROM p90_semanal GROUP BY nome_arquivo"""),
+            consultar_devolucoes("""
+                SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Devolução - Monitoramento' as tipo
+                FROM dev_sla_semanal GROUP BY nome_arquivo"""),
+            consultar_operacional("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Pacotes Grandes' as tipo
+                FROM pacotes_grandes GROUP BY nome_arquivo"""),
+            consultar_coletas("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, CONCAT('Coletas — ', MAX(tipo)) as tipo
+                FROM coletas GROUP BY nome_arquivo"""),
+            consultar_devolucoes("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       MAX(data_referencia) as data_referencia, 'Devolução + Monitoramento' as tipo
+                FROM dev_detalhado GROUP BY nome_arquivo"""),
+            consultar_operacional("""
+                SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                       CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Presença / Diário de Bordo' as tipo
+                FROM presenca_turno GROUP BY nome_arquivo"""),
+        ]
+        return pd.concat(dfs, ignore_index=True).sort_values("data_importacao", ascending=False)
 
-    df_hist_backlog = consultar_historico("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            'Backlog' as tipo
-        FROM pedidos_resumo
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_prod = consultar_operacional("""
-        SELECT 
-            nome_arquivo,
-            COUNT(*) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data) as data_referencia,
-            'Produtividade' as tipo
-        FROM produtividade
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_proc = consultar_processamento("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd_total) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data) as data_referencia,
-            'Tempo Processamento' as tipo
-        FROM tempo_processamento
-        GROUP BY nome_arquivo
-    """)
-
-    from core.database import consultar_devolucoes
-
-    df_hist_dev = consultar_devolucoes("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            'Devolução' as tipo
-        FROM dev_status_semanal
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_p90 = consultar_devolucoes("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd_pedidos) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            'Devolução - P90' as tipo
-        FROM p90_semanal
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_mon = consultar_devolucoes("""
-        SELECT
-            nome_arquivo,
-            SUM(qtd_total) as registros,
-            MAX(data_importacao) as data_importacao,
-            MAX(data_referencia) as data_referencia,
-            'Devolução - Monitoramento' as tipo
-        FROM dev_sla_semanal
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist_pg = consultar_operacional("""
-        SELECT
-            nome_arquivo,
-            COUNT(*) as registros,
-            MAX(data_importacao) as data_importacao,
-            CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia,
-            'Pacotes Grandes' as tipo
-        FROM pacotes_grandes
-        GROUP BY nome_arquivo
-    """)
-
-    df_hist = pd.concat(
-        [df_hist_backlog, df_hist_prod, df_hist_proc, df_hist_dev, df_hist_p90, df_hist_mon, df_hist_pg],
-        ignore_index=True
-    )
-
-    df_hist = df_hist.sort_values("data_importacao", ascending=False)
+    df_hist = _carregar_historico()
 
     if df_hist.empty:
         st.info("Nenhum arquivo importado ainda")
@@ -371,16 +349,16 @@ def render():
             except Exception:
                 return str(val) if pd.notna(val) else ""
 
-        for _, row in df_hist.iterrows():
+        for i, (_, row) in enumerate(df_hist.iterrows()):
             col1, col2, col3, col4, col5, col6 = st.columns([4,2,2,3,3,1])
 
             col1.write(row["nome_arquivo"])
             col2.write(row["registros"])
             col3.write(row["tipo"])
-            col4.write(f"📅 {fmt_ref(row['data_referencia'])}")
-            col5.write(f"⏱️ {fmt_import(row['data_importacao'])}")
+            col4.write(fmt_ref(row['data_referencia']))
+            col5.write(fmt_import(row['data_importacao']))
 
-            if col6.button("🗑️", key=f"{row['nome_arquivo']}_{row['data_importacao']}"):
+            if col6.button("X", key=f"del_{i}"):
                 excluir_arquivo(row["nome_arquivo"])
                 st.success(f"{row['nome_arquivo']} excluído")
                 st.rerun()
@@ -389,7 +367,7 @@ def render():
     # ⚠️ ZONA DE PERIGO
     # ========================
     st.divider()
-    st.subheader("⚠️ Zona de Perigo")
+    st.subheader("Zona de Perigo")
 
     confirmar = st.checkbox("Tenho certeza que quero fazer isso (modo destruição)")
 
@@ -398,7 +376,7 @@ def render():
 
         with col1:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🔥 Resetar Backlog Atual", use_container_width=True):
+            if st.button("Resetar Backlog Atual", use_container_width=True):
                 executar_backlog("DELETE FROM backlog_atual")
                 st.success("Backlog atual zerado!")
                 st.cache_data.clear()
@@ -406,7 +384,7 @@ def render():
 
         with col2:
             data_delete = st.date_input("Excluir por data de referência")
-            if st.button("🗑️ Excluir por Data", use_container_width=True):
+            if st.button("Excluir por Data", use_container_width=True):
                 executar_historico(
                     "DELETE FROM pedidos WHERE data_referencia = %s",
                     [data_delete]
@@ -417,13 +395,12 @@ def render():
 
         with col3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🧹 Limpar histórico > 30 dias", use_container_width=True):
+            if st.button("Limpar histórico > 30 dias", use_container_width=True):
                 limpar_base()
                 st.success("Histórico antigo removido!")
                 st.cache_data.clear()
                 st.rerun()
 
-    from utils.style import rodape_autoria
     rodape_autoria()
 
 
@@ -431,34 +408,16 @@ def render():
 # 🗑️ DELETE
 # ========================
 def excluir_arquivo(nome_arquivo):
-
-    executar_historico(
-        "DELETE FROM pedidos WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-
-    executar_operacional(
-        "DELETE FROM produtividade WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-
-    executar_operacional(
-        "DELETE FROM pacotes_grandes WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-
-    from core.database import executar_processamento, executar_devolucoes
-
-    executar_processamento(
-        "DELETE FROM tempo_processamento WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
+    executar_historico("DELETE FROM pedidos WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_operacional("DELETE FROM produtividade WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_operacional("DELETE FROM pacotes_grandes WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_processamento("DELETE FROM tempo_processamento WHERE nome_arquivo = %s", [nome_arquivo])
 
     for tabela in ["dev_status_semanal", "dev_iatas_semanal", "dev_sla_semanal",
-                   "dev_motivos_semanal", "dev_dsp_sem3tent", "p90_semanal"]:
-        executar_devolucoes(
-            f"DELETE FROM {tabela} WHERE nome_arquivo = %s",
-            [nome_arquivo]
-        )
+                   "dev_motivos_semanal", "dev_dsp_sem3tent", "p90_semanal", "dev_detalhado"]:
+        executar_devolucoes(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arquivo])
 
+    executar_coletas("DELETE FROM coletas WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_operacional("DELETE FROM presenca_turno WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_operacional("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
     st.cache_data.clear()

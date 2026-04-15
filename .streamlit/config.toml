@@ -3,9 +3,13 @@ headless = true
 port = 8501
 address = "localhost"
 
-[theme]
-base="light"
-
 [client]
 showSidebarNavigation = false
 
+[theme]
+base = "light"
+primaryColor = "#009640"
+backgroundColor = "#f4f6f4"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#2B2D42"
+font = "sans serif"
