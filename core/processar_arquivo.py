@@ -4,7 +4,6 @@ import pandas as pd
 from datetime import datetime, timezone
 from psycopg2.extras import execute_values
 from core.database import (
-    consultar_backlog,
     executar_historico,
     executar_devolucoes,
     executar_operacional,
@@ -169,6 +168,8 @@ def importar_excel(arquivo, data_referencia):
         arquivo,
         usecols=[0, 11, 12, 21, 24, 25, 41, 42, 43, 48, 50, 56, 58, 64, 71]
     )
+    linhas_lidas = len(df)
+
     df.columns = [
         "waybill", "estado", "cidade", "cliente",
         "pre_entrega", "ponto_entrada",
@@ -199,8 +200,11 @@ def importar_excel(arquivo, data_referencia):
         df["assinatura"].isna()
     ].copy()
 
+    linhas_backlog = len(df_backlog)
+
     if df_backlog.empty:
-        return 0
+        return {"linhas_lidas": linhas_lidas, "filtradas": 0, "registros": 0,
+                "detalhe": "Nenhum pedido em backlog encontrado"}
 
     agora = pd.to_datetime(data_referencia)
 
@@ -216,7 +220,12 @@ def importar_excel(arquivo, data_referencia):
 
     _persistir_backlog(df_backlog, arquivo, agora)
     limpar_historico_antigo()
-    return len(df_backlog)
+
+    resumo = df_backlog.groupby(["estado", "cliente", "faixa_backlog_snapshot"]).size()
+    grupos = len(resumo)
+    return {"linhas_lidas": linhas_lidas, "filtradas": linhas_backlog,
+            "registros": linhas_backlog, "grupos": grupos,
+            "detalhe": f"{linhas_lidas:,} lidas → {linhas_backlog:,} em backlog ({grupos:,} grupos estado/cliente/faixa)"}
 
 
 def _persistir_backlog(df_backlog, arquivo, agora):
@@ -226,31 +235,43 @@ def _persistir_backlog(df_backlog, arquivo, agora):
 
 
 def _upsert_backlog_atual(df_backlog):
-    existentes     = consultar_backlog("SELECT waybill FROM backlog_atual")
-    existentes_set = set(existentes["waybill"]) if not existentes.empty else set()
-    removidos      = existentes_set - set(df_backlog["waybill"])
+    """
+    Substitui backlog_atual por resumo agregado (estado/cliente/pre_entrega/
+    proximo_ponto/faixa) — ocupa ~99% menos espaço que linha por linha.
+    Download de waybills continua via tabela `pedidos`.
+    """
+    df_agg = (
+        df_backlog.groupby(
+            ["estado", "cliente", "pre_entrega", "proximo_ponto", "faixa_backlog_snapshot"],
+            dropna=False
+        )
+        .agg(
+            qtd                   = ("waybill",               "count"),
+            horas_min             = ("horas_backlog_snapshot", "min"),
+            horas_max             = ("horas_backlog_snapshot", "max"),
+            horas_media           = ("horas_backlog_snapshot", "mean"),
+            entrada_hub1_mais_ant = ("entrada_hub1",           "min"),
+        )
+        .reset_index()
+    )
+    df_agg["data_referencia"] = df_backlog["data_referencia"].iloc[0]
+    df_agg["data_importacao"] = df_backlog["data_importacao"].iloc[0]
+
+    colunas = [
+        "estado", "cliente", "pre_entrega", "proximo_ponto", "faixa_backlog_snapshot",
+        "qtd", "horas_min", "horas_max", "horas_media",
+        "entrada_hub1_mais_ant", "data_referencia", "data_importacao"
+    ]
 
     with _conn("DATABASE_URL_BACKLOG") as conn:
         cur = conn.cursor()
-        if removidos:
-            cur.execute("DELETE FROM backlog_atual WHERE waybill = ANY(%s)", (list(removidos),))
-        execute_values(cur, """
-            INSERT INTO backlog_atual (
-                waybill, cliente, estado, cidade, pre_entrega,
-                proximo_ponto, entrada_hub1,
-                horas_backlog_snapshot, faixa_backlog_snapshot
-            ) VALUES %s
-            ON CONFLICT (waybill) DO UPDATE SET
-                horas_backlog_snapshot = EXCLUDED.horas_backlog_snapshot,
-                faixa_backlog_snapshot = EXCLUDED.faixa_backlog_snapshot,
-                proximo_ponto          = EXCLUDED.proximo_ponto,
-                data_atualizacao       = NOW()
-        """, [
-            (row["waybill"], row["cliente"], row["estado"], row["cidade"],
-             row["pre_entrega"], row["proximo_ponto"], row["entrada_hub1"],
-             row["horas_backlog_snapshot"], row["faixa_backlog_snapshot"])
-            for _, row in df_backlog.iterrows()
-        ])
+        cur.execute("TRUNCATE TABLE backlog_atual")
+        execute_values(
+            cur,
+            f"INSERT INTO backlog_atual ({','.join(colunas)}) VALUES %s",
+            [tuple(None if pd.isna(v) else v for v in row)
+             for row in df_agg[colunas].itertuples(index=False, name=None)]
+        )
         conn.commit()
         cur.close()
 

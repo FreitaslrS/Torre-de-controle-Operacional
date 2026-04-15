@@ -65,15 +65,15 @@ def listar_arquivos():
 @st.cache_data(ttl=300)
 def carregar_backlog_atual_completo():
     """
-    Carrega backlog_atual completo uma vez. Usado para filtros em Python na
-    página Backlog Atual — evita 4 roundtrips ao banco por mudança de filtro.
+    Carrega backlog_atual agregado. Filtros de estado/cliente/faixa aplicados em Python.
+    Download de waybills individuais continua via tabela `pedidos`.
     """
     return consultar_backlog("""
         SELECT
-            waybill, cliente, estado, cidade,
-            pre_entrega, proximo_ponto,
-            horas_backlog_snapshot, faixa_backlog_snapshot,
-            data_atualizacao
+            estado, cliente, pre_entrega, proximo_ponto,
+            faixa_backlog_snapshot,
+            qtd, horas_min, horas_max, horas_media,
+            entrada_hub1_mais_ant, data_referencia, data_importacao
         FROM backlog_atual
     """)
 
@@ -84,20 +84,19 @@ def carregar_backlog_atual_completo():
 @st.cache_data(ttl=300)
 def buscar_backlog_resumo():
     return consultar_backlog("""
-        SELECT 
-            estado,
-            pre_entrega,
-            cliente,
-
-            COUNT(*) as qtd,
-
-            SUM(CASE WHEN horas_backlog_snapshot > 24 THEN 1 ELSE 0 END) as b24,
-            SUM(CASE WHEN horas_backlog_snapshot > 48 THEN 1 ELSE 0 END) as b48,
-            SUM(CASE WHEN horas_backlog_snapshot > 72 THEN 1 ELSE 0 END) as b72
-
+        SELECT
+            estado, cliente,
+            SUM(qtd)                                                    AS qtd,
+            SUM(CASE WHEN faixa_backlog_snapshot != '1 dia'
+                THEN qtd ELSE 0 END)                                    AS b24,
+            SUM(CASE WHEN faixa_backlog_snapshot IN
+                ('1-5 dias','5-10 dias','10-20 dias','20-30 dias','30+ dias')
+                AND horas_min > 48 THEN qtd ELSE 0 END)                 AS b48,
+            SUM(CASE WHEN faixa_backlog_snapshot IN
+                ('1-5 dias','5-10 dias','10-20 dias','20-30 dias','30+ dias')
+                AND horas_min > 72 THEN qtd ELSE 0 END)                 AS b72
         FROM backlog_atual
-
-        GROUP BY estado, pre_entrega, cliente
+        GROUP BY estado, cliente
     """)
 
 
@@ -293,25 +292,17 @@ def buscar_backlog_paginado(limit=100, offset=0, estados=None, clientes=None, fa
 # =========================
 @st.cache_data(ttl=300)
 def buscar_sla_por_estado():
-    """
-    Retorna tabela SLA por estado já agregada diretamente no banco.
-    Substitui buscar_backlog_paginado(limit=100000) para a tabela SLA.
-    Redução: 35.000 linhas → ~27 linhas por consulta.
-    """
     return consultar_backlog("""
         SELECT
             estado,
-            SUM(CASE WHEN horas_backlog_snapshot <= 24
-                THEN 1 ELSE 0 END)                          AS "0-24h",
-            SUM(CASE WHEN horas_backlog_snapshot > 24
-                 AND  horas_backlog_snapshot <= 48
-                THEN 1 ELSE 0 END)                          AS "24-48h",
-            SUM(CASE WHEN horas_backlog_snapshot > 48
-                 AND  horas_backlog_snapshot <= 72
-                THEN 1 ELSE 0 END)                          AS "48-72h",
-            SUM(CASE WHEN horas_backlog_snapshot > 72
-                THEN 1 ELSE 0 END)                          AS ">72h",
-            COUNT(*)                                         AS "Total"
+            SUM(CASE WHEN faixa_backlog_snapshot = '1 dia'
+                THEN qtd ELSE 0 END)                                    AS "0-24h",
+            SUM(CASE WHEN faixa_backlog_snapshot = '1-5 dias'
+                THEN qtd ELSE 0 END)                                    AS "24-120h",
+            SUM(CASE WHEN faixa_backlog_snapshot IN
+                ('5-10 dias','10-20 dias','20-30 dias','30+ dias')
+                THEN qtd ELSE 0 END)                                    AS "5d+",
+            SUM(qtd)                                                    AS "Total"
         FROM backlog_atual
         GROUP BY estado
         ORDER BY "Total" DESC

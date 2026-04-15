@@ -56,7 +56,6 @@ def render():
     b48 = df_resumo["b48"].sum()
     b72 = df_resumo["b72"].sum()
     perc = (b72 / total * 100) if total else 0
-
     def cor_kpi(valor, total):
         p = valor / total if total else 0
         return "(!)" if p > 0.3 else "(~)" if p > 0.15 else "(ok)"
@@ -89,7 +88,7 @@ def render():
     col_f1, col_f2 = st.columns(2)
     remover_estados  = col_f1.multiselect("Remover Estados",  options=sorted(df_resumo["estado"].unique()))
     remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df_resumo["cliente"].unique()))
-    faixa = st.selectbox("Filtro de Backlog", ["Todos", "0-24h", "24-48h", "48-72h", "72h+"])
+    faixa = st.selectbox("Filtro de Backlog", ["Todos", "1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"])
 
     # =========================
     # 📊 DADOS — 1 query com cache, filtros em Python
@@ -100,25 +99,16 @@ def render():
         df_base = df_base[~df_base["estado"].isin(remover_estados)]
     if remover_clientes:
         df_base = df_base[~df_base["cliente"].isin(remover_clientes)]
+    if faixa != "Todos":
+        df_base = df_base[df_base["faixa_backlog_snapshot"] == faixa]
 
-    _faixa_map = {
-        "0-24h":  lambda h: h <= 24,
-        "24-48h": lambda h: (h > 24) & (h <= 48),
-        "48-72h": lambda h: (h > 48) & (h <= 72),
-        "72h+":   lambda h: h > 72,
-    }
-    if faixa in _faixa_map:
-        df_base = df_base[_faixa_map[faixa](df_base["horas_backlog_snapshot"])]
-
-    df_estado  = df_base.groupby("estado",  as_index=False)["waybill"].count().rename(columns={"waybill": "qtd"})
-    df_cliente = df_base.groupby("cliente", as_index=False)["waybill"].count().rename(columns={"waybill": "qtd"})
-    df_pre     = (df_base.groupby("pre_entrega", as_index=False)["waybill"]
-                         .count().rename(columns={"waybill": "qtd"})
-                         .sort_values("qtd", ascending=False).head(10))
+    df_estado  = df_base.groupby("estado",  as_index=False)["qtd"].sum()
+    df_cliente = df_base.groupby("cliente", as_index=False)["qtd"].sum()
+    df_pre     = (df_base.groupby("pre_entrega", as_index=False)["qtd"]
+                         .sum().sort_values("qtd", ascending=False).head(10))
     _pp        = df_base["proximo_ponto"].replace("", None).fillna("Sem informação")
     df_proximo = (df_base.assign(proximo_ponto=_pp)
-                         .groupby("proximo_ponto", as_index=False)["waybill"]
-                         .count().rename(columns={"waybill": "qtd"}))
+                         .groupby("proximo_ponto", as_index=False)["qtd"].sum())
 
     # =========================
     # 📊 GRÁFICOS
@@ -245,7 +235,7 @@ def render():
     st.divider()
 
     # =========================
-    # ⬇️ DOWNLOAD WAYBILLS
+    # ⬇️ DOWNLOAD WAYBILLS (via tabela pedidos — mantida linha a linha)
     # =========================
     st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -255,23 +245,34 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Download Waybills em Backlog</span>
 </div>""", unsafe_allow_html=True)
 
-    df_export = df_base[["waybill", "estado", "cliente", "cidade",
-                          "pre_entrega", "proximo_ponto", "horas_backlog_snapshot"]].copy()
-    df_export["tempo_backlog"] = df_export["horas_backlog_snapshot"].apply(
-        lambda h: "—" if pd.isna(h) else (f"{int(h)}h" if h <= 72 else f"{h/24:.1f} dias")
-    )
-    df_export = df_export.drop(columns=["horas_backlog_snapshot"])
-    df_export.columns = ["Waybill", "Estado", "Cliente", "Cidade",
-                         "Pré-entrega", "Próximo Ponto", "Tempo em Backlog"]
-    df_export = df_export.sort_values("Waybill")
+    from core.repository import buscar_pedidos
+    df_pedidos = buscar_pedidos(limit=200000)
+    if not df_pedidos.empty:
+        # Aplica os mesmos filtros de estado/cliente selecionados
+        if remover_estados:
+            df_pedidos = df_pedidos[~df_pedidos["estado"].isin(remover_estados)]
+        if remover_clientes:
+            df_pedidos = df_pedidos[~df_pedidos["cliente"].isin(remover_clientes)]
 
-    buffer = io.BytesIO()
-    df_export.to_excel(buffer, index=False)
-    st.download_button(
-        label=f"Baixar Excel ({fmt_numero(len(df_export))} waybills)",
-        data=buffer.getvalue(),
-        file_name="backlog_waybills.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        df_export = df_pedidos[["waybill", "estado", "cliente", "cidade",
+                                 "pre_entrega", "proximo_ponto", "horas_backlog_snapshot"]].copy()
+        df_export["tempo_backlog"] = df_export["horas_backlog_snapshot"].apply(
+            lambda h: "—" if pd.isna(h) else (f"{int(h)}h" if h <= 72 else f"{h/24:.1f} dias")
+        )
+        df_export = df_export.drop(columns=["horas_backlog_snapshot"])
+        df_export.columns = ["Waybill", "Estado", "Cliente", "Cidade",
+                             "Pré-entrega", "Próximo Ponto", "Tempo em Backlog"]
+        df_export = df_export.sort_values("Waybill")
+
+        buffer = io.BytesIO()
+        df_export.to_excel(buffer, index=False)
+        st.download_button(
+            label=f"Baixar Excel ({fmt_numero(len(df_export))} waybills)",
+            data=buffer.getvalue(),
+            file_name="backlog_waybills.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.info("Nenhum waybill disponível (dados expiram após 7 dias).")
 
     rodape_autoria()

@@ -139,63 +139,79 @@ def verificar_senha():
 
 
 # =========================
-# 🚀 PROCESSAMENTO PARALELO
+# 🚀 PROCESSAMENTO COM LOG DETALHADO
 # =========================
+def _extrair_qtd(resultado):
+    """Extrai int de resultado que pode ser int ou dict."""
+    if isinstance(resultado, dict):
+        return resultado.get("registros", 0) or 0
+    return resultado or 0
+
+
+def _extrair_detalhe(resultado):
+    """Extrai mensagem de detalhe do resultado."""
+    if isinstance(resultado, dict):
+        return resultado.get("detalhe", "")
+    return ""
+
+
 def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_secundario=None):
     inicio = time.time()
 
     try:
         if tipo_importacao == "Backlog":
-            qtd = importar_excel(arquivo, data_ref)
+            resultado = importar_excel(arquivo, data_ref)
 
         elif tipo_importacao == "Produtividade":
-            qtd = importar_produtividade(arquivo)
+            resultado = importar_produtividade(arquivo)
 
         elif tipo_importacao == "Tempo de Processamento":
-            qtd = importar_tempo_processamento(arquivo)
+            resultado = importar_tempo_processamento(arquivo)
 
         elif tipo_importacao == "Devolução":
-            qtd = importar_devolucoes(arquivo, data_ref)
+            resultado = importar_devolucoes(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução - P90":
-            qtd = importar_p90(arquivo, data_ref)
+            resultado = importar_p90(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução - Monitoramento":
-            qtd = importar_devolucao_monitoramento(arquivo, data_ref)
+            resultado = importar_devolucao_monitoramento(arquivo, data_ref)
 
         elif tipo_importacao == "Devolução + Monitoramento":
             if arquivo_secundario is None:
                 raise ValueError("Arquivo de Monitoramento não selecionado")
-            qtd = importar_devolucao_enriquecida(arquivo, arquivo_secundario, data_ref)
+            resultado = importar_devolucao_enriquecida(arquivo, arquivo_secundario, data_ref)
 
         elif tipo_importacao == "Coletas — Descarregamento em Perus":
-            qtd = importar_coletas(arquivo, data_ref)
+            resultado = importar_coletas(arquivo, data_ref)
 
         elif tipo_importacao == "Coletas — Saída para Bases":
-            qtd = importar_coletas_saida(arquivo, data_ref)
+            resultado = importar_coletas_saida(arquivo, data_ref)
 
         elif tipo_importacao == "Pacotes Grandes":
-            qtd = importar_pacotes_grandes(arquivo, data_ref)
+            resultado = importar_pacotes_grandes(arquivo, data_ref)
 
         elif tipo_importacao == "Presença / Diário de Bordo":
-            qtd = importar_presenca(arquivo)
+            resultado = importar_presenca(arquivo)
 
         else:
             raise ValueError("Tipo de importação inválido")
 
-        status = "Sucesso"
+        status  = "Sucesso"
+        qtd     = _extrair_qtd(resultado)
+        detalhe = _extrair_detalhe(resultado)
 
     except Exception as e:
-        qtd = 0
-        status = f"Erro: {type(e).__name__}: {e}"
-
-    tempo = time.time() - inicio
+        qtd     = 0
+        detalhe = ""
+        status  = f"Erro: {type(e).__name__}: {e}"
 
     return {
         "arquivo": arquivo.name,
-        "status": status,
+        "status":  status,
         "registros": qtd,
-        "tempo": tempo
+        "detalhe": detalhe,
+        "tempo":   time.time() - inicio
     }
 
 # =========================
@@ -305,7 +321,8 @@ def render():
             return
 
         progress = st.progress(0)
-        status_text = st.empty()
+        log_area = st.empty()
+        log_linhas = []
 
         resultados = []
         logs = []
@@ -328,29 +345,40 @@ def render():
                         "arquivo": "desconhecido",
                         "status": f"Erro interno: {type(exc).__name__}: {exc}",
                         "registros": 0,
+                        "detalhe": "",
                         "tempo": 0,
                     }
 
                 registros = r["registros"] or 0
                 total_registros += registros
+                n = i + 1
+                total = len(arquivos)
+
+                # Monta linha de log estilo Luis
+                linha_ok  = f"✓ [{n}/{total}] {r['arquivo']}: {registros:,} registros ({r['tempo']:.1f}s)"
+                linha_det = f"   {r['detalhe']}" if r.get("detalhe") else ""
+                if r["status"] != "Sucesso":
+                    linha_ok = f"✗ [{n}/{total}] {r['arquivo']}: {r['status']}"
+
+                log_linhas.append(linha_ok)
+                if linha_det:
+                    log_linhas.append(linha_det)
+                log_area.code("\n".join(log_linhas), language=None)
 
                 resultados.append({
-                    "arquivo": r["arquivo"],
-                    "status": r["status"],
+                    "arquivo":   r["arquivo"],
+                    "status":    r["status"],
                     "registros": registros
                 })
-
                 logs.append({
-                    "id": i,
-                    "nome_arquivo": r["arquivo"],
-                    "status": r["status"],
-                    "registros": r["registros"],
-                    "tempo_segundos": r["tempo"],
+                    "id":              i,
+                    "nome_arquivo":    r["arquivo"],
+                    "status":          r["status"],
+                    "registros":       r["registros"],
+                    "tempo_segundos":  r["tempo"],
                     "data_importacao": pd.Timestamp.now()
                 })
-
-                progress.progress((i + 1) / len(arquivos))
-                status_text.text(f"Finalizado: {r['arquivo']}")
+                progress.progress(n / total)
 
         df_logs = pd.DataFrame(logs)
         salvar_log_importacao(df_logs)
@@ -365,14 +393,12 @@ def render():
     # 📊 RESULTADO
     # ========================
     if st.session_state.resultado_importacao is not None:
-
-        st.success(f"{st.session_state.total_importado} registros importados")
-
-        for r in st.session_state.resultado_importacao:
-            if r["status"] != "Sucesso":
+        erros = [r for r in st.session_state.resultado_importacao if r["status"] != "Sucesso"]
+        if erros:
+            for r in erros:
                 st.error(f"{r['arquivo']} → {r['status']}")
-            else:
-                st.success(f"{r['arquivo']} → {r['registros']} registros")
+        else:
+            st.success(f"✓ Importação concluída — {st.session_state.total_importado:,} registros")
 
     st.divider()
 
