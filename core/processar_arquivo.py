@@ -810,6 +810,55 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
     return len(sla_agg) + len(motivos_agg) + len(dsp_agg)
 
 
+def _ler_monitoramento(arquivo_monitor):
+    """Lê o arquivo de monitoramento e retorna (df_mon_full, df_mon) prontos para uso."""
+    with io.BytesIO(arquivo_monitor.read()) as buf:
+        df_raw = xlsx_para_dataframe(buf)
+    arquivo_monitor.seek(0)
+
+    cols_full = [0, 4, 8, 11, 12, 21, 22, 24, 25, 33, 66, 67, 68, 71, 73]
+    cols_full = [c for c in cols_full if c < len(df_raw.columns)]
+    df_mon_full = df_raw.iloc[:, cols_full].copy()
+    df_mon_full.columns = [
+        "waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
+        "cliente_mon", "cliente_fantasia", "pre_entrega", "ponto_entrada", "data_criacao",
+        "tent1", "tent2", "tent3", "assinatura", "prazo_dias"
+    ][:len(cols_full)]
+    for col in ["tent1", "tent2", "tent3", "assinatura", "data_criacao"]:
+        if col in df_mon_full.columns:
+            df_mon_full[col] = pd.to_datetime(df_mon_full[col], errors="coerce")
+    df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
+
+    merge_cols = [c for c in ["waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
+                               "cliente_mon", "pre_entrega", "ponto_entrada", "data_criacao"]
+                  if c in df_mon_full.columns]
+    df_mon = df_mon_full[merge_cols].copy()
+    return df_mon_full, df_mon
+
+
+def _preparar_df_detalhado(df_dev, df_mon, data_ref, nome_arq, agora):
+    """Faz merge, calcula dias_dev, preenche data_criacao ausente e adiciona metadados."""
+    df = df_dev.merge(df_mon, on="waybill", how="left")
+    df["dias_dev"] = (df["data_operacao"] - df["data_criacao"]).dt.days
+
+    sem_criacao = df["data_criacao"].isna()
+    if sem_criacao.any():
+        df.loc[sem_criacao, "data_criacao"] = df.loc[sem_criacao, "waybill"].apply(_data_do_waybill)
+        df.loc[sem_criacao, "dias_dev"] = (
+            (df.loc[sem_criacao, "data_operacao"] - df.loc[sem_criacao, "data_criacao"]).dt.days
+        )
+
+    df = df[df["dias_dev"].isna() | (df["dias_dev"] >= 0)]
+
+    ref_ts = pd.Timestamp(data_ref)
+    df["semana"]          = ref_ts.strftime("w%V")
+    df["ano"]             = int(ref_ts.year)
+    df["data_referencia"] = data_ref
+    df["nome_arquivo"]    = nome_arq
+    df["data_importacao"] = agora
+    return df
+
+
 # ================================
 # 📦 PACOTES GRANDES (AJG)
 # ================================
@@ -866,7 +915,6 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
 # 📊 DEVOLUÇÃO ENRIQUECIDA (Folha + Monitoramento)
 # ================================
 def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
-    # ── Lê folha de devolução ──────────────────────────────────────
     with io.BytesIO(arquivo_folha.read()) as buf_folha:
         df_dev = xlsx_para_dataframe(buf_folha)
     arquivo_folha.seek(0)
@@ -879,45 +927,7 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     df_dev["data_operacao"] = pd.to_datetime(df_dev["data_operacao"], errors="coerce")
     df_dev["waybill"] = df_dev["waybill"].astype(str).str.strip()
 
-    # ── Lê monitoramento ──────────────────────────────────────────
-    with io.BytesIO(arquivo_monitor.read()) as buf_monitor:
-        df_mon_raw = xlsx_para_dataframe(buf_monitor)
-    arquivo_monitor.seek(0)
-
-    # Colunas completas do monitoramento (para SLA/motivos/DSP e merge)
-    cols_mon_full = [0, 4, 8, 11, 12, 21, 22, 24, 25, 33, 66, 67, 68, 71, 73]
-    cols_mon_full = [c for c in cols_mon_full if c < len(df_mon_raw.columns)]
-    df_mon_full = df_mon_raw.iloc[:, cols_mon_full].copy()
-    df_mon_full.columns = [
-        "waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
-        "cliente_mon", "cliente_fantasia", "pre_entrega", "ponto_entrada", "data_criacao",
-        "tent1", "tent2", "tent3", "assinatura", "prazo_dias"
-    ][:len(cols_mon_full)]
-    for col in ["tent1", "tent2", "tent3", "assinatura", "data_criacao"]:
-        if col in df_mon_full.columns:
-            df_mon_full[col] = pd.to_datetime(df_mon_full[col], errors="coerce")
-    df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
-
-    # Subset para merge com dev_detalhado — derivado de df_mon_full (sem reler o arquivo)
-    merge_cols = [c for c in ["waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
-                               "cliente_mon", "pre_entrega", "ponto_entrada", "data_criacao"]
-                  if c in df_mon_full.columns]
-    df_mon = df_mon_full[merge_cols].copy()
-
-    # ── Merge para dev_detalhado ───────────────────────────────────
-    df = df_dev.merge(df_mon, on="waybill", how="left")
-    df["dias_dev"] = (df["data_operacao"] - df["data_criacao"]).dt.days
-
-    sem_criacao = df["data_criacao"].isna()
-    if sem_criacao.any():
-        df.loc[sem_criacao, "data_criacao"] = df.loc[sem_criacao, "waybill"].apply(_data_do_waybill)
-        df.loc[sem_criacao, "dias_dev"] = (
-            (df.loc[sem_criacao, "data_operacao"] - df.loc[sem_criacao, "data_criacao"])
-            .dt.days
-        )
-
-    # Descarta apenas dias_dev negativos (dados inconsistentes)
-    df = df[df["dias_dev"].isna() | (df["dias_dev"] >= 0)]
+    df_mon_full, df_mon = _ler_monitoramento(arquivo_monitor)
 
     ref_ts   = pd.Timestamp(data_ref)
     semana   = ref_ts.strftime("w%V")
@@ -925,11 +935,7 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     nome_arq = f"{arquivo_folha.name}+{arquivo_monitor.name}"
     agora    = datetime.now(timezone.utc)
 
-    df["semana"]          = semana
-    df["ano"]             = ano
-    df["data_referencia"] = data_ref
-    df["nome_arquivo"]    = nome_arq
-    df["data_importacao"] = agora
+    df = _preparar_df_detalhado(df_dev, df_mon, data_ref, nome_arq, agora)
 
     colunas_det = [
         "waybill", "status", "tipo_operacao", "cliente", "data_operacao",
@@ -940,7 +946,6 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     for col in colunas_det:
         if col not in df.columns:
             df[col] = None
-
     df_save = df[colunas_det].copy()
 
     with _conn("DATABASE_URL_DEVOLUCOES") as conn:
