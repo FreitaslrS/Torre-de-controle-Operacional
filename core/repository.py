@@ -923,14 +923,16 @@ def buscar_datas_coletas(tipo="descarregamento"):
 @st.cache_data(ttl=300)
 def buscar_coletas(data_ref, tipo="descarregamento"):
     return consultar_coletas("""
-        SELECT num_registro, placa, carregador, rede_carregador,
-               tempo_carga, secao_destino, descarregador, rede_descarregador,
-               tempo_descarga, sacos_carregados, sacos_descarregados, dif_sacos,
-               pacotes_carregados, pacotes_descarregados, dif_pacotes,
-               modo_operacao, tipo_veiculo
+        SELECT num_registro, placa, motorista, carregador, estado_origem,
+               centro_transito, local_carregamento, proximo_ponto,
+               tempo_carregamento, tempo_bloqueio, tempo_liberacao,
+               ja_descarregado, num_lacre,
+               sacos_carregados, sacos_descarregados, sacos_anomalia, sacos_nao_desc, dif_sacos,
+               pacotes_carregados, pacotes_descarregados, pacotes_anomalia,
+               pacotes_nao_desc, pacotes_triados, pacotes_nao_triados, dif_pacotes
         FROM coletas
         WHERE data_referencia = %s AND tipo = %s
-        ORDER BY tempo_carga DESC
+        ORDER BY tempo_carregamento DESC
     """, [data_ref, tipo])
 
 

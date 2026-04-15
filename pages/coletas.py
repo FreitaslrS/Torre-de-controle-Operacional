@@ -30,20 +30,20 @@ def _kpis(df) -> KPIsColeta:
 
 
 def _grafico_origem_desc(df):
-    df_orig = (df.groupby("rede_carregador")
+    df_orig = (df.groupby("local_carregamento")
                .agg(pacotes=("pacotes_descarregados", "sum"))
                .reset_index()
                .sort_values("pacotes", ascending=False))
     if df_orig.empty:
         return
     cores = [COR_PRINCIPAL] + [COR_SECUNDARIA] * (len(df_orig) - 1)
-    fig = grafico_barra(df_orig, x="rede_carregador", y="pacotes", text="pacotes")
+    fig = grafico_barra(df_orig, x="local_carregamento", y="pacotes", text="pacotes")
     fig.update_traces(marker_color=cores, hovertemplate="<b>%{x}</b><br>Pacotes desc.: %{y}<extra></extra>")
     st.plotly_chart(fig, use_container_width=True, key="fig_orig_desc")
 
 
 def _grafico_dif_desc(df):
-    df_dif = (df.groupby("rede_carregador")
+    df_dif = (df.groupby("local_carregamento")
               .agg(dif=("dif_pacotes", "sum"),
                    pac_c=("pacotes_carregados", "sum"),
                    pac_dc=("pacotes_descarregados", "sum"))
@@ -52,7 +52,7 @@ def _grafico_dif_desc(df):
     if df_dif.empty:
         return
     cores = [COR_ALERTA if v < 0 else COR_SECUNDARIA for v in df_dif["dif"]]
-    fig = grafico_barra(df_dif, x="rede_carregador", y="dif", text="dif")
+    fig = grafico_barra(df_dif, x="local_carregamento", y="dif", text="dif")
     fig.update_traces(marker_color=cores, texttemplate="%{text:+,}",
                       hovertemplate="<b>%{x}</b><br>Diferença: %{y:+,}<extra></extra>")
     fig.update_layout(yaxis_title="Diferença (pacotes)")
@@ -60,10 +60,10 @@ def _grafico_dif_desc(df):
 
 
 def _grafico_timeline_desc(df):
-    df_time = df[df["tempo_descarga"].notna()].copy()
+    df_time = df[df["tempo_carregamento"].notna()].copy()
     if df_time.empty:
         return
-    df_time["hora"] = pd.to_datetime(df_time["tempo_descarga"]).dt.hour
+    df_time["hora"] = pd.to_datetime(df_time["tempo_carregamento"]).dt.hour
     df_hora = (df_time.groupby("hora")
                .agg(veiculos=("placa", "nunique"), pacotes=("pacotes_descarregados", "sum"))
                .reset_index())
@@ -107,15 +107,15 @@ def _tab_descarregamento(data_sel):
     st.divider()
     st.markdown("**Detalhe por Veículo**")
     df_tab = df[[
-        "placa", "carregador", "rede_carregador",
-        "descarregador", "tempo_descarga",
+        "placa", "motorista", "estado_origem", "local_carregamento",
+        "tempo_carregamento", "ja_descarregado",
         "sacos_carregados", "sacos_descarregados",
         "pacotes_carregados", "pacotes_descarregados", "dif_pacotes"
     ]].copy()
-    df_tab["tempo_descarga"] = pd.to_datetime(df_tab["tempo_descarga"]).dt.strftime("%d/%m %H:%M")
+    df_tab["tempo_carregamento"] = pd.to_datetime(df_tab["tempo_carregamento"]).dt.strftime("%d/%m %H:%M")
     df_tab.columns = [
-        "Placa", "Carregador Orig.", "Rede Origem",
-        "Descarregador", "Hora Desc.",
+        "Placa", "Motorista", "Estado Origem", "Base Origem",
+        "Hora Car.", "Descarregado?",
         "Sacos Car.", "Sacos Desc.",
         "Pac. Car.", "Pac. Desc.", "Dif. Pac."
     ]
@@ -123,7 +123,7 @@ def _tab_descarregamento(data_sel):
 
 
 def _grafico_destino_saida(df):
-    df_dest = (df.groupby("secao_destino")
+    df_dest = (df.groupby("proximo_ponto")
                .agg(pacotes=("pacotes_carregados", "sum"))
                .reset_index()
                .sort_values("pacotes", ascending=False)
@@ -131,7 +131,7 @@ def _grafico_destino_saida(df):
     if df_dest.empty:
         return
     cores = [COR_PRINCIPAL] + [COR_SECUNDARIA] * (len(df_dest) - 1)
-    fig = grafico_barra(df_dest, x="secao_destino", y="pacotes", text="pacotes")
+    fig = grafico_barra(df_dest, x="proximo_ponto", y="pacotes", text="pacotes")
     fig.update_traces(marker_color=cores, hovertemplate="<b>%{x}</b><br>Pacotes: %{y}<extra></extra>")
     fig.update_layout(xaxis_tickangle=-45)
     st.plotly_chart(fig, use_container_width=True, key="fig_dest_saida")
@@ -142,12 +142,12 @@ def _grafico_dif_saida(df):
     if df_conf.empty:
         st.info("Nenhum descarregamento confirmado neste período.")
         return
-    df_dif = (df_conf.groupby("secao_destino")
+    df_dif = (df_conf.groupby("proximo_ponto")
               .agg(dif=("dif_pacotes", "sum"))
               .reset_index()
               .sort_values("dif"))
     cores = [COR_ALERTA if v < 0 else COR_SECUNDARIA for v in df_dif["dif"]]
-    fig = grafico_barra(df_dif, x="secao_destino", y="dif", text="dif")
+    fig = grafico_barra(df_dif, x="proximo_ponto", y="dif", text="dif")
     fig.update_traces(marker_color=cores, texttemplate="%{text:+,}",
                       hovertemplate="<b>%{x}</b><br>Diferença: %{y:+,}<extra></extra>")
     fig.update_layout(yaxis_title="Diferença (pacotes)")
@@ -155,10 +155,10 @@ def _grafico_dif_saida(df):
 
 
 def _grafico_timeline_saida(df):
-    df_time = df[df["tempo_carga"].notna()].copy()
+    df_time = df[df["tempo_carregamento"].notna()].copy()
     if df_time.empty:
         return
-    df_time["hora"] = pd.to_datetime(df_time["tempo_carga"]).dt.hour
+    df_time["hora"] = pd.to_datetime(df_time["tempo_carregamento"]).dt.hour
     df_hora = (df_time.groupby("hora")
                .agg(veiculos=("placa", "nunique"), pacotes=("pacotes_carregados", "sum"))
                .reset_index())
@@ -177,7 +177,7 @@ def _tab_saida(data_sel):
         return
 
     k = _kpis(df)
-    total_destinos = df["secao_destino"].nunique()
+    total_destinos = df["proximo_ponto"].nunique()
 
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Veículos",            k.veiculos)
@@ -204,15 +204,17 @@ def _tab_saida(data_sel):
     st.divider()
     st.markdown("**Detalhe por Veículo e Destino**")
     df_tab = df[[
-        "placa", "carregador", "secao_destino", "tempo_carga",
+        "placa", "motorista", "proximo_ponto",
+        "tempo_carregamento", "ja_descarregado",
         "sacos_carregados", "pacotes_carregados",
-        "sacos_descarregados", "pacotes_descarregados", "dif_pacotes"
+        "pacotes_descarregados", "dif_pacotes"
     ]].copy()
-    df_tab["tempo_carga"] = pd.to_datetime(df_tab["tempo_carga"]).dt.strftime("%d/%m %H:%M")
+    df_tab["tempo_carregamento"] = pd.to_datetime(df_tab["tempo_carregamento"]).dt.strftime("%d/%m %H:%M")
     df_tab.columns = [
-        "Placa", "Carregador", "Destino", "Hora Car.",
-        "Sacos Car.", "Pac. Car.",
-        "Sacos Desc.", "Pac. Desc.", "Dif. Pac."
+        "Placa", "Motorista", "Destino",
+        "Hora Car.", "Confirmado Desc.?",
+        "Sacos Car.", "Pac. Enviados",
+        "Pac. Desc.", "Dif. Pac."
     ]
     tabela_padrao(df_tab)
 

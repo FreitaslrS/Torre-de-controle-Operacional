@@ -953,21 +953,48 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
 # 🚛 COLETAS — CARREGAMENTO/DESCARREGAMENTO
 # ================================
 def _coletas_colunas_base(df):
-    """Renomeia colunas e converte tipos comuns para importações de coletas."""
-    df = df.iloc[:, :19]
+    """
+    Renomeia as 23 colunas amarelas (A-W) do arquivo Monitoramento_de_Carregamento.
+    col H (local_carregamento) = base de origem do carregamento
+    col I (proximo_ponto)      = destino do veículo
+    """
+    df = df.iloc[:, :23].copy()
     df.columns = [
-        "num_registro", "placa", "carregador", "rede_carregador",
-        "endereco_carga", "tempo_carga", "secao_destino",
-        "descarregador", "rede_descarregador", "endereco_descarga",
-        "tempo_descarga", "sacos_carregados", "sacos_descarregados",
-        "dif_sacos", "pacotes_carregados", "pacotes_descarregados",
-        "dif_pacotes", "modo_operacao", "tipo_veiculo"
+        "placa",                 # A
+        "tempo_carregamento",    # B
+        "motorista",             # C
+        "num_registro",          # D
+        "carregador",            # E
+        "estado_origem",         # F
+        "centro_transito",       # G
+        "local_carregamento",    # H — Locais de carregamento
+        "proximo_ponto",         # I — Próximo ponto
+        "num_lacre",             # J
+        "tempo_bloqueio",        # K
+        "tempo_liberacao",       # L
+        "ja_descarregado",       # M
+        "sacos_carregados",      # N
+        "sacos_descarregados",   # O
+        "sacos_anomalia",        # P
+        "sacos_nao_desc",        # Q
+        "pacotes_carregados",    # R
+        "pacotes_descarregados", # S
+        "pacotes_anomalia",      # T
+        "pacotes_nao_desc",      # U
+        "pacotes_triados",       # V
+        "pacotes_nao_triados",   # W
     ]
-    df["tempo_carga"]    = pd.to_datetime(df["tempo_carga"],    errors="coerce")
-    df["tempo_descarga"] = pd.to_datetime(df["tempo_descarga"], errors="coerce")
-    for col in ["sacos_carregados", "sacos_descarregados", "dif_sacos",
-                "pacotes_carregados", "pacotes_descarregados", "dif_pacotes"]:
+    for col in ["tempo_carregamento", "tempo_bloqueio", "tempo_liberacao"]:
+        df[col] = pd.to_datetime(df[col], errors="coerce")
+    cols_num = [
+        "sacos_carregados", "sacos_descarregados", "sacos_anomalia", "sacos_nao_desc",
+        "pacotes_carregados", "pacotes_descarregados", "pacotes_anomalia",
+        "pacotes_nao_desc", "pacotes_triados", "pacotes_nao_triados"
+    ]
+    for col in cols_num:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+    df["dif_pacotes"] = df["pacotes_carregados"] - df["pacotes_descarregados"]
+    df["dif_sacos"]   = df["sacos_carregados"]   - df["sacos_descarregados"]
     return df
 
 
@@ -978,12 +1005,14 @@ def _salvar_coletas(df, arquivo, data_ref, tipo):
     df["data_importacao"] = datetime.now(timezone.utc)
 
     colunas = [
-        "num_registro", "placa", "carregador", "rede_carregador",
-        "tempo_carga", "secao_destino", "descarregador", "rede_descarregador",
-        "tempo_descarga", "sacos_carregados", "sacos_descarregados", "dif_sacos",
-        "pacotes_carregados", "pacotes_descarregados", "dif_pacotes",
-        "modo_operacao", "tipo_veiculo", "tipo",
-        "data_referencia", "nome_arquivo", "data_importacao"
+        "num_registro", "placa", "motorista", "carregador", "estado_origem",
+        "centro_transito", "local_carregamento", "proximo_ponto",
+        "tempo_carregamento", "tempo_bloqueio", "tempo_liberacao",
+        "ja_descarregado", "num_lacre",
+        "sacos_carregados", "sacos_descarregados", "sacos_anomalia", "sacos_nao_desc", "dif_sacos",
+        "pacotes_carregados", "pacotes_descarregados", "pacotes_anomalia",
+        "pacotes_nao_desc", "pacotes_triados", "pacotes_nao_triados", "dif_pacotes",
+        "tipo", "data_referencia", "nome_arquivo", "data_importacao"
     ]
 
     with _conn("DATABASE_URL_COLETAS") as conn:
@@ -1003,46 +1032,30 @@ def _salvar_coletas(df, arquivo, data_ref, tipo):
 
 
 def importar_coletas(arquivo, data_ref):
-    """Importa descarregamentos recebidos em SP-RR-001 (Perus)."""
+    """Importa arquivo onde col I (proximo_ponto) = SP-RR-001 (recebemos das bases)."""
     df = xlsx_para_dataframe(arquivo)
     if df.empty:
         return 0
-
     df = _coletas_colunas_base(df)
-
-    # Filtro: descarregado em SP-RR-001
-    df = df[
-        (df["rede_descarregador"] == "SP-RR-001") &
-        (df["descarregador"].notna()) &
-        (df["endereco_descarga"].notna()) &
-        (df["tempo_descarga"].notna())
-    ]
-
+    df = df[df["proximo_ponto"] == "SP-RR-001"].copy()
     if df.empty:
         return 0
-
     return _salvar_coletas(df, arquivo, data_ref, "descarregamento")
 
 
 def importar_coletas_saida(arquivo, data_ref):
-    """Importa carregamentos que saem de SP-RR-001 (Perus) para outras bases."""
+    """Importa arquivo onde col H (local_carregamento) = SP-RR-001 (enviamos para as bases)."""
     df = xlsx_para_dataframe(arquivo)
     if df.empty:
         return 0
-
     df = _coletas_colunas_base(df)
-
-    # Filtro: carregado em SP-RR-001, destino ≠ SP-RR-001
     df = df[
-        (df["rede_carregador"] == "SP-RR-001") &
-        (df["secao_destino"] != "SP-RR-001") &
-        (df["secao_destino"].notna()) &
-        (df["tempo_carga"].notna())
-    ]
-
+        (df["local_carregamento"] == "SP-RR-001") &
+        (df["proximo_ponto"] != "SP-RR-001") &
+        (df["proximo_ponto"].notna())
+    ].copy()
     if df.empty:
         return 0
-
     return _salvar_coletas(df, arquivo, data_ref, "saida")
 
 
