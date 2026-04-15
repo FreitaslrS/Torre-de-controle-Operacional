@@ -1,4 +1,4 @@
-# Torre de Controle — Anjun Express BI de Operações
+# Torre de Controle — BI de Operações
 
 Dashboard operacional em tempo real para monitoramento logístico. Desenvolvido com Streamlit e PostgreSQL, consolida dados de múltiplas fontes em uma interface única para acompanhamento de backlog, produtividade, devoluções e SLA.
 
