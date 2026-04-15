@@ -36,6 +36,44 @@ def _val(v):
         return v
 
 
+def _classificar_status_sla(row):
+    if pd.isna(row["saida_hub1"]):
+        return "sem_saida"
+    elif row["tempo_horas"] <= 24:
+        return "dentro_sla"
+    else:
+        return "fora_sla"
+
+
+def _classificar_dispositivo(op):
+    op = str(op).strip().upper()
+    if "PERUS01" in op:
+        return "Sorter Oval"
+    elif "PERUS02" in op:
+        return "Sorter Linear"
+    else:
+        return "Cubometro"
+
+
+def _classificar_turno_e_data(dt):
+    minuto_total = dt.hour * 60 + dt.minute
+    if 330 <= minuto_total <= 829:
+        return "T1", dt.date()
+    elif 830 <= minuto_total <= 1319:
+        return "T2", dt.date()
+    else:
+        data_op = (dt - pd.Timedelta(days=1)).date() if dt.hour < 6 else dt.date()
+        return "T3", data_op
+
+
+def _data_do_waybill(waybill):
+    try:
+        w = str(waybill).strip()
+        return pd.Timestamp(int("20" + w[2:4]), int(w[4:6]), int(w[6:8]))
+    except Exception:
+        return pd.NaT
+
+
 # ================================
 # ⚡ LEITURA RÁPIDA: XLSX → Parquet em memória
 # ================================
@@ -264,31 +302,10 @@ def importar_produtividade(arquivo):
     if df.empty:
         return 0
 
-    # Dispositivo
-    def classificar_dispositivo(op):
-        op = str(op).strip().upper()
-        if "PERUS01" in op:
-            return "Sorter Oval"
-        elif "PERUS02" in op:
-            return "Sorter Linear"
-        else:
-            return "Cubometro"
-
-    df["dispositivo"] = df["operador"].apply(classificar_dispositivo)
-
-    # Turno + data operacional (T3 madrugada = dia anterior)
-    def classificar_turno_e_data(dt):
-        minuto_total = dt.hour * 60 + dt.minute
-        if 330 <= minuto_total <= 829:       # 05:30–13:49
-            return "T1", dt.date()
-        elif 830 <= minuto_total <= 1319:    # 13:50–21:59
-            return "T2", dt.date()
-        else:                                # 22:00–05:29 (T3)
-            data_op = (dt - pd.Timedelta(days=1)).date() if dt.hour < 6 else dt.date()
-            return "T3", data_op
+    df["dispositivo"] = df["operador"].apply(_classificar_dispositivo)
 
     turnos_datas = df["data_hora"].apply(
-        lambda dt: pd.Series(classificar_turno_e_data(dt), index=["turno", "data"])
+        lambda dt: pd.Series(_classificar_turno_e_data(dt), index=["turno", "data"])
     )
     df[["turno", "data"]] = turnos_datas
     df["hora"] = df["data_hora"].dt.hour
@@ -354,16 +371,7 @@ def importar_tempo_processamento(arquivo):
     # Hiata padronizado
     df["hiata"] = df["hiata"].astype(str).str.strip().str.upper()
 
-    # Status SLA por linha
-    def classificar_status(row):
-        if pd.isna(row["saida_hub1"]):
-            return "sem_saida"
-        elif row["tempo_horas"] <= 24:
-            return "dentro_sla"
-        else:
-            return "fora_sla"
-
-    df["status"] = df.apply(classificar_status, axis=1)
+    df["status"] = df.apply(_classificar_status_sla, axis=1)
 
     # Agrega — de 178k linhas para ~500
     agg = df.groupby(["estado", "ponto_entrada", "hiata", "cliente", "data"]).agg(
@@ -899,15 +907,6 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     # ── Merge para dev_detalhado ───────────────────────────────────
     df = df_dev.merge(df_mon, on="waybill", how="left")
     df["dias_dev"] = (df["data_operacao"] - df["data_criacao"]).dt.days
-
-    # Para pedidos sem match no monitoramento (ex: Shein Nacional),
-    # extrai data_criacao do waybill (formato AJ AAMMDD...)
-    def _data_do_waybill(waybill):
-        try:
-            w = str(waybill).strip()
-            return pd.Timestamp(int("20" + w[2:4]), int(w[4:6]), int(w[6:8]))
-        except Exception:
-            return pd.NaT
 
     sem_criacao = df["data_criacao"].isna()
     if sem_criacao.any():
