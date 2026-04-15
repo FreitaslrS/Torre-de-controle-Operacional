@@ -159,11 +159,15 @@ def importar_excel(arquivo, data_referencia):
     df_backlog["nome_arquivo"]           = arquivo.name
     df_backlog["proximo_ponto"]          = df_backlog["proximo_ponto"].fillna("Sem informação")
 
-    _upsert_backlog_atual(df_backlog)
-    _inserir_historico(df_backlog, arquivo, agora)
-
+    _persistir_backlog(df_backlog, arquivo, agora)
     limpar_historico_antigo()
     return len(df_backlog)
+
+
+def _persistir_backlog(df_backlog, arquivo, agora):
+    """Persiste backlog_atual e histórico após transformação."""
+    _upsert_backlog_atual(df_backlog)
+    _inserir_historico(df_backlog, arquivo, agora)
 
 
 def _upsert_backlog_atual(df_backlog):
@@ -298,21 +302,21 @@ def importar_produtividade(arquivo):
     df_agg["nome_arquivo"]    = arquivo.name
     df_agg["data_importacao"] = datetime.now(timezone.utc)
 
+    _persistir_produtividade(df_agg, arquivo.name)
+    limpar_historico_antigo()
+    return len(df_agg)
+
+
+def _persistir_produtividade(df_agg, nome_arquivo):
+    colunas = ["cliente", "data", "hora", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
+    values  = [tuple(None if pd.isna(v) else v for v in row)
+               for row in df_agg[colunas].itertuples(index=False, name=None)]
     with _conn("DATABASE_URL_OPERACIONAL") as conn:
         cur = conn.cursor()
-        cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [arquivo.name])
-        colunas = ["cliente", "data", "hora", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
-        values  = [tuple(None if pd.isna(v) else v for v in row)
-                   for row in df_agg[colunas].itertuples(index=False, name=None)]
+        cur.execute("DELETE FROM produtividade WHERE nome_arquivo = %s", [nome_arquivo])
         execute_values(cur, f"INSERT INTO produtividade ({','.join(colunas)}) VALUES %s", values)
         conn.commit()
         cur.close()
-
-    # View materializada substituída por query direta em buscar_produtividade()
-    # Não é mais necessário fazer REFRESH
-
-    limpar_historico_antigo()
-    return len(df_agg)
 
 
 def importar_tempo_processamento(arquivo):
@@ -374,22 +378,25 @@ def importar_tempo_processamento(arquivo):
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
 
+    _persistir_tempo_processamento(agg, arquivo.name)
+    limpar_historico_antigo()
+    return len(agg)
+
+
+def _persistir_tempo_processamento(agg, nome_arquivo):
+    colunas = [
+        "estado", "ponto_entrada", "hiata", "cliente", "data",
+        "data_snapshot", "qtd_total", "qtd_dentro_sla", "qtd_fora_sla",
+        "qtd_sem_saida", "tempo_medio_h", "nome_arquivo", "data_importacao"
+    ]
+    values = [tuple(None if pd.isna(v) else v for v in row)
+              for row in agg[colunas].itertuples(index=False, name=None)]
     with _conn("DATABASE_URL_PROCESSAMENTO") as conn:
         cur = conn.cursor()
-        cur.execute("DELETE FROM tempo_processamento WHERE nome_arquivo = %s", [arquivo.name])
-        colunas = [
-            "estado", "ponto_entrada", "hiata", "cliente", "data",
-            "data_snapshot", "qtd_total", "qtd_dentro_sla", "qtd_fora_sla",
-            "qtd_sem_saida", "tempo_medio_h", "nome_arquivo", "data_importacao"
-        ]
-        values = [tuple(None if pd.isna(v) else v for v in row)
-                  for row in agg[colunas].itertuples(index=False, name=None)]
+        cur.execute("DELETE FROM tempo_processamento WHERE nome_arquivo = %s", [nome_arquivo])
         execute_values(cur, f"INSERT INTO tempo_processamento ({','.join(colunas)}) VALUES %s", values)
         conn.commit()
         cur.close()
-
-    limpar_historico_antigo()
-    return len(agg)
 
 
 # ================================
@@ -588,6 +595,99 @@ def _agregar_motivos(df, col_estado, col_cliente, data_ref, nome_arquivo, agora)
     agg["nome_arquivo"]    = nome_arquivo
     agg["data_importacao"] = agora
     return agg
+
+
+def _salvar_dev_resumo(cur, df_save, nome_arq, agora, data_ref):
+    df_resumo_dev = (
+        df_save
+        .groupby(["semana", "ano", "data_referencia", "status",
+                  "cliente", "estado_dest", "motivo"], dropna=False)
+        .agg(qtd=("waybill", "count"))
+        .reset_index()
+    )
+    df_resumo_dev["nome_arquivo"]    = nome_arq
+    df_resumo_dev["data_importacao"] = agora
+    cur.execute("DELETE FROM dev_resumo WHERE data_referencia = %s", [data_ref])
+    colunas = ["semana", "ano", "data_referencia", "status",
+               "cliente", "estado_dest", "motivo", "qtd",
+               "nome_arquivo", "data_importacao"]
+    execute_values(cur,
+        f"INSERT INTO dev_resumo ({','.join(colunas)}) VALUES %s",
+        [tuple(_val(v) for v in row)
+         for row in df_resumo_dev[colunas].itertuples(index=False, name=None)]
+    )
+
+
+def _salvar_status_iata(cur, df, semana, ano, data_ref, nome_arq, agora):
+    for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
+        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+    status_agg = (
+        df.groupby(["status", "estado_dest", "cliente"])
+        .size().reset_index(name="qtd")
+    )
+    status_agg["semana"]           = semana
+    status_agg["ano"]              = ano
+    status_agg["data_referencia"]  = data_ref
+    status_agg["nome_arquivo"]     = nome_arq
+    status_agg["data_importacao"]  = agora
+    status_agg["cliente_fantasia"] = None
+    status_agg = status_agg.rename(columns={"estado_dest": "estado"})
+    colunas_status = [
+        "estado", "status", "semana", "ano", "data_referencia", "cliente",
+        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+    ]
+    execute_values(cur,
+        f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
+        [tuple(_val(v) for v in row)
+         for row in status_agg[colunas_status].itertuples(index=False, name=None)]
+    )
+    iata_agg = (
+        df[df["pre_entrega"].notna()]
+        .groupby(["pre_entrega", "estado_dest"])
+        .size().reset_index(name="qtd")
+    )
+    iata_agg["semana"]           = semana
+    iata_agg["ano"]              = ano
+    iata_agg["data_referencia"]  = data_ref
+    iata_agg["nome_arquivo"]     = nome_arq
+    iata_agg["data_importacao"]  = agora
+    iata_agg["cliente_fantasia"] = None
+    iata_agg = iata_agg.rename(columns={"pre_entrega": "ponto_operacao", "estado_dest": "estado"})
+    colunas_iata = [
+        "ponto_operacao", "estado", "semana", "ano", "data_referencia",
+        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+    ]
+    execute_values(cur,
+        f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
+        [tuple(_val(v) for v in row)
+         for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
+    )
+
+
+def _salvar_sla_motivos_dsp(cur, df_mon_full, data_ref, nome_arq, agora):
+    for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
+        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+    sla_agg     = _agregar_sla(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
+    motivos_agg = _agregar_motivos(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
+    dsp_agg     = _agregar_dsp_sem3tent(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
+    colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
+    colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+    colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+    if not sla_agg.empty:
+        execute_values(cur,
+            f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
+            [tuple(_val(v) for v in row) for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
+        )
+    if not motivos_agg.empty:
+        execute_values(cur,
+            f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
+            [tuple(_val(v) for v in row) for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
+        )
+    if not dsp_agg.empty:
+        execute_values(cur,
+            f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
+            [tuple(_val(v) for v in row) for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
+        )
 
 
 def _salvar_p90(cur, df, semana, ano, data_ref, nome_arq, agora):
@@ -846,117 +946,15 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
 
     with _conn("DATABASE_URL_DEVOLUCOES") as conn:
         cur = conn.cursor()
-
-        # ── Salva dev_detalhado ────────────────────────────────────────
         cur.execute("DELETE FROM dev_detalhado WHERE data_referencia = %s", [data_ref])
         execute_values(cur,
             f"INSERT INTO dev_detalhado ({','.join(colunas_det)}) VALUES %s",
             [tuple(_val(v) for v in row) for row in df_save.itertuples(index=False, name=None)]
         )
-
-        # ── Salva dev_resumo ───────────────────────────────────────────
-        df_resumo_dev = (
-            df_save
-            .groupby(["semana", "ano", "data_referencia", "status",
-                      "cliente", "estado_dest", "motivo"], dropna=False)
-            .agg(qtd=("waybill", "count"))
-            .reset_index()
-        )
-        df_resumo_dev["nome_arquivo"]    = nome_arq
-        df_resumo_dev["data_importacao"] = agora
-        cur.execute("DELETE FROM dev_resumo WHERE data_referencia = %s", [data_ref])
-        colunas_resumo_dev = ["semana", "ano", "data_referencia", "status",
-                              "cliente", "estado_dest", "motivo", "qtd",
-                              "nome_arquivo", "data_importacao"]
-        execute_values(cur,
-            f"INSERT INTO dev_resumo ({','.join(colunas_resumo_dev)}) VALUES %s",
-            [tuple(_val(v) for v in row)
-             for row in df_resumo_dev[colunas_resumo_dev].itertuples(index=False, name=None)]
-        )
-
-        # ── Salva dev_status_semanal e dev_iatas_semanal ───────────────
-        for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
-            cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
-
-        status_agg = (
-            df.groupby(["status", "estado_dest", "cliente"])
-            .size().reset_index(name="qtd")
-        )
-        status_agg["semana"]           = semana
-        status_agg["ano"]              = ano
-        status_agg["data_referencia"]  = data_ref
-        status_agg["nome_arquivo"]     = nome_arq
-        status_agg["data_importacao"]  = agora
-        status_agg["cliente_fantasia"] = None
-        status_agg = status_agg.rename(columns={"estado_dest": "estado"})
-        colunas_status = [
-            "estado", "status", "semana", "ano", "data_referencia", "cliente",
-            "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
-        ]
-        execute_values(cur,
-            f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
-            [tuple(_val(v) for v in row)
-             for row in status_agg[colunas_status].itertuples(index=False, name=None)]
-        )
-
-        iata_agg = (
-            df[df["pre_entrega"].notna()]
-            .groupby(["pre_entrega", "estado_dest"])
-            .size().reset_index(name="qtd")
-        )
-        iata_agg["semana"]           = semana
-        iata_agg["ano"]              = ano
-        iata_agg["data_referencia"]  = data_ref
-        iata_agg["nome_arquivo"]     = nome_arq
-        iata_agg["data_importacao"]  = agora
-        iata_agg["cliente_fantasia"] = None
-        iata_agg = iata_agg.rename(columns={"pre_entrega": "ponto_operacao", "estado_dest": "estado"})
-        colunas_iata = [
-            "ponto_operacao", "estado", "semana", "ano", "data_referencia",
-            "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
-        ]
-        execute_values(cur,
-            f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
-            [tuple(_val(v) for v in row)
-             for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
-        )
-
-        # ── Salva p90_semanal ──────────────────────────────────────────
+        _salvar_dev_resumo(cur, df_save, nome_arq, agora, data_ref)
+        _salvar_status_iata(cur, df, semana, ano, data_ref, nome_arq, agora)
         _salvar_p90(cur, df, semana, ano, data_ref, nome_arq, agora)
-
-        # ── Salva dev_sla_semanal, dev_motivos_semanal, dev_dsp_sem3tent ─
-        for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
-            cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
-
-        df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
-
-        sla_agg     = _agregar_sla(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
-        motivos_agg = _agregar_motivos(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
-        dsp_agg     = _agregar_dsp_sem3tent(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
-
-        colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
-        colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
-        colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
-
-        if not sla_agg.empty:
-            execute_values(cur,
-                f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
-                [tuple(_val(v) for v in row)
-                 for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
-            )
-        if not motivos_agg.empty:
-            execute_values(cur,
-                f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
-                [tuple(_val(v) for v in row)
-                 for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
-            )
-        if not dsp_agg.empty:
-            execute_values(cur,
-                f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
-                [tuple(_val(v) for v in row)
-                 for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
-            )
-
+        _salvar_sla_motivos_dsp(cur, df_mon_full, data_ref, nome_arq, agora)
         conn.commit()
         cur.close()
 
