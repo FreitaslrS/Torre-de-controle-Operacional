@@ -11,6 +11,7 @@ from core.repository import (
 )
 from utils.theme import grafico_barra, aplicar_layout_padrao
 from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global, fmt_numero
+from utils.i18n import t
 
 COR_PRINCIPAL  = "#009640"
 COR_SECUNDARIA = "#053B31"
@@ -36,8 +37,8 @@ def render():
         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
     </svg>
     <div>
-        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Backlog Atual</h2>
-        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Monitoramento em tempo real da operação</p>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("backlog.titulo")}</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">{t("backlog.subtitulo")}</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -45,7 +46,7 @@ def render():
     df_resumo = buscar_backlog_resumo()
 
     if df_resumo.empty:
-        st.warning("Sem dados")
+        st.warning(t("comum.sem_dados"))
         return
 
     # =========================
@@ -66,7 +67,7 @@ def render():
     col3.metric("+48H", fmt_numero(b48))
     col4.metric("+72H", fmt_numero(b72))
     col5.metric("+96H", fmt_numero(int(df_resumo["b96"].sum())))
-    col6.metric("% Crítico", f"{perc:.1f}%")
+    col6.metric(t("backlog.pct_critico"), f"{perc:.1f}%")
 
     # KPIs por faixa de dias
     _FAIXAS_DIAS = ["1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"]
@@ -77,11 +78,11 @@ def render():
         col.metric(fx, fmt_numero(qtd_fx))
 
     if perc > 30:
-        st.error("Backlog crítico!")
+        st.error(t("backlog.critico"))
     elif perc > 15:
-        st.warning("Backlog em atenção")
+        st.warning(t("backlog.atencao"))
     else:
-        st.success("Operação controlada")
+        st.success(t("backlog.controlado"))
 
     st.divider()
 
@@ -95,12 +96,12 @@ def render():
 </div>""", unsafe_allow_html=True)
 
     col_f1, col_f2 = st.columns(2)
-    remover_estados  = col_f1.multiselect("Remover Estados",  options=sorted(df_resumo["estado"].unique()))
-    remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df_resumo["cliente"].unique()))
+    remover_estados  = col_f1.multiselect(t("comum.remover_estados"),  options=sorted(df_resumo["estado"].unique()))
+    remover_clientes = col_f2.multiselect(t("comum.remover_clientes"), options=sorted(df_resumo["cliente"].unique()))
 
     col_f3, col_f4 = st.columns(2)
-    faixa_horas = col_f3.selectbox("Filtro por Horas",      ["Todos", "Até 24h", "+24h", "+48h", "+72h", "+96h"], key="bk_faixa_h")
-    faixa_dias  = col_f4.selectbox("Filtro por Faixa de Dias", ["Todos", "1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"], key="bk_faixa_d")
+    faixa_horas = col_f3.selectbox(t("comum.filtro_horas"),      [t("comum.todos"), t("comum.ate_24h"), "+24h", "+48h", "+72h", "+96h"], key="bk_faixa_h")
+    faixa_dias  = col_f4.selectbox(t("comum.filtro_dias"), [t("comum.todos"), "1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"], key="bk_faixa_d")
 
     # =========================
     # 📊 DADOS — 1 query com cache, filtros em Python
@@ -113,7 +114,7 @@ def render():
         df_base = df_base[~df_base["cliente"].isin(remover_clientes)]
 
     _faixas_acima = {
-        "Até 24h": lambda df: df[df["horas_max"] <= 24],
+        t("comum.ate_24h"): lambda df: df[df["horas_max"] <= 24],
         "+24h":    lambda df: df[df["horas_max"] > 24],
         "+48h":    lambda df: df[df["horas_max"] > 48],
         "+72h":    lambda df: df[df["horas_max"] > 72],
@@ -121,7 +122,7 @@ def render():
     }
     if faixa_horas in _faixas_acima:
         df_base = _faixas_acima[faixa_horas](df_base)
-    if faixa_dias != "Todos":
+    if faixa_dias != t("comum.todos"):
         df_base = df_base[df_base["faixa_backlog_snapshot"] == faixa_dias]
 
     df_estado  = df_base.groupby("estado",  as_index=False)["qtd"].sum()
@@ -209,7 +210,7 @@ def render():
         )
         st.plotly_chart(fig_mapa, use_container_width=True, key="mapa_backlog")
     else:
-        st.info("GeoJSON não encontrado em assets/brasil_estados.json")
+        st.info(t("backlog.geojson_nao_encontrado"))
 
     st.divider()
 
@@ -295,6 +296,6 @@ def render():
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.info("Nenhum waybill disponível (dados expiram após 7 dias).")
+        st.info(t("backlog.sem_waybill"))
 
     rodape_autoria()

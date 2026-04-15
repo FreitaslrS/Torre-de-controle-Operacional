@@ -6,6 +6,7 @@ import pandas as pd
 from core.repository import buscar_backlog_historico
 from utils.theme import grafico_barra, aplicar_layout_padrao
 from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global, fmt_numero
+from utils.i18n import t
 
 COR_PRINCIPAL  = "#053B31"
 COR_SECUNDARIA = "#009640"
@@ -60,8 +61,8 @@ def render():
         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
     </svg>
     <div>
-        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Backlog Histórico</h2>
-        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Visão completa histórica da operação</p>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("historico.titulo")}</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">{t("historico.subtitulo")}</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -70,8 +71,8 @@ def render():
     # 📅 PERÍODO
     # =========================
     col1, col2 = st.columns(2)
-    data_inicio = col1.date_input("Data início")
-    data_fim    = col2.date_input("Data fim")
+    data_inicio = col1.date_input(t("comum.data_inicio"))
+    data_fim    = col2.date_input(t("comum.data_fim"))
 
     if not data_inicio or not data_fim:
         return
@@ -79,7 +80,7 @@ def render():
     df = buscar_backlog_historico(data_inicio, data_fim)
 
     if df.empty:
-        st.warning("Sem dados para o período selecionado.")
+        st.warning(t("comum.sem_dados_periodo"))
         return
 
     st.divider()
@@ -94,10 +95,10 @@ def render():
 </div>""", unsafe_allow_html=True)
 
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-    remover_estados  = col_f1.multiselect("Remover Estados",  options=sorted(df["estado"].dropna().unique()),  key="hist_rem_est")
-    remover_clientes = col_f2.multiselect("Remover Clientes", options=sorted(df["cliente"].dropna().unique()), key="hist_rem_cli")
-    faixa_horas      = col_f3.selectbox("Filtro por Horas",         ["Todos", "Até 24h", "+24h", "+48h", "+72h", "+96h"],                                                          key="hist_faixa_h")
-    faixa_dias       = col_f4.selectbox("Filtro por Faixa de Dias", ["Todos", "1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"], key="hist_faixa_d")
+    remover_estados  = col_f1.multiselect(t("comum.remover_estados"),  options=sorted(df["estado"].dropna().unique()),  key="hist_rem_est")
+    remover_clientes = col_f2.multiselect(t("comum.remover_clientes"), options=sorted(df["cliente"].dropna().unique()), key="hist_rem_cli")
+    faixa_horas      = col_f3.selectbox(t("comum.filtro_horas"),         [t("comum.todos"), t("comum.ate_24h"), "+24h", "+48h", "+72h", "+96h"],                                                          key="hist_faixa_h")
+    faixa_dias       = col_f4.selectbox(t("comum.filtro_dias"), [t("comum.todos"), "1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"], key="hist_faixa_d")
 
     df_f = df.copy()
     if remover_estados:
@@ -112,17 +113,17 @@ def render():
             if hi is not None: df_f = df_f[df_f["horas_max"] <= hi]
         else:
             faixas_fallback = {
-                "Até 24h": ["1 dia"],
+                t("comum.ate_24h"): ["1 dia"],
                 "+24h": ["1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
                 "+48h": ["5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"],
                 "+72h": ["10-20 dias", "20-30 dias", "30+ dias"],
             }
-            df_f = df_f[df_f["faixa_backlog_snapshot"].isin(faixas_fallback[faixa_horas])]
-    if faixa_dias != "Todos":
+            df_f = df_f[df_f["faixa_backlog_snapshot"].isin(faixas_fallback.get(faixa_horas, []))]
+    if faixa_dias != t("comum.todos"):
         df_f = df_f[df_f["faixa_backlog_snapshot"] == faixa_dias]
 
     if df_f.empty:
-        st.warning("Sem dados para o filtro selecionado.")
+        st.warning(t("comum.sem_dados_filtro"))
         return
 
     st.divider()
@@ -134,7 +135,7 @@ def render():
     usar_horas = df_f["horas_min"].notna().any()
 
     col1, col2, col3, col4, col5, col6 = st.columns(6)
-    col1.metric("Total no Período", fmt_numero(total_periodo))
+    col1.metric(t("historico.total_periodo"), fmt_numero(total_periodo))
     col2.metric("<24H",  fmt_numero(_soma_abaixo24(df_f, usar_horas)))
     col3.metric("+24H",  fmt_numero(_soma_acima(df_f, usar_horas, 24)))
     col4.metric("+48H",  fmt_numero(_soma_acima(df_f, usar_horas, 48)))

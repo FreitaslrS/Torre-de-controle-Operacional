@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.style import aplicar_css_global, rodape_autoria
+from utils.i18n import t
 
 # SVGs inline — sem dependência de CDN
 CARD_SVGS = {
@@ -14,14 +15,14 @@ CARD_SVGS = {
 }
 
 CARDS = [
-    ("backlog",       "Backlog Atual",     "Visão operacional em tempo real"),
-    ("historico",     "Backlog Histórico", "Análise e evolução histórica"),
-    ("produtividade", "Produtividade",     "Volume por turno e dispositivo"),
-    ("tempo",         "Tempo",             "SLA e tempo de processamento"),
-    ("health_check",  "Health Check",      "Saúde operacional consolidada"),
-    ("devolucoes",    "Devoluções",        "Pedidos devolvidos e P90"),
-    ("coletas",       "Coletas, Carregamento e Descarregamento", "Carregamento e descarregamento", "Coletas"),
-    ("importacao",    "Importação",        "Upload de planilhas"),
+    ("backlog",       lambda: t("card.backlog.titulo"),     lambda: t("card.backlog.sub")),
+    ("historico",     lambda: t("card.historico.titulo"),   lambda: t("card.historico.sub")),
+    ("produtividade", lambda: t("card.produtividade.titulo"), lambda: t("card.produtividade.sub")),
+    ("tempo",         lambda: t("card.tempo.titulo"),       lambda: t("card.tempo.sub")),
+    ("health_check",  lambda: t("card.health_check.titulo"), lambda: t("card.health_check.sub")),
+    ("devolucoes",    lambda: t("card.devolucoes.titulo"),  lambda: t("card.devolucoes.sub")),
+    ("coletas",       lambda: t("card.coletas.titulo"),     lambda: t("card.coletas.sub"), lambda: t("card.coletas.btn")),
+    ("importacao",    lambda: t("card.importacao.titulo"),  lambda: t("card.importacao.sub")),
 ]
 
 CARD_H = 160  # altura do card em px
@@ -52,10 +53,12 @@ def _card_html(pagina, titulo, subtitulo):
     """
 
 
-def _render_card(pagina, titulo, subtitulo, btn_label=None):
+def _render_card(pagina, titulo_fn, subtitulo_fn, btn_label_fn=None):
     """Renderiza card visual + botão transparente por cima (opacity:0, mesmo tamanho)."""
+    titulo = titulo_fn()
+    subtitulo = subtitulo_fn()
     st.markdown(_card_html(pagina, titulo, subtitulo), unsafe_allow_html=True)
-    clicked = st.button(btn_label or titulo, key=f"card_{pagina}", use_container_width=True)
+    clicked = st.button(btn_label_fn() if btn_label_fn else titulo, key=f"card_{pagina}", use_container_width=True)
     if clicked:
         st.session_state.page = pagina
         st.rerun()
@@ -96,14 +99,14 @@ def render():
 
     st.markdown('<div class="anjun-home-cards-active">', unsafe_allow_html=True)
 
-    st.markdown("""
+    st.markdown(f"""
     <div style="text-align:center;margin-bottom:2rem;">
         <h2 style="color:#053B31;font-size:22px;font-weight:700;margin-bottom:4px;
                    font-family:'Montserrat',sans-serif;">
-            Anjun Express — BI de Operações
+            {t("home.titulo")}
         </h2>
         <p style="color:#6b7280;font-size:13px;font-family:'Montserrat',sans-serif;">
-            Selecione um módulo para começar
+            {t("home.subtitulo")}
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -111,18 +114,18 @@ def render():
     # Linha 1: 4 cards
     cols1 = st.columns(4)
     for i in range(4):
-        pagina, titulo, subtitulo, *rest = CARDS[i]
+        pagina, titulo_fn, subtitulo_fn, *rest = CARDS[i]
         with cols1[i]:
-            _render_card(pagina, titulo, subtitulo, rest[0] if rest else None)
+            _render_card(pagina, titulo_fn, subtitulo_fn, rest[0] if rest else None)
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # Linha 2: 4 cards — mesma largura da linha 1
     cols2 = st.columns(4)
     for i, col in enumerate(cols2):
-        pagina, titulo, subtitulo, *rest = CARDS[4 + i]
+        pagina, titulo_fn, subtitulo_fn, *rest = CARDS[4 + i]
         with col:
-            _render_card(pagina, titulo, subtitulo, rest[0] if rest else None)
+            _render_card(pagina, titulo_fn, subtitulo_fn, rest[0] if rest else None)
 
     st.markdown('</div>', unsafe_allow_html=True)
 

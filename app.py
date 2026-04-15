@@ -20,6 +20,7 @@ import pages.devolucoes as _page_devolucoes
 import pages.coletas as _page_coletas
 import pages.importacao as _page_importacao
 from utils.style import aplicar_css_global
+from utils.i18n import t, render_seletor_idioma
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +71,17 @@ if "page" not in st.session_state:
 
 page = st.session_state.page
 
+render_seletor_idioma()
+
 if page != "home":
     col_back, col_mid, col_sair = st.columns([1, 7, 1])
     with col_back:
-        if st.button("← Home", key="btn_voltar_home"):
+        if st.button(t("nav.voltar_home"), key="btn_voltar_home"):
             st.session_state.page = "home"
             st.rerun()
     if page == "importacao" and st.session_state.get("autenticado"):
         with col_sair:
-            if st.button("Sair", key="btn_sair_importacao"):
+            if st.button(t("nav.sair"), key="btn_sair_importacao"):
                 st.session_state.autenticado = False
                 st.rerun()
 
