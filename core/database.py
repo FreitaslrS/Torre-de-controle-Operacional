@@ -1,9 +1,13 @@
-import streamlit as st
-import psycopg2
+import logging
 import os
+
 import pandas as pd
+import psycopg2
+import streamlit as st
 from contextlib import contextmanager
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -27,8 +31,8 @@ def _conn(url_env):
     finally:
         try:
             conn.close()
-        except Exception:
-            pass
+        except psycopg2.Error as e:
+            logger.warning("Erro ao fechar conexão: %s", e)
 
 
 def _consultar(url_env, query, params=None):

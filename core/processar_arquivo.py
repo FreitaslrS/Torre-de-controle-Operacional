@@ -136,12 +136,18 @@ def importar_excel(arquivo, data_referencia):
     df_backlog["nome_arquivo"]           = arquivo.name
     df_backlog["proximo_ponto"]          = df_backlog["proximo_ponto"].fillna("Sem informação")
 
-    # ── CAMADA 1: backlog_atual (snapshot atual por waybill) ──────────
+    _upsert_backlog_atual(df_backlog)
+    _inserir_historico(df_backlog, arquivo, agora)
+
+    limpar_historico_antigo()
+    return len(df_backlog)
+
+
+def _upsert_backlog_atual(df_backlog):
     existentes     = consultar_backlog("SELECT waybill FROM backlog_atual")
     existentes_set = set(existentes["waybill"]) if not existentes.empty else set()
-    novos_set      = set(df_backlog["waybill"])
+    removidos      = existentes_set - set(df_backlog["waybill"])
 
-    removidos = existentes_set - novos_set
     with _conn("DATABASE_URL_BACKLOG") as conn:
         cur = conn.cursor()
         if removidos:
@@ -166,7 +172,8 @@ def importar_excel(arquivo, data_referencia):
         conn.commit()
         cur.close()
 
-    # ── CAMADA 2: pedidos_resumo (agregado para gráficos históricos) ──
+
+def _inserir_historico(df_backlog, arquivo, agora):
     df_resumo = (
         df_backlog.groupby([
             "data_referencia", "estado", "cliente",
@@ -178,30 +185,27 @@ def importar_excel(arquivo, data_referencia):
     df_resumo["nome_arquivo"]    = arquivo.name
     df_resumo["data_importacao"] = datetime.now(timezone.utc)
 
+    colunas_resumo = [
+        "data_referencia", "estado", "cliente", "pre_entrega",
+        "proximo_ponto", "faixa_backlog_snapshot", "qtd",
+        "nome_arquivo", "data_importacao"
+    ]
+    colunas_bruto = [
+        "waybill", "cliente", "estado", "cidade", "pre_entrega", "proximo_ponto",
+        "entrada_hub1", "horas_backlog_snapshot", "faixa_backlog_snapshot",
+        "data_referencia", "data_importacao", "nome_arquivo"
+    ]
+
     with _conn("DATABASE_URL_HISTORICO") as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM pedidos_resumo WHERE nome_arquivo = %s", [arquivo.name])
-
-        colunas_resumo = [
-            "data_referencia", "estado", "cliente", "pre_entrega",
-            "proximo_ponto", "faixa_backlog_snapshot", "qtd",
-            "nome_arquivo", "data_importacao"
-        ]
         execute_values(cur,
             f"INSERT INTO pedidos_resumo ({','.join(colunas_resumo)}) VALUES %s",
             [tuple(None if pd.isna(v) else v for v in row)
              for row in df_resumo[colunas_resumo].itertuples(index=False, name=None)]
         )
-
-        # ── CAMADA 3: pedidos bruto — só 7 dias para drill down ──────────
         cur.execute("DELETE FROM pedidos WHERE data_referencia = %s", [agora.date()])
         cur.execute("DELETE FROM pedidos WHERE data_referencia < CURRENT_DATE - INTERVAL '7 days'")
-
-        colunas_bruto = [
-            "waybill", "cliente", "estado", "cidade", "pre_entrega", "proximo_ponto",
-            "entrada_hub1", "horas_backlog_snapshot", "faixa_backlog_snapshot",
-            "data_referencia", "data_importacao", "nome_arquivo"
-        ]
         execute_values(cur,
             f"INSERT INTO pedidos ({','.join(colunas_bruto)}) VALUES %s",
             [tuple(None if pd.isna(v) else v for v in row)
@@ -209,9 +213,6 @@ def importar_excel(arquivo, data_referencia):
         )
         conn.commit()
         cur.close()
-
-    limpar_historico_antigo()
-    return len(df_backlog)
 
 
 def importar_produtividade(arquivo):
@@ -530,6 +531,64 @@ def importar_devolucoes(arquivo, data_ref):
 # ================================
 # 📊 DEVOLUÇÃO - MONITORAMENTO (arquivo monitoramento_da_pontualidade)
 # ================================
+def _agregar_sla(df, col_estado, col_cliente, data_ref, nome_arquivo, agora):
+    """Agrega SLA de entrega a partir de df com assinatura/data_criacao/prazo_dias."""
+    df_ent = df[df["assinatura"].notna()].copy()
+    if df_ent.empty:
+        return pd.DataFrame()
+    df_ent["dias"]     = (df_ent["assinatura"] - df_ent["data_criacao"]).dt.total_seconds() / 86400
+    df_ent["prazo"]    = df_ent["prazo_dias"].fillna(7) if "prazo_dias" in df_ent.columns else 7
+    df_ent["no_prazo"] = df_ent["dias"] <= df_ent["prazo"]
+    agg = (
+        df_ent.groupby([col_estado, col_cliente, "cliente_fantasia"])
+        .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
+        .reset_index()
+        .rename(columns={col_estado: "estado", col_cliente: "cliente"})
+    )
+    agg["data_referencia"] = data_ref
+    agg["nome_arquivo"]    = nome_arquivo
+    agg["data_importacao"] = agora
+    return agg
+
+
+def _agregar_motivos(df, col_estado, col_cliente, data_ref, nome_arquivo, agora):
+    """Agrega motivos de devolução."""
+    df_mot = df[df["motivo"].notna()].copy()
+    if df_mot.empty:
+        return pd.DataFrame()
+    agg = (
+        df_mot.groupby([col_estado, "motivo", col_cliente, "cliente_fantasia"])
+        .size().reset_index(name="qtd")
+        .rename(columns={col_estado: "estado", col_cliente: "cliente"})
+    )
+    agg["data_referencia"] = data_ref
+    agg["nome_arquivo"]    = nome_arquivo
+    agg["data_importacao"] = agora
+    return agg
+
+
+def _agregar_dsp_sem3tent(df, col_estado, col_cliente, data_ref, nome_arquivo, agora):
+    """Agrega DSPs sem 3 tentativas."""
+    cols_req = ["motivo", "tent1", "tent3", "assinatura"]
+    if not all(c in df.columns for c in cols_req):
+        return pd.DataFrame()
+    dsp = df[
+        df["motivo"].notna() & df["tent1"].notna() &
+        df["tent3"].isna()   & df["assinatura"].isna()
+    ].copy()
+    if dsp.empty:
+        return pd.DataFrame()
+    agg = (
+        dsp.groupby(["ponto_entrada", col_estado, "motivo", col_cliente, "cliente_fantasia"])
+        .size().reset_index(name="qtd")
+        .rename(columns={col_estado: "estado", col_cliente: "cliente"})
+    )
+    agg["data_referencia"] = data_ref
+    agg["nome_arquivo"]    = nome_arquivo
+    agg["data_importacao"] = agora
+    return agg
+
+
 def importar_devolucao_monitoramento(arquivo, data_ref):
     df = xlsx_para_dataframe(
         arquivo,
@@ -548,49 +607,13 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
     agora       = datetime.now(timezone.utc)
-    sla_agg     = pd.DataFrame()
-    motivos_agg = pd.DataFrame()
-    dsp_agg     = pd.DataFrame()
+    sla_agg     = _agregar_sla(df, "estado", "cliente", data_ref, arquivo.name, agora)
+    motivos_agg = _agregar_motivos(df, "estado", "cliente", data_ref, arquivo.name, agora)
+    dsp_agg     = _agregar_dsp_sem3tent(df, "estado", "cliente", data_ref, arquivo.name, agora)
+
     colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
     colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
     colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
-
-    df_entregues = df[df["assinatura"].notna()].copy()
-    if not df_entregues.empty:
-        df_entregues["dias"]     = (df_entregues["assinatura"] - df_entregues["data_criacao"]).dt.total_seconds() / 86400
-        df_entregues["prazo"]    = df_entregues["prazo_dias"].fillna(7)
-        df_entregues["no_prazo"] = df_entregues["dias"] <= df_entregues["prazo"]
-        sla_agg = (
-            df_entregues.groupby(["estado", "cliente", "cliente_fantasia"])
-            .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
-            .reset_index()
-        )
-        sla_agg["data_referencia"] = data_ref
-        sla_agg["nome_arquivo"]    = arquivo.name
-        sla_agg["data_importacao"] = agora
-
-    df_motivos = df[df["motivo"].notna()].copy()
-    if not df_motivos.empty:
-        motivos_agg = (
-            df_motivos.groupby(["estado", "motivo", "cliente", "cliente_fantasia"])
-            .size().reset_index(name="qtd")
-        )
-        motivos_agg["data_referencia"] = data_ref
-        motivos_agg["nome_arquivo"]    = arquivo.name
-        motivos_agg["data_importacao"] = agora
-
-    dsp_sem3 = df[
-        df["motivo"].notna() & df["tent1"].notna() &
-        df["tent3"].isna()   & df["assinatura"].isna()
-    ].copy()
-    if not dsp_sem3.empty:
-        dsp_agg = (
-            dsp_sem3.groupby(["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia"])
-            .size().reset_index(name="qtd")
-        )
-        dsp_agg["data_referencia"] = data_ref
-        dsp_agg["nome_arquivo"]    = arquivo.name
-        dsp_agg["data_importacao"] = agora
 
     with _conn("DATABASE_URL_DEVOLUCOES") as conn:
         cur = conn.cursor()
@@ -890,69 +913,32 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
 
         df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
 
-        df_entregues = df_mon_full[df_mon_full["assinatura"].notna()].copy() if "assinatura" in df_mon_full.columns else pd.DataFrame()
-        if not df_entregues.empty:
-            df_entregues["dias"] = (
-                (df_entregues["assinatura"] - df_entregues["data_criacao"]).dt.total_seconds() / 86400
-            )
-            df_entregues["prazo"]    = df_entregues["prazo_dias"].fillna(7) if "prazo_dias" in df_entregues.columns else 7
-            df_entregues["no_prazo"] = df_entregues["dias"] <= df_entregues["prazo"]
-            sla_agg = (
-                df_entregues.groupby(["estado_dest", "cliente_mon", "cliente_fantasia"])
-                .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
-                .reset_index()
-                .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
-            )
-            sla_agg["data_referencia"] = data_ref
-            sla_agg["nome_arquivo"]    = nome_arq
-            sla_agg["data_importacao"] = agora
-            colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
+        sla_agg     = _agregar_sla(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
+        motivos_agg = _agregar_motivos(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
+        dsp_agg     = _agregar_dsp_sem3tent(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
+
+        colunas_sla = ["estado", "data_referencia", "cliente", "cliente_fantasia", "qtd_total", "qtd_no_prazo", "nome_arquivo", "data_importacao"]
+        colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+        colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+
+        if not sla_agg.empty:
             execute_values(cur,
                 f"INSERT INTO dev_sla_semanal ({','.join(colunas_sla)}) VALUES %s",
                 [tuple(_val(v) for v in row)
                  for row in sla_agg[colunas_sla].itertuples(index=False, name=None)]
             )
-
-        df_motivos = df_mon_full[df_mon_full["motivo"].notna()].copy() if "motivo" in df_mon_full.columns else pd.DataFrame()
-        if not df_motivos.empty:
-            motivos_agg = (
-                df_motivos.groupby(["estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
-                .size().reset_index(name="qtd")
-                .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
-            )
-            motivos_agg["data_referencia"] = data_ref
-            motivos_agg["nome_arquivo"]    = nome_arq
-            motivos_agg["data_importacao"] = agora
-            colunas_mot = ["estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
+        if not motivos_agg.empty:
             execute_values(cur,
                 f"INSERT INTO dev_motivos_semanal ({','.join(colunas_mot)}) VALUES %s",
                 [tuple(_val(v) for v in row)
                  for row in motivos_agg[colunas_mot].itertuples(index=False, name=None)]
             )
-
-        cols_dsp = ["motivo", "tent1", "tent3", "assinatura"]
-        if all(c in df_mon_full.columns for c in cols_dsp):
-            dsp_sem3 = df_mon_full[
-                df_mon_full["motivo"].notna() &
-                df_mon_full["tent1"].notna() &
-                df_mon_full["tent3"].isna() &
-                df_mon_full["assinatura"].isna()
-            ].copy()
-            if not dsp_sem3.empty:
-                dsp_agg = (
-                    dsp_sem3.groupby(["ponto_entrada", "estado_dest", "motivo", "cliente_mon", "cliente_fantasia"])
-                    .size().reset_index(name="qtd")
-                    .rename(columns={"estado_dest": "estado", "cliente_mon": "cliente"})
-                )
-                dsp_agg["data_referencia"] = data_ref
-                dsp_agg["nome_arquivo"]    = nome_arq
-                dsp_agg["data_importacao"] = agora
-                colunas_dsp = ["ponto_entrada", "estado", "motivo", "cliente", "cliente_fantasia", "data_referencia", "qtd", "nome_arquivo", "data_importacao"]
-                execute_values(cur,
-                    f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
-                    [tuple(_val(v) for v in row)
-                     for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
-                )
+        if not dsp_agg.empty:
+            execute_values(cur,
+                f"INSERT INTO dev_dsp_sem3tent ({','.join(colunas_dsp)}) VALUES %s",
+                [tuple(_val(v) for v in row)
+                 for row in dsp_agg[colunas_dsp].itertuples(index=False, name=None)]
+            )
 
         conn.commit()
         cur.close()
