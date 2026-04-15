@@ -352,15 +352,17 @@ def _ler_produtividade(arquivo):
 def importar_produtividade(arquivo):
     df = _ler_produtividade(arquivo)
     if df.empty:
-        return 0
+        return {"registros": 0, "detalhe": "Arquivo vazio"}
+    linhas = len(df)
     df_agg = _transformar_produtividade(df)
     if df_agg.empty:
-        return 0
+        return {"registros": 0, "detalhe": f"{linhas:,} lidas → 0 após filtros"}
     df_agg["nome_arquivo"]    = arquivo.name
     df_agg["data_importacao"] = datetime.now(timezone.utc)
     _persistir_produtividade(df_agg, arquivo.name)
     limpar_historico_antigo()
-    return len(df_agg)
+    grupos = len(df_agg)
+    return {"registros": grupos, "detalhe": f"{linhas:,} lidas → {grupos:,} grupos cliente/data/hora/turno/dispositivo"}
 
 
 def _persistir_produtividade(df_agg, nome_arquivo):
@@ -403,16 +405,16 @@ def importar_tempo_processamento(arquivo):
     df.columns = ["waybill", "estado", "cliente", "pre_entrega", "ponto_entrada",
                   "entrada_hub1", "saida_hub1", "hiata"]
     if df.empty:
-        return 0
-
+        return {"registros": 0, "detalhe": "Arquivo vazio"}
+    linhas = len(df)
     agg = _transformar_tempo_processamento(df)
     agg["data_snapshot"]   = datetime.now(timezone.utc).date()
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
-
     _persistir_tempo_processamento(agg, arquivo.name)
     limpar_historico_antigo()
-    return len(agg)
+    grupos = len(agg)
+    return {"registros": grupos, "detalhe": f"{linhas:,} lidas → {grupos:,} grupos estado/hiata/cliente/data"}
 
 
 def _persistir_tempo_processamento(agg, nome_arquivo):
@@ -498,16 +500,18 @@ def _ler_p90(arquivo):
 def importar_p90(arquivo, data_ref):
     df = _ler_p90(arquivo)
     if df.empty:
-        return 0
+        return {"registros": 0, "detalhe": "Arquivo vazio"}
+    linhas = len(df)
     agg = _transformar_p90(df, data_ref)
     if agg.empty:
-        return 0
+        return {"registros": 0, "detalhe": f"{linhas:,} lidas → 0 devoluções encontradas"}
     agg["data_referencia"] = data_ref
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
     _persistir_p90_arquivo(agg, arquivo.name)
     limpar_historico_antigo()
-    return len(agg)
+    grupos = len(agg)
+    return {"registros": grupos, "detalhe": f"{linhas:,} lidas → {grupos:,} grupos estado/cliente"}
 
 
 def _agregar_status_iata_folha(df, semana, ano, data_ref, nome_arquivo, agora):
@@ -569,23 +573,22 @@ def _persistir_devolucoes(status_agg, iata_agg, nome_arquivo):
 def importar_devolucoes(arquivo, data_ref):
     df = xlsx_para_dataframe(arquivo)
     if df.empty:
-        return 0
-
+        return {"registros": 0, "detalhe": "Arquivo vazio"}
+    linhas = len(df)
     df.columns = [
         "waybill", "status", "tipo_operacao", "cliente",
         "data_operacao", "proximo_ponto", "operador",
         "ponto_operacao", "estado", "regiao"
     ]
-
     data_ref_ts = pd.Timestamp(data_ref)
     semana = data_ref_ts.strftime("w%V")
     ano    = int(data_ref_ts.year)
     agora  = datetime.now(timezone.utc)
-
     status_agg, iata_agg = _agregar_status_iata_folha(df, semana, ano, data_ref, arquivo.name, agora)
     _persistir_devolucoes(status_agg, iata_agg, arquivo.name)
     limpar_historico_antigo()
-    return len(status_agg) + len(iata_agg)
+    grupos = len(status_agg) + len(iata_agg)
+    return {"registros": grupos, "detalhe": f"{linhas:,} lidas → {grupos:,} grupos status/iata"}
 
 
 # ================================
@@ -798,7 +801,8 @@ def _ler_monitoramento_simples(arquivo):
 def importar_devolucao_monitoramento(arquivo, data_ref):
     df = _ler_monitoramento_simples(arquivo)
     if df.empty:
-        return 0
+        return {"registros": 0, "detalhe": "Arquivo vazio"}
+    linhas = len(df)
     agora       = datetime.now(timezone.utc)
     sla_agg     = _agregar_sla(df, "estado", "cliente", data_ref, arquivo.name, agora)
     motivos_agg = _agregar_motivos(df, "estado", "cliente", data_ref, arquivo.name, agora)
@@ -809,7 +813,8 @@ def importar_devolucao_monitoramento(arquivo, data_ref):
         conn.commit()
         cur.close()
     limpar_historico_antigo()
-    return len(sla_agg) + len(motivos_agg) + len(dsp_agg)
+    grupos = len(sla_agg) + len(motivos_agg) + len(dsp_agg)
+    return {"registros": grupos, "detalhe": f"{linhas:,} lidas → {grupos:,} grupos sla/motivos/dsp"}
 
 
 def _ler_monitoramento(arquivo_monitor):
@@ -866,9 +871,9 @@ def _preparar_df_detalhado(df_dev, df_mon, data_ref, nome_arq, agora):
 # ================================
 def importar_pacotes_grandes(arquivo, data_ref=None):
     df = xlsx_para_dataframe(arquivo)
-
     if df.empty:
-        return 0
+        return {"registros": 0, "detalhe": "Arquivo vazio"}
+    linhas = len(df)
 
     df.columns = [
         "data_criacao", "cliente", "id_cliente", "pedido_cliente", "waybill_mae",
@@ -911,8 +916,7 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
         execute_values(cur, f"INSERT INTO pacotes_grandes ({','.join(colunas)}) VALUES %s", values)
         conn.commit()
         cur.close()
-
-    return len(df)
+    return {"registros": linhas, "detalhe": f"{linhas:,} pacotes grandes importados"}
 # ================================
 # 📊 DEVOLUÇÃO ENRIQUECIDA (Folha + Monitoramento)
 # ================================
@@ -949,15 +953,14 @@ def _persistir_enriquecida(cur, df_save, colunas_det, df, df_mon_full,
 def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
     df_dev = _ler_folha_devolucao(arquivo_folha)
     df_mon_full, df_mon = _ler_monitoramento(arquivo_monitor)
-
+    linhas_folha = len(df_dev)
+    linhas_mon   = len(df_mon_full)
     ref_ts   = pd.Timestamp(data_ref)
     semana   = ref_ts.strftime("w%V")
     ano      = int(ref_ts.year)
     nome_arq = f"{arquivo_folha.name}+{arquivo_monitor.name}"
     agora    = datetime.now(timezone.utc)
-
     df = _preparar_df_detalhado(df_dev, df_mon, data_ref, nome_arq, agora)
-
     colunas_det = [
         "waybill", "status", "tipo_operacao", "cliente", "data_operacao",
         "ponto_operacao", "estado_dest", "cidade_dest", "pre_entrega",
@@ -968,16 +971,14 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
         if col not in df.columns:
             df[col] = None
     df_save = df[colunas_det].copy()
-
     with _conn("DATABASE_URL_DEVOLUCOES") as conn:
         cur = conn.cursor()
         _persistir_enriquecida(cur, df_save, colunas_det, df, df_mon_full,
                                semana, ano, data_ref, nome_arq, agora)
         conn.commit()
         cur.close()
-
     limpar_historico_antigo()
-    return len(df_save)
+    return {"registros": len(df_save), "detalhe": f"Folha: {linhas_folha:,} lidas | Monitor: {linhas_mon:,} lidas → {len(df_save):,} registros detalhados"}
 
 
 # ================================
@@ -1066,19 +1067,22 @@ def importar_coletas(arquivo, data_ref):
     """Importa arquivo onde col I (proximo_ponto) = SP-RR-001 (recebemos das bases)."""
     df = xlsx_para_dataframe(arquivo)
     if df.empty:
-        return 0
+        return {"registros": 0, "detalhe": "Arquivo vazio"}
+    linhas = len(df)
     df = _coletas_colunas_base(df)
     df = df[df["proximo_ponto"] == "SP-RR-001"].copy()
     if df.empty:
-        return 0
-    return _salvar_coletas(df, arquivo, data_ref, "descarregamento")
+        return {"registros": 0, "detalhe": f"{linhas:,} lidas → 0 com proximo_ponto=SP-RR-001"}
+    qtd = _salvar_coletas(df, arquivo, data_ref, "descarregamento")
+    return {"registros": qtd, "detalhe": f"{linhas:,} lidas → {qtd:,} veículos descarregados em Perus"}
 
 
 def importar_coletas_saida(arquivo, data_ref):
     """Importa arquivo onde col H (local_carregamento) = SP-RR-001 (enviamos para as bases)."""
     df = xlsx_para_dataframe(arquivo)
     if df.empty:
-        return 0
+        return {"registros": 0, "detalhe": "Arquivo vazio"}
+    linhas = len(df)
     df = _coletas_colunas_base(df)
     df = df[
         (df["local_carregamento"] == "SP-RR-001") &
@@ -1086,8 +1090,9 @@ def importar_coletas_saida(arquivo, data_ref):
         (df["proximo_ponto"].notna())
     ].copy()
     if df.empty:
-        return 0
-    return _salvar_coletas(df, arquivo, data_ref, "saida")
+        return {"registros": 0, "detalhe": f"{linhas:,} lidas → 0 com local_carregamento=SP-RR-001"}
+    qtd = _salvar_coletas(df, arquivo, data_ref, "saida")
+    return {"registros": qtd, "detalhe": f"{linhas:,} lidas → {qtd:,} veículos saídos de Perus"}
 
 
 def _parse_linha_presenca(row, data_atual, nome_arquivo, data_importacao):
@@ -1178,7 +1183,6 @@ def importar_presenca(arquivo):
             rows_diario.append(rd)
 
     if not rows_turno:
-        return 0
-
+        return {"registros": 0, "detalhe": "Nenhuma linha de turno encontrada"}
     _persistir_presenca(rows_turno, rows_diario, nome_arquivo)
-    return len(rows_turno)
+    return {"registros": len(rows_turno), "detalhe": f"{len(rows_turno):,} turnos | {len(rows_diario):,} registros diários"}

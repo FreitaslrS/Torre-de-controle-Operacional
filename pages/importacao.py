@@ -2,7 +2,6 @@ import streamlit as st
 import time
 import pandas as pd
 from datetime import date, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from dotenv import load_dotenv
 
@@ -320,72 +319,44 @@ def render():
             st.warning("Selecione o arquivo de Monitoramento de Pontualidade")
             return
 
-        progress = st.progress(0)
-        log_area = st.empty()
-        log_linhas = []
-
-        resultados = []
-        logs = []
+        resultados    = []
+        logs          = []
         total_registros = 0
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [
-                executor.submit(
-                    processar_arquivo_individual, arq, data_ref, tipo_importacao,
-                    arquivo_monitor_secundario
+        with st.status("Processando arquivos...", expanded=True) as status_box:
+            for i, arq in enumerate(arquivos):
+                n     = i + 1
+                total = len(arquivos)
+                st.write(f"[{n}/{total}] Lendo `{arq.name}`...")
+                inicio = time.time()
+                r = processar_arquivo_individual(
+                    arq, data_ref, tipo_importacao, arquivo_monitor_secundario
                 )
-                for arq in arquivos
-            ]
-
-            for i, future in enumerate(as_completed(futures)):
-                try:
-                    r = future.result()
-                except Exception as exc:
-                    r = {
-                        "arquivo": "desconhecido",
-                        "status": f"Erro interno: {type(exc).__name__}: {exc}",
-                        "registros": 0,
-                        "detalhe": "",
-                        "tempo": 0,
-                    }
-
+                tempo = time.time() - inicio
                 registros = r["registros"] or 0
                 total_registros += registros
-                n = i + 1
-                total = len(arquivos)
 
-                # Monta linha de log estilo Luis
-                linha_ok  = f"✓ [{n}/{total}] {r['arquivo']}: {registros:,} registros ({r['tempo']:.1f}s)"
-                linha_det = f"   {r['detalhe']}" if r.get("detalhe") else ""
-                if r["status"] != "Sucesso":
-                    linha_ok = f"✗ [{n}/{total}] {r['arquivo']}: {r['status']}"
+                if r["status"] == "Sucesso":
+                    st.write(f"✓ `{arq.name}`: {registros:,} registros ({tempo:.1f}s)")
+                    if r.get("detalhe"):
+                        st.caption(r["detalhe"])
+                else:
+                    st.write(f"✗ `{arq.name}`: {r['status']}")
 
-                log_linhas.append(linha_ok)
-                if linha_det:
-                    log_linhas.append(linha_det)
-                log_area.code("\n".join(log_linhas), language=None)
+                resultados.append({"arquivo": r["arquivo"], "status": r["status"], "registros": registros})
+                logs.append({"id": i, "nome_arquivo": r["arquivo"], "status": r["status"],
+                             "registros": registros, "tempo_segundos": tempo,
+                             "data_importacao": pd.Timestamp.now()})
 
-                resultados.append({
-                    "arquivo":   r["arquivo"],
-                    "status":    r["status"],
-                    "registros": registros
-                })
-                logs.append({
-                    "id":              i,
-                    "nome_arquivo":    r["arquivo"],
-                    "status":          r["status"],
-                    "registros":       r["registros"],
-                    "tempo_segundos":  r["tempo"],
-                    "data_importacao": pd.Timestamp.now()
-                })
-                progress.progress(n / total)
+            status_box.update(
+                label=f"✓ Importação concluída — {total_registros:,} registros",
+                state="complete"
+            )
 
         df_logs = pd.DataFrame(logs)
         salvar_log_importacao(df_logs)
-
         st.session_state.resultado_importacao = resultados
         st.session_state.total_importado = total_registros
-
         st.cache_data.clear()
         st.rerun()
 
