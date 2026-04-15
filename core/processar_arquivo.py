@@ -66,6 +66,16 @@ def _classificar_turno_e_data(dt):
         return "T3", data_op
 
 
+def _classificar_faixa_backlog(h):
+    if pd.isna(h) or h < 0: return None
+    elif h <= 24:   return "1 dia"
+    elif h <= 120:  return "1-5 dias"
+    elif h <= 240:  return "5-10 dias"
+    elif h <= 480:  return "10-20 dias"
+    elif h <= 720:  return "20-30 dias"
+    else:           return "30+ dias"
+
+
 def _data_do_waybill(waybill):
     try:
         w = str(waybill).strip()
@@ -182,16 +192,7 @@ def importar_excel(arquivo, data_referencia):
         (agora - df_backlog["entrada_hub1"]).dt.total_seconds() / 3600
     )
 
-    def classificar_faixa(h):
-        if pd.isna(h) or h < 0: return None
-        elif h <= 24:   return "1 dia"
-        elif h <= 120:  return "1-5 dias"
-        elif h <= 240:  return "5-10 dias"
-        elif h <= 480:  return "10-20 dias"
-        elif h <= 720:  return "20-30 dias"
-        else:           return "30+ dias"
-
-    df_backlog["faixa_backlog_snapshot"] = df_backlog["horas_backlog_snapshot"].apply(classificar_faixa)
+    df_backlog["faixa_backlog_snapshot"] = df_backlog["horas_backlog_snapshot"].apply(_classificar_faixa_backlog)
     df_backlog["data_referencia"]        = agora.date()
     df_backlog["data_importacao"]        = datetime.now(timezone.utc)
     df_backlog["nome_arquivo"]           = arquivo.name
@@ -480,12 +481,37 @@ def importar_p90(arquivo, data_ref):
     return len(agg)
 
 
+def _agregar_status_iata_folha(df, semana, ano, data_ref, nome_arquivo, agora):
+    """Agrega status e iata a partir da folha de devolução."""
+    status_agg = (
+        df.groupby(["status", "estado", "cliente"])
+        .size().reset_index(name="qtd")
+    )
+    status_agg["semana"]           = semana
+    status_agg["ano"]              = ano
+    status_agg["data_referencia"]  = data_ref
+    status_agg["nome_arquivo"]     = nome_arquivo
+    status_agg["data_importacao"]  = agora
+    status_agg["cliente_fantasia"] = None
+
+    iata_agg = (
+        df.groupby(["ponto_operacao", "estado"])
+        .size().reset_index(name="qtd")
+    )
+    iata_agg["semana"]           = semana
+    iata_agg["ano"]              = ano
+    iata_agg["data_referencia"]  = data_ref
+    iata_agg["nome_arquivo"]     = nome_arquivo
+    iata_agg["data_importacao"]  = agora
+    iata_agg["cliente_fantasia"] = None
+    return status_agg, iata_agg
+
+
 # ================================
 # 🔁 DEVOLUÇÃO (arquivo Folha_de_registro)
 # ================================
 def importar_devolucoes(arquivo, data_ref):
     df = xlsx_para_dataframe(arquivo)
-
     if df.empty:
         return 0
 
@@ -495,36 +521,12 @@ def importar_devolucoes(arquivo, data_ref):
         "ponto_operacao", "estado", "regiao"
     ]
 
-    # Deriva semana e ano a partir da data de referência
     data_ref_ts = pd.Timestamp(data_ref)
     semana = data_ref_ts.strftime("w%V")
     ano    = int(data_ref_ts.year)
+    agora  = datetime.now(timezone.utc)
 
-    agora = datetime.now(timezone.utc)
-
-    status_agg = (
-        df.groupby(["status", "estado", "cliente"])
-        .size()
-        .reset_index(name="qtd")
-    )
-    status_agg["semana"]           = semana
-    status_agg["ano"]              = ano
-    status_agg["data_referencia"]  = data_ref
-    status_agg["nome_arquivo"]     = arquivo.name
-    status_agg["data_importacao"]  = agora
-    status_agg["cliente_fantasia"] = None
-
-    iata_agg = (
-        df.groupby(["ponto_operacao", "estado"])
-        .size()
-        .reset_index(name="qtd")
-    )
-    iata_agg["semana"]           = semana
-    iata_agg["ano"]              = ano
-    iata_agg["data_referencia"]  = data_ref
-    iata_agg["nome_arquivo"]     = arquivo.name
-    iata_agg["data_importacao"]  = agora
-    iata_agg["cliente_fantasia"] = None
+    status_agg, iata_agg = _agregar_status_iata_folha(df, semana, ano, data_ref, arquivo.name, agora)
 
     colunas_status = [
         "estado", "status", "semana", "ano", "data_referencia", "cliente",
