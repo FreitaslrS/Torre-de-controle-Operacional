@@ -281,45 +281,43 @@ def _inserir_historico(df_backlog, arquivo, agora):
         cur.close()
 
 
-def importar_produtividade(arquivo):
-    # Colunas: D=3 (cliente), I=8 (data_hora), U=20 (operador)
-    df = xlsx_para_dataframe(arquivo, usecols=[3, 8, 20])
-    df.columns = ["cliente", "data_hora", "operador"]
-
-    if df.empty:
-        return 0
-
-    df = df[df["data_hora"].notna()]
+def _transformar_produtividade(df):
+    """Filtra, classifica dispositivo, turno/data e agrega por hora."""
+    df = df[df["data_hora"].notna()].copy()
     df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce")
     df = df[df["data_hora"].notna()]
-
-    # Remove devoluções e operadores MG
     mask_remover = (
         df["operador"].astype(str).str.upper().str.contains("DEVOL", na=False) |
         df["operador"].astype(str).str.upper().str.startswith("MG", na=False)
     )
     df = df[~mask_remover]
-
     if df.empty:
-        return 0
-
+        return df
     df["dispositivo"] = df["operador"].apply(_classificar_dispositivo)
-
     turnos_datas = df["data_hora"].apply(
         lambda dt: pd.Series(_classificar_turno_e_data(dt), index=["turno", "data"])
     )
     df[["turno", "data"]] = turnos_datas
     df["hora"] = df["data_hora"].dt.hour
-
-    df_agg = (
+    return (
         df.groupby(["cliente", "data", "hora", "turno", "dispositivo"])
         .size()
         .reset_index(name="volumes")
     )
 
+
+def importar_produtividade(arquivo):
+    df = xlsx_para_dataframe(arquivo, usecols=[3, 8, 20])
+    df.columns = ["cliente", "data_hora", "operador"]
+    if df.empty:
+        return 0
+
+    df_agg = _transformar_produtividade(df)
+    if df_agg.empty:
+        return 0
+
     df_agg["nome_arquivo"]    = arquivo.name
     df_agg["data_importacao"] = datetime.now(timezone.utc)
-
     _persistir_produtividade(df_agg, arquivo.name)
     limpar_historico_antigo()
     return len(df_agg)
@@ -347,45 +345,27 @@ def _agregar_tempo_processamento(df):
     ).reset_index()
 
 
-def importar_tempo_processamento(arquivo):
-    # Lê só colunas necessárias
-    df = xlsx_para_dataframe(
-        arquivo,
-        usecols=[0, 11, 21, 24, 25, 41, 42, 43]
-    )
-    df.columns = [
-        "waybill", "estado", "cliente",
-        "pre_entrega", "ponto_entrada",
-        "entrada_hub1", "saida_hub1", "hiata"
-    ]
+def _transformar_tempo_processamento(df):
+    """Aplica filtros, calcula tempo_horas, status SLA e agrega."""
+    df["entrada_hub1"] = pd.to_datetime(df["entrada_hub1"], errors="coerce")
+    df["saida_hub1"]   = pd.to_datetime(df["saida_hub1"],   errors="coerce")
+    df = df[df["entrada_hub1"].notna()].copy()
+    df["data"]        = df["entrada_hub1"].dt.date
+    df["tempo_horas"] = (df["saida_hub1"] - df["entrada_hub1"]).dt.total_seconds() / 3600
+    df = df[(df["tempo_horas"].isna()) | ((df["tempo_horas"] >= 0) & (df["tempo_horas"] <= 240))]
+    df["hiata"]  = df["hiata"].astype(str).str.strip().str.upper()
+    df["status"] = df.apply(_classificar_status_sla, axis=1)
+    return _agregar_tempo_processamento(df)
 
+
+def importar_tempo_processamento(arquivo):
+    df = xlsx_para_dataframe(arquivo, usecols=[0, 11, 21, 24, 25, 41, 42, 43])
+    df.columns = ["waybill", "estado", "cliente", "pre_entrega", "ponto_entrada",
+                  "entrada_hub1", "saida_hub1", "hiata"]
     if df.empty:
         return 0
 
-    df["entrada_hub1"] = pd.to_datetime(df["entrada_hub1"], errors="coerce")
-    df["saida_hub1"]   = pd.to_datetime(df["saida_hub1"],   errors="coerce")
-    df = df[df["entrada_hub1"].notna()]
-    df["data"] = df["entrada_hub1"].dt.date
-
-    # Tempo em horas
-    df["tempo_horas"] = (
-        (df["saida_hub1"] - df["entrada_hub1"])
-        .dt.total_seconds() / 3600
-    )
-
-    # Remove tempos absurdos
-    df = df[
-        (df["tempo_horas"].isna()) |
-        ((df["tempo_horas"] >= 0) & (df["tempo_horas"] <= 240))
-    ]
-
-    # Hiata padronizado
-    df["hiata"] = df["hiata"].astype(str).str.strip().str.upper()
-
-    df["status"] = df.apply(_classificar_status_sla, axis=1)
-
-    agg = _agregar_tempo_processamento(df)
-
+    agg = _transformar_tempo_processamento(df)
     agg["data_snapshot"]   = datetime.now(timezone.utc).date()
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
@@ -434,6 +414,32 @@ def _persistir_p90_arquivo(agg, nome_arquivo):
         cur.close()
 
 
+def _transformar_p90(df, data_ref):
+    """Filtra, extrai data_criacao, calcula dias e agrega p90."""
+    df = df[df["status"] == "Recebido de devolução"].copy()
+    if df.empty:
+        return df
+    df["data_operacao"] = pd.to_datetime(df["data_operacao"], errors="coerce")
+    df = df[df["data_operacao"].notna()]
+    df["data_criacao"] = df["waybill"].apply(_extrair_data_criacao)
+    df = df[df["data_criacao"].notna()]
+    df["dias"] = (df["data_operacao"] - df["data_criacao"]).dt.days
+    df = df[df["dias"] >= 0]
+    if df.empty:
+        return df
+    ref_ts = pd.Timestamp(data_ref)
+    df["semana"] = ref_ts.strftime("w%V")
+    df["ano"]    = int(ref_ts.year)
+    return (
+        df.groupby(["estado", "semana", "ano", "cliente"])
+        .agg(
+            p90_dias    = ("dias", lambda x: round(float(np.percentile(x, 90)), 1)),
+            qtd_pedidos = ("dias", "count")
+        )
+        .reset_index()
+    )
+
+
 # ================================
 # 📊 DEVOLUÇÃO — P90
 # ================================
@@ -447,35 +453,14 @@ def importar_p90(arquivo, data_ref):
         "data_operacao", "proximo_ponto", "operador",
         "ponto_operacao", "estado", "regiao"
     ]
-    df = df[df["status"] == "Recebido de devolução"].copy()
-    if df.empty:
+
+    agg = _transformar_p90(df, data_ref)
+    if agg.empty:
         return 0
 
-    df["data_operacao"] = pd.to_datetime(df["data_operacao"], errors="coerce")
-    df = df[df["data_operacao"].notna()]
-    df["data_criacao"] = df["waybill"].apply(_extrair_data_criacao)
-    df = df[df["data_criacao"].notna()]
-    df["dias"] = (df["data_operacao"] - df["data_criacao"]).dt.days
-    df = df[df["dias"] >= 0]
-    if df.empty:
-        return 0
-
-    ref_ts = pd.Timestamp(data_ref)
-    df["semana"] = ref_ts.strftime("w%V")
-    df["ano"]    = int(ref_ts.year)
-
-    agg = (
-        df.groupby(["estado", "semana", "ano", "cliente"])
-        .agg(
-            p90_dias    = ("dias", lambda x: round(float(np.percentile(x, 90)), 1)),
-            qtd_pedidos = ("dias", "count")
-        )
-        .reset_index()
-    )
     agg["data_referencia"] = data_ref
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
-
     _persistir_p90_arquivo(agg, arquivo.name)
     limpar_historico_antigo()
     return len(agg)
@@ -507,6 +492,33 @@ def _agregar_status_iata_folha(df, semana, ano, data_ref, nome_arquivo, agora):
     return status_agg, iata_agg
 
 
+def _persistir_devolucoes(status_agg, iata_agg, nome_arquivo):
+    colunas_status = [
+        "estado", "status", "semana", "ano", "data_referencia", "cliente",
+        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+    ]
+    colunas_iata = [
+        "ponto_operacao", "estado", "semana", "ano", "data_referencia",
+        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
+    ]
+    with _conn("DATABASE_URL_DEVOLUCOES") as conn:
+        cur = conn.cursor()
+        for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
+            cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arquivo])
+        execute_values(cur,
+            f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
+            [tuple(None if pd.isna(v) else v for v in row)
+             for row in status_agg[colunas_status].itertuples(index=False, name=None)]
+        )
+        execute_values(cur,
+            f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
+            [tuple(None if pd.isna(v) else v for v in row)
+             for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
+        )
+        conn.commit()
+        cur.close()
+
+
 # ================================
 # 🔁 DEVOLUÇÃO (arquivo Folha_de_registro)
 # ================================
@@ -527,33 +539,7 @@ def importar_devolucoes(arquivo, data_ref):
     agora  = datetime.now(timezone.utc)
 
     status_agg, iata_agg = _agregar_status_iata_folha(df, semana, ano, data_ref, arquivo.name, agora)
-
-    colunas_status = [
-        "estado", "status", "semana", "ano", "data_referencia", "cliente",
-        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
-    ]
-    colunas_iata = [
-        "ponto_operacao", "estado", "semana", "ano", "data_referencia",
-        "cliente_fantasia", "qtd", "nome_arquivo", "data_importacao"
-    ]
-
-    with _conn("DATABASE_URL_DEVOLUCOES") as conn:
-        cur = conn.cursor()
-        for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
-            cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [arquivo.name])
-        execute_values(cur,
-            f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
-             for row in status_agg[colunas_status].itertuples(index=False, name=None)]
-        )
-        execute_values(cur,
-            f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
-             for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
-        )
-        conn.commit()
-        cur.close()
-
+    _persistir_devolucoes(status_agg, iata_agg, arquivo.name)
     limpar_historico_antigo()
     return len(status_agg) + len(iata_agg)
 
