@@ -795,12 +795,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "col.sem_dados_desc": {
         "pt": "Sem dados. Importe um arquivo do tipo 'Coletas — Descarregamento em Perus'.",
         "en": "No data. Import a file of type 'Collections — Unloading in Perus'.",
-        "zh": "暂无数据。请导入"收件 — Perus卸车"类型文件。",
+        "zh": "暂无数据。请导入「收件 — Perus卸车」类型文件。",
     },
     "col.sem_dados_saida": {
         "pt": "Sem dados. Importe um arquivo do tipo 'Coletas — Saída para Bases'.",
         "en": "No data. Import a file of type 'Collections — Departure to Hubs'.",
-        "zh": "暂无数据。请导入"收件 — 出件至基地"类型文件。",
+        "zh": "暂无数据。请导入「收件 — 出件至基地」类型文件。",
     },
     "col.sem_registros_desc": {
         "pt": "Sem registros de descarregamento para a data selecionada.",
