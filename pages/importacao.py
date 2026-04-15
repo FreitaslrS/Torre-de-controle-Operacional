@@ -225,7 +225,7 @@ def render():
 
     st.markdown("## Importação de Dados", unsafe_allow_html=True)
 
-    _LIMITE_MB = 50
+    _LIMITE_MB = 200
     arquivos = st.file_uploader(
         f"Selecione arquivos Excel (máx. {_LIMITE_MB} MB por arquivo)",
         type=["xlsx", "xls"],
