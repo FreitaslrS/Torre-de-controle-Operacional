@@ -17,6 +17,7 @@ from core.repository import (
 from utils.theme import grafico_barra, grafico_pizza, aplicar_layout_padrao
 from utils.style import tabela_padrao, aplicar_css_global, rodape_autoria
 from utils.semana import semana_para_datas, datas_para_label
+from utils.i18n import t
 
 TODOS_ESTADOS = [
     "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO",
@@ -56,11 +57,11 @@ def _cliente_multiselect(key, clientes_df):
     Retorna lista de cliente_cod selecionados — [] significa Todos.
     """
     if clientes_df.empty:
-        st.caption("💡 Importe 'Devolução - Monitoramento' para filtrar por cliente")
+        st.caption(f"💡 {t('dev.importar_mon')}")
         return []
 
     fantasia_opts = sorted(clientes_df["cliente_fantasia"].dropna().unique().tolist())
-    selecionados  = st.multiselect("Cliente", fantasia_opts, key=key)
+    selecionados  = st.multiselect(t("comum.cliente"), fantasia_opts, key=key)
 
     if not selecionados:
         return []
@@ -70,7 +71,7 @@ def _cliente_multiselect(key, clientes_df):
 
 def render():
     aplicar_css_global()
-    st.markdown("""
+    st.markdown(f"""
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
          stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -78,8 +79,8 @@ def render():
         <path d="M3.51 15a9 9 0 1 0 .49-3.13"/>
     </svg>
     <div>
-        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Devoluções</h2>
-        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Pedidos devolvidos, P90 e relatórios</p>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.titulo")}</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">{t("dev.subtitulo")}</p>
     </div>
 </div>
 """, unsafe_allow_html=True)

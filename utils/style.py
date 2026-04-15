@@ -30,7 +30,8 @@ def aplicar_css_global():
 
 
 def rodape_autoria():
-    st.markdown("""
+    from utils.i18n import t  # local import — evita importação circular
+    st.markdown(f"""
     <div style="
         margin-top: 3rem;
         padding-top: 0.8rem;
@@ -41,7 +42,7 @@ def rodape_autoria():
         color: #9CA3AF;
         letter-spacing: 0.5px;
     ">
-        © 2026 Samuel Freitas — Torre de Controle. Todos os direitos reservados.
+        {t("rodape.texto")}
     </div>
     """, unsafe_allow_html=True)
 

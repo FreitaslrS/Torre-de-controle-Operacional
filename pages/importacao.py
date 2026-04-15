@@ -6,6 +6,7 @@ import os
 from dotenv import load_dotenv
 
 from utils.style import rodape_autoria, aplicar_css_global
+from utils.i18n import t
 from core.database import (
     executar_backlog, executar_historico, executar_operacional,
     consultar_historico, consultar_operacional, consultar_processamento,
@@ -98,17 +99,14 @@ def verificar_senha():
 
     senha_correta = _senha_configurada()
     if not senha_correta:
-        st.error("Importação bloqueada: SENHA_IMPORTACAO não configurada no ambiente.")
+        st.error(t("imp.bloqueada_env"))
         return False
 
     if st.session_state.tentativas_senha >= _MAX_TENTATIVAS:
-        st.error(
-            f"Acesso bloqueado após {_MAX_TENTATIVAS} tentativas incorretas. "
-            "Recarregue a página para tentar novamente."
-        )
+        st.error(t("imp.acesso_bloqueado").format(n=_MAX_TENTATIVAS))
         return False
 
-    st.markdown("""
+    st.markdown(f"""
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
          stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -116,13 +114,13 @@ def verificar_senha():
         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
     </svg>
     <div>
-        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Área Restrita</h2>
-        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Acesso restrito a usuários autorizados</p>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("imp.area_restrita")}</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">{t("imp.acesso_restrito")}</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
-    senha = st.text_input("Senha", type="password")
-    if st.button("Entrar"):
+    senha = st.text_input(t("imp.senha"), type="password")
+    if st.button(t("imp.entrar")):
         if senha and senha == senha_correta:
             st.session_state.autenticado = True
             st.session_state.tentativas_senha = 0
@@ -131,9 +129,9 @@ def verificar_senha():
             st.session_state.tentativas_senha += 1
             restantes = _MAX_TENTATIVAS - st.session_state.tentativas_senha
             if restantes > 0:
-                st.error(f"Senha incorreta. {restantes} tentativa(s) restante(s).")
+                st.error(t("imp.senha_incorreta").format(n=restantes))
             else:
-                st.error("Acesso bloqueado. Recarregue a página para tentar novamente.")
+                st.error(t("imp.acesso_bloqueado_final"))
     return False
 
 
@@ -223,7 +221,7 @@ def render():
     if not verificar_senha():
         return
 
-    st.markdown("## Importação de Dados", unsafe_allow_html=True)
+    st.markdown(f"## {t('imp.titulo')}", unsafe_allow_html=True)
 
     _LIMITE_MB = 200
     arquivos = st.file_uploader(
@@ -237,7 +235,7 @@ def render():
         st.session_state.total_importado = 0
 
     tipo_importacao = st.selectbox(
-        "Tipo de Importação",
+        t("imp.tipo"),
         [
             "Backlog",
             "Produtividade",
@@ -254,9 +252,9 @@ def render():
     # Uploader secundário para "Devolução + Monitoramento"
     arquivo_monitor_secundario = None
     if tipo_importacao == "Devolução + Monitoramento":
-        st.info("Este tipo requer dois arquivos: o arquivo principal (Folha de Devolução) vai no uploader acima. Selecione o Monitoramento abaixo.")
+        st.info(t("imp.dois_arquivos_info"))
         arquivo_monitor_secundario = st.file_uploader(
-            "Arquivo de Monitoramento de Pontualidade",
+            t("imp.selecione_monitoramento"),
             type=["xlsx", "xls"],
             key="uploader_monitor_sec"
         )
@@ -284,7 +282,7 @@ def render():
 
         labels_sem = [o[0] for o in opcoes_sem]
         idx_sel = st.selectbox(
-            "Semana de referência",
+            t("comum.semana_referencia"),
             range(len(labels_sem)),
             format_func=lambda i: labels_sem[i],
             key="sel_semana_ref"
@@ -292,19 +290,19 @@ def render():
         data_ref = opcoes_sem[idx_sel][1]   # segunda-feira da semana selecionada
         st.caption(f"Semana {int(data_ref.strftime('%V')):02d} / {data_ref.year} — de {data_ref.strftime('%d/%m/%Y')} a {(data_ref + timedelta(days=6)).strftime('%d/%m/%Y')}")
     else:
-        data_ref = st.date_input("Data de referência")
+        data_ref = st.date_input(t("comum.data_referencia"))
 
     # ========================
     # 🚀 IMPORTAR
     # ========================
-    if st.button("Importar"):
+    if st.button(t("imp.btn_importar")):
 
         if tipo_importacao == "Backlog" and not data_ref:
-            st.warning("Selecione a data de referência")
+            st.warning(t("imp.selecione_data"))
             return
 
         if not arquivos:
-            st.warning("Selecione arquivos")
+            st.warning(t("imp.selecione_arquivos"))
             return
 
         arquivos_grandes = [a.name for a in arquivos if a.size > _LIMITE_MB * 1024 * 1024]
@@ -316,14 +314,14 @@ def render():
             return
 
         if tipo_importacao == "Devolução + Monitoramento" and arquivo_monitor_secundario is None:
-            st.warning("Selecione o arquivo de Monitoramento de Pontualidade")
+            st.warning(t("imp.selecione_monitoramento"))
             return
 
         resultados    = []
         logs          = []
         total_registros = 0
 
-        with st.status("Processando arquivos...", expanded=True) as status_box:
+        with st.status(t("imp.processando"), expanded=True) as status_box:
             for i, arq in enumerate(arquivos):
                 n     = i + 1
                 total = len(arquivos)
@@ -349,7 +347,7 @@ def render():
                              "data_importacao": pd.Timestamp.now()})
 
             status_box.update(
-                label=f"✓ Importação concluída — {total_registros:,} registros",
+                label=f"✓ {t('imp.concluida').format(n=f'{total_registros:,}')}",
                 state="complete"
             )
 
@@ -369,19 +367,19 @@ def render():
             for r in erros:
                 st.error(f"{r['arquivo']} → {r['status']}")
         else:
-            st.success(f"✓ Importação concluída — {st.session_state.total_importado:,} registros")
+            st.success(f"✓ {t('imp.concluida').format(n=f'{st.session_state.total_importado:,}')}")
 
     st.divider()
 
     # ========================
     # 📜 HISTÓRICO
     # ========================
-    st.subheader("Histórico de Importações")
+    st.subheader(t("imp.historico"))
 
     df_hist = _carregar_historico()
 
     if df_hist.empty:
-        st.info("Nenhum arquivo importado ainda")
+        st.info(t("imp.sem_arquivos"))
     else:
         # Formatar datas para exibição
         def fmt_ref(val):
@@ -414,24 +412,24 @@ def render():
     # ⚠️ ZONA DE PERIGO
     # ========================
     st.divider()
-    st.subheader("Zona de Perigo")
+    st.subheader(t("imp.zona_perigo"))
 
-    confirmar = st.checkbox("Tenho certeza que quero fazer isso (modo destruição)")
+    confirmar = st.checkbox(t("imp.confirmacao_destruicao"))
 
     if confirmar:
         col1, col2, col3 = st.columns([1, 1.6, 1])
 
         with col1:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("Resetar Backlog Atual", use_container_width=True):
+            if st.button(t("imp.resetar_backlog"), use_container_width=True):
                 executar_backlog("DELETE FROM backlog_atual")
-                st.success("Backlog atual zerado!")
+                st.success(t("imp.backlog_zerado"))
                 st.cache_data.clear()
                 st.rerun()
 
         with col2:
-            data_delete = st.date_input("Excluir por data de referência")
-            if st.button("Excluir por Data", use_container_width=True):
+            data_delete = st.date_input(t("imp.excluir_data_ref"))
+            if st.button(t("imp.excluir_data"), use_container_width=True):
                 executar_historico(
                     "DELETE FROM pedidos WHERE data_referencia = %s",
                     [data_delete]
@@ -442,9 +440,9 @@ def render():
 
         with col3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("Limpar histórico > 30 dias", use_container_width=True):
+            if st.button(t("imp.limpar_historico"), use_container_width=True):
                 limpar_base()
-                st.success("Histórico antigo removido!")
+                st.success(t("imp.historico_removido"))
                 st.cache_data.clear()
                 st.rerun()
 

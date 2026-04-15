@@ -5,6 +5,7 @@ from typing import NamedTuple
 from core.repository import buscar_datas_coletas, buscar_coletas
 from utils.style import aplicar_css_global, tabela_padrao, rodape_autoria, fmt_numero
 from utils.theme import grafico_barra
+from utils.i18n import t
 
 COR_PRINCIPAL  = "#053B31"
 COR_SECUNDARIA = "#009640"
@@ -78,34 +79,34 @@ def _tab_descarregamento(data_sel):
     df = buscar_coletas(data_sel, tipo="descarregamento")
 
     if df.empty:
-        st.warning("Sem registros de descarregamento para a data selecionada.")
+        st.warning(t("col.sem_registros_desc"))
         return
 
     k = _kpis(df)
 
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Veículos",              k.veiculos)
-    col2.metric("Pacotes Carregados",    fmt_numero(k.pac_c))
-    col3.metric("Pacotes Descarregados", fmt_numero(k.pac_dc))
-    col4.metric("Diferença Pacotes",     f"+{fmt_numero(k.dif)}" if k.dif >= 0 else f"-{fmt_numero(abs(k.dif))}",
+    col1.metric(t("col.veiculos"),              k.veiculos)
+    col2.metric(t("col.pac_carregados"),    fmt_numero(k.pac_c))
+    col3.metric(t("col.pac_descarregados"), fmt_numero(k.pac_dc))
+    col4.metric(t("col.dif_pacotes"),     f"+{fmt_numero(k.dif)}" if k.dif >= 0 else f"-{fmt_numero(abs(k.dif))}",
                 delta_color="inverse" if k.dif < 0 else "normal")
-    col5.metric("Sacos Carregados",      fmt_numero(k.sacos_c))
+    col5.metric(t("col.sacos_carregados"),      fmt_numero(k.sacos_c))
 
     st.divider()
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        st.markdown("**Pacotes Recebidos por Rede de Origem**")
+        st.markdown(f"**{t('col.pac_por_origem')}**")
         _grafico_origem_desc(df)
     with col_g2:
-        st.markdown("**Diferença por Rede de Origem (Carregado vs Descarregado)**")
+        st.markdown(f"**{t('col.dif_por_origem')}**")
         _grafico_dif_desc(df)
 
     st.divider()
-    st.markdown("**Timeline de Descarregamento (por hora)**")
+    st.markdown(f"**{t('col.timeline_desc')}**")
     _grafico_timeline_desc(df)
 
     st.divider()
-    st.markdown("**Detalhe por Veículo**")
+    st.markdown(f"**{t('col.detalhe_veiculo')}**")
     df_tab = df[[
         "placa", "motorista", "estado_origem", "local_carregamento",
         "tempo_carregamento", "ja_descarregado",
@@ -140,7 +141,7 @@ def _grafico_destino_saida(df):
 def _grafico_dif_saida(df):
     df_conf = df[df["pacotes_descarregados"] > 0].copy()
     if df_conf.empty:
-        st.info("Nenhum descarregamento confirmado neste período.")
+        st.info(t("col.sem_desc_confirmado"))
         return
     df_dif = (df_conf.groupby("proximo_ponto")
               .agg(dif=("dif_pacotes", "sum"))
@@ -173,36 +174,36 @@ def _tab_saida(data_sel):
     df = buscar_coletas(data_sel, tipo="saida")
 
     if df.empty:
-        st.warning("Sem registros de saída para a data selecionada.")
+        st.warning(t("col.sem_registros_saida"))
         return
 
     k = _kpis(df)
     total_destinos = df["proximo_ponto"].nunique()
 
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Veículos",            k.veiculos)
-    col2.metric("Destinos",            total_destinos)
-    col3.metric("Pacotes Enviados",    fmt_numero(k.pac_c))
-    col4.metric("Sacos Enviados",      fmt_numero(k.sacos_c))
-    col5.metric("Confirmados (Desc.)", fmt_numero(k.pac_dc),
+    col1.metric(t("col.veiculos"),            k.veiculos)
+    col2.metric(t("col.destinos"),            total_destinos)
+    col3.metric(t("col.pac_enviados"),    fmt_numero(k.pac_c))
+    col4.metric(t("col.sacos_enviados"),      fmt_numero(k.sacos_c))
+    col5.metric(t("col.confirmados_desc"), fmt_numero(k.pac_dc),
                 delta=f"+{fmt_numero(k.dif)} pendentes" if k.dif >= 0 else f"-{fmt_numero(abs(k.dif))} pendentes",
                 delta_color="inverse" if k.dif < 0 else "normal")
 
     st.divider()
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        st.markdown("**Volume Enviado por Destino (Top 15)**")
+        st.markdown(f"**{t('col.vol_por_destino')}**")
         _grafico_destino_saida(df)
     with col_g2:
-        st.markdown("**Diferença por Destino (Enviado vs Confirmado)**")
+        st.markdown(f"**{t('col.dif_por_destino')}**")
         _grafico_dif_saida(df)
 
     st.divider()
-    st.markdown("**Timeline de Carregamento (por hora)**")
+    st.markdown(f"**{t('col.timeline_saida')}**")
     _grafico_timeline_saida(df)
 
     st.divider()
-    st.markdown("**Detalhe por Veículo e Destino**")
+    st.markdown(f"**{t('col.detalhe_veiculo_destino')}**")
     df_tab = df[[
         "placa", "motorista", "proximo_ponto",
         "tempo_carregamento", "ja_descarregado",
@@ -233,18 +234,18 @@ def render():
     </svg>
     <div>
         <h2 style="margin:0;font-size:20px;font-weight:700;color:{COR_PRINCIPAL};font-family:'Montserrat',sans-serif;">
-            Coletas e Carregamento
+            {t("col.titulo")}
         </h2>
         <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">
-            Descarregamento em Perus e carregamentos com saída para outras bases
+            {t("col.subtitulo")}
         </p>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
     tab_desc, tab_saida = st.tabs([
-        "Descarregamento em Perus",
-        "Saída para Bases"
+        t("col.tab_desc"),
+        t("col.tab_saida"),
     ])
 
     df_datas_desc  = buscar_datas_coletas(tipo="descarregamento")
@@ -252,19 +253,19 @@ def render():
 
     with tab_desc:
         if df_datas_desc.empty:
-            st.warning("Sem dados. Importe um arquivo do tipo 'Coletas — Descarregamento em Perus'.")
+            st.warning(t("col.sem_dados_desc"))
         else:
             datas = pd.to_datetime(df_datas_desc["data_referencia"]).dt.date.tolist()
-            data_sel = st.selectbox("Data de referência", datas, key="data_desc")
+            data_sel = st.selectbox(t("comum.data_referencia"), datas, key="data_desc")
             st.divider()
             _tab_descarregamento(data_sel)
 
     with tab_saida:
         if df_datas_saida.empty:
-            st.warning("Sem dados. Importe um arquivo do tipo 'Coletas — Saída para Bases'.")
+            st.warning(t("col.sem_dados_saida"))
         else:
             datas_s = pd.to_datetime(df_datas_saida["data_referencia"]).dt.date.tolist()
-            data_sel_s = st.selectbox("Data de referência", datas_s, key="data_saida")
+            data_sel_s = st.selectbox(t("comum.data_referencia"), datas_s, key="data_saida")
             st.divider()
             _tab_saida(data_sel_s)
 

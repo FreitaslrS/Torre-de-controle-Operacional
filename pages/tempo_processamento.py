@@ -9,6 +9,7 @@ from core.repository import (
 
 from utils.theme import grafico_barra, grafico_pizza
 from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global, fmt_numero
+from utils.i18n import t
 
 # ── Paleta Tempo de Processamento ────────────────────────────────────
 COR_PRINCIPAL  = "#F0A202"   # Amarelo Anjun — cor dominante desta página
@@ -17,11 +18,13 @@ COR_POSITIVO   = "#009640"   # Verde — dentro do SLA
 COR_APOIO      = "#2B2D42"   # Navy — sem saída/neutro
 PALETA_PAGINA  = [COR_PRINCIPAL, COR_SECUNDARIA, COR_POSITIVO, COR_APOIO]
 
-cores_pizza = {
-    "Até 24h":   COR_POSITIVO,
-    "> 24h":     COR_PRINCIPAL,
-    "Sem saída": COR_APOIO
-}
+
+def _cores_pizza():
+    return {
+        t("comum.ate_24h"): COR_POSITIVO,
+        "> 24h":            COR_PRINCIPAL,
+        t("comum.sem_info"): COR_APOIO,
+    }
 
 
 def _formatar_horas(h):
@@ -34,15 +37,15 @@ def _formatar_horas(h):
 def render():
     aplicar_css_global()
 
-    st.markdown("""
+    st.markdown(f"""
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
          stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
     </svg>
     <div>
-        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Tempo de Processamento</h2>
-        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">SLA e tempo entre entrada e saída no hub</p>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("tempo.titulo")}</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">{t("tempo.subtitulo")}</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -51,11 +54,11 @@ def render():
     # 📅 FILTRO
     # =========================
     col1, col2 = st.columns(2)
-    usar_filtro = st.checkbox("Filtrar por período")
+    usar_filtro = st.checkbox(t("comum.filtrar_periodo"))
 
     if usar_filtro:
-        data_inicio = col1.date_input("Data início")
-        data_fim    = col2.date_input("Data fim")
+        data_inicio = col1.date_input(t("comum.data_inicio"))
+        data_fim    = col2.date_input(t("comum.data_fim"))
     else:
         data_inicio = None
         data_fim    = None
@@ -63,13 +66,13 @@ def render():
     df = buscar_tempo_processamento(data_inicio, data_fim)
 
     if df.empty:
-        st.warning("Sem dados")
+        st.warning(t("comum.sem_dados"))
         return
 
     tab1, tab2, tab3 = st.tabs([
-        "SLA Hub",
-        "Hiatas H001",
-        "Consolidado Operacional"
+        t("tempo.tab_sla"),
+        t("tempo.tab_hiata"),
+        t("tempo.tab_consolidado"),
     ])
 
     with tab1:
@@ -92,20 +95,20 @@ def render():
         col1, col2 = st.columns(2)
 
         with col1:
-            st.metric("SLA 24h", f"{perc_sla:.1f}%")
+            st.metric(t("tempo.sla_24h"), f"{perc_sla:.1f}%")
             if perc_sla < 70:
-                st.error("SLA crítico")
+                st.error(t("tempo.sla_critico"))
             elif perc_sla < 85:
-                st.warning("SLA em atenção")
+                st.warning(t("tempo.sla_atencao"))
             else:
-                st.success("SLA saudável")
+                st.success(t("tempo.sla_saudavel"))
 
         with col2:
-            st.metric("Tempo médio", f"{tempo_medio:.1f}h")
+            st.metric(t("tempo.tempo_medio"), f"{tempo_medio:.1f}h")
             if tempo_medio > 24:
-                st.error("Tempo médio acima de 24h")
+                st.error(t("tempo.media_acima_24h"))
             else:
-                st.success("Tempo médio dentro do SLA")
+                st.success(t("tempo.media_dentro_sla"))
 
         st.divider()
 
@@ -115,16 +118,17 @@ def render():
         col_s1, col_s2 = st.columns(2)
 
         with col_s1:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Distribuição por Status</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("tempo.distribuicao_status")}</span>
 </div>""", unsafe_allow_html=True)
+            cores_pizza = _cores_pizza()
             df_pizza = pd.DataFrame([
-                {"status": "Até 24h",   "qtd": int(df["qtd_dentro_sla"].sum())},
-                {"status": "> 24h",     "qtd": int(df["qtd_fora_sla"].sum())},
-                {"status": "Sem saída", "qtd": int(df["qtd_sem_saida"].sum())},
+                {"status": t("comum.ate_24h"),   "qtd": int(df["qtd_dentro_sla"].sum())},
+                {"status": "> 24h",              "qtd": int(df["qtd_fora_sla"].sum())},
+                {"status": t("comum.sem_info"),  "qtd": int(df["qtd_sem_saida"].sum())},
             ])
             fig_pizza = grafico_pizza(
                 df_pizza,
@@ -136,11 +140,11 @@ def render():
             st.plotly_chart(fig_pizza, use_container_width=True)
 
         with col_s2:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Evolução por Dia</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("tempo.evolucao_dia")}</span>
 </div>""", unsafe_allow_html=True)
             df["_tempo_pond"] = df["tempo_medio_h"] * df["qtd_total"]
             tabela_dia = (
@@ -174,12 +178,12 @@ def render():
         col_r1, col_r2 = st.columns(2)
 
         with col_r1:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
 <path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 5 Estados com Maior Atraso</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("tempo.top5_estados_atraso")}</span>
 </div>""", unsafe_allow_html=True)
             ranking = (
                 df.groupby("estado")["qtd_fora_sla"]
@@ -195,11 +199,11 @@ def render():
                 st.plotly_chart(fig_rank, use_container_width=True)
 
         with col_r2:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 10 Pontos de Entrada com Atraso</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("tempo.top10_pontos_atraso")}</span>
 </div>""", unsafe_allow_html=True)
             ranking_pre = (
                 df.groupby("ponto_entrada")["qtd_fora_sla"]
@@ -214,18 +218,18 @@ def render():
                 fig_pre.update_traces(marker_color=cores_pre)
                 st.plotly_chart(fig_pre, use_container_width=True)
             else:
-                st.info("Sem atrasos nos pontos de entrada")
+                st.info(t("tempo.sem_atrasos"))
 
         st.divider()
 
         # =========================
         # 📊 TABELA POR ESTADO
         # =========================
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Tempo por Estado</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("tempo.por_estado")}</span>
 </div>""", unsafe_allow_html=True)
 
         tabela_estado = (
@@ -253,7 +257,7 @@ def render():
         # =========================
         # 📊 HIATA H001 POR DIA
         # =========================
-        st.subheader("Volume de Hiatas H001 por Dia")
+        st.subheader(t("tempo.hiata_por_dia"))
 
         df_hiata = buscar_hiata_por_dia(data_inicio, data_fim)
 
@@ -269,13 +273,13 @@ def render():
             tabela_hiata = tabela_hiata.sort_values("data", ascending=False)
             tabela_padrao(tabela_hiata)
         else:
-            st.warning("Sem dados de hiata")
+            st.warning(t("tempo.sem_dados_hiata"))
 
     with tab3:
         # =========================
         # 📊 CONSOLIDAÇÃO OPERACIONAL
         # =========================
-        st.subheader("Consolidação Operacional (Perus + TFK)")
+        st.subheader(t("tempo.consolidacao_titulo"))
 
         df_cons = buscar_consolidado_por_dia(None, None)
 
@@ -287,12 +291,12 @@ def render():
             col1, col2, col3 = st.columns(3)
             col1.metric("Perus", f"{media_perus:.0f}/dia")
             col2.metric("TFK Direto", f"{media_tfk:.0f}/dia")
-            col3.metric("Total", f"{media_total:.0f}/dia")
+            col3.metric(t("comum.total"), f"{media_total:.0f}/dia")
 
             for col in ["total_perus", "total_tfk", "total_geral"]:
                 df_cons[col] = df_cons[col].fillna(0).astype(int)
             tabela_padrao(df_cons)
         else:
-            st.warning("Sem dados para o período")
+            st.warning(t("tempo.sem_dados_periodo"))
 
     rodape_autoria()

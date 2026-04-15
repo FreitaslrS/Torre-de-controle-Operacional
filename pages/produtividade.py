@@ -12,6 +12,7 @@ from core.repository import (
 )
 from utils.theme import grafico_barra, aplicar_layout_padrao
 from utils.style import tabela_padrao, rodape_autoria, aplicar_css_global, fmt_numero
+from utils.i18n import t
 
 # ── Paleta Produtividade ──────────────────────────────────────────────
 COR_PRINCIPAL  = "#009640"   # Verde Anjun — cor dominante desta página
@@ -46,20 +47,20 @@ map_traducao = {
 def render():
     aplicar_css_global()
 
-    st.markdown("""
+    st.markdown(f"""
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
          stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
     </svg>
     <div>
-        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produtividade</h2>
-        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Volume por turno e dispositivo</p>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("prod.titulo")}</h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">{t("prod.subtitulo")}</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["Produtividade", "Pacotes Grandes", "Presença e Eficiência"])
+    tab1, tab2, tab3 = st.tabs([t("prod.tab_produtividade"), t("prod.tab_pacotes_grandes"), t("prod.tab_presenca")])
 
     with tab1:
         # =========================
@@ -67,8 +68,8 @@ def render():
         # =========================
         col1, col2, col3 = st.columns(3)
 
-        data_inicio = col1.date_input("Data início", value=None, key="prod_di")
-        data_fim    = col2.date_input("Data fim",    value=None, key="prod_df")
+        data_inicio = col1.date_input(t("comum.data_inicio"), value=None, key="prod_di")
+        data_fim    = col2.date_input(t("comum.data_fim"),    value=None, key="prod_df")
 
         if data_inicio and data_fim:
             df = buscar_produtividade(data_inicio, data_fim)
@@ -76,17 +77,18 @@ def render():
             df = buscar_produtividade()
 
         if df.empty:
-            st.warning("Sem dados")
+            st.warning(t("comum.sem_dados"))
             return
 
         df["data"] = pd.to_datetime(df["data"]).dt.date
 
-        turno = col3.selectbox("Turno", ["Todos", "T1", "T2", "T3"])
-        if turno != "Todos":
+        _todos = t("comum.todos")
+        turno = col3.selectbox(t("comum.turno"), [_todos, "T1", "T2", "T3"])
+        if turno != _todos:
             df = df[df["turno"] == turno]
 
         if df.empty:
-            st.warning("Sem dados após filtros")
+            st.warning(t("prod.sem_dados_filtros"))
             return
 
         st.divider()
@@ -100,7 +102,7 @@ def render():
         t3    = int(df[df["turno"] == "T3"]["volumes"].sum())
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total", fmt_numero(total))
+        col1.metric(t("comum.total"), fmt_numero(total))
         col2.metric("T1", fmt_numero(t1), f"{(t1/total*100):.1f}%" if total else "0%")
         col3.metric("T2", fmt_numero(t2), f"{(t2/total*100):.1f}%" if total else "0%")
         col4.metric("T3", fmt_numero(t3), f"{(t3/total*100):.1f}%" if total else "0%")
@@ -113,11 +115,11 @@ def render():
         col_p1, col_p2 = st.columns(2)
 
         with col_p1:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Por Turno</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("prod.por_turno")}</span>
 </div>""", unsafe_allow_html=True)
             df_turno = df.groupby("turno")["volumes"].sum().reset_index()
             fig_pizza_turno = px.pie(
@@ -128,11 +130,11 @@ def render():
             st.plotly_chart(fig_pizza_turno, use_container_width=True)
 
         with col_p2:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Por Dispositivo</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("prod.por_dispositivo")}</span>
 </div>""", unsafe_allow_html=True)
             df_disp = df.groupby("dispositivo")["volumes"].sum().reset_index()
             df_disp["nome"] = df_disp["dispositivo"].map(map_traducao).fillna(df_disp["dispositivo"])
@@ -148,11 +150,11 @@ def render():
         # =========================
         # 📊 BARRA — HORA × DISPOSITIVO
         # =========================
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produtividade por Hora (Dispositivos)</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("prod.por_hora")}</span>
 </div>""", unsafe_allow_html=True)
 
         dispositivos = ["Sorter Oval", "Sorter Linear", "Cubometro"]
@@ -175,7 +177,7 @@ def render():
             color_discrete_map=color_dispositivo,
             labels={"hora": "Hora", "volumes": "Volumes", "dispositivo": "Dispositivo"}
         )
-        fig_bar.for_each_trace(lambda t: t.update(name=map_traducao.get(t.name, t.name)))
+        fig_bar.for_each_trace(lambda tr: tr.update(name=map_traducao.get(tr.name, tr.name)))
         fig_bar.update_xaxes(dtick=1)
         fig_bar = aplicar_layout_padrao(fig_bar)
         st.plotly_chart(fig_bar, use_container_width=True)
@@ -185,11 +187,11 @@ def render():
         # =========================
         # 📋 TABELA HORA × DISPOSITIVO
         # =========================
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Resumo por Hora</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("prod.resumo_hora")}</span>
 </div>""", unsafe_allow_html=True)
 
         df_tabela = (
@@ -224,12 +226,12 @@ def render():
         col_c1, col_c2 = st.columns(2)
 
         with col_c1:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
 <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 10 Clientes</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("prod.top10_clientes")}</span>
 </div>""", unsafe_allow_html=True)
             cores = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_top10) - 1)
             fig_cliente = px.bar(
@@ -241,18 +243,18 @@ def render():
             st.plotly_chart(fig_cliente, use_container_width=True)
 
         with col_c2:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Produção por Cliente</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("prod.por_cliente")}</span>
 </div>""", unsafe_allow_html=True)
             df_cliente_fmt = df_cliente.copy()
             df_cliente_fmt.columns = ["Cliente", "Volumes"]
             tabela_padrao(df_cliente_fmt)
 
     with tab2:
-        st.markdown("""
+        st.markdown(f"""
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
          stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -260,42 +262,42 @@ def render():
         <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
     </svg>
     <div>
-        <h3 style="margin:0;font-size:16px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Pacotes Grandes</h3>
-        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">Encomendas com prefixo AJG</p>
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("pg.titulo")}</h3>
+        <p style="margin:0;font-size:12px;color:#6b7280;font-family:'Montserrat',sans-serif;">{t("pg.subtitulo")}</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
-        st.caption("Encomendas com prefixo AJG — itens de grande volume e peso")
+        st.caption(t("pg.subtitulo") + " — itens de grande volume e peso")
 
         df_sem_pg = buscar_semanas_pacotes_grandes()
         if df_sem_pg.empty:
-            st.warning("Sem dados. Importe um arquivo do tipo 'Pacotes Grandes'.")
+            st.warning(t("pg.sem_dados"))
         else:
             semanas_pg = [
                 f"{r['semana']}/{int(float(r['ano']))}"
                 for _, r in df_sem_pg.iterrows()
                 if pd.notna(r['ano']) and pd.notna(r['semana'])
             ]
-            sem_pg_sel = st.selectbox("Semana", semanas_pg, key="sem_pacotes_grandes")
+            sem_pg_sel = st.selectbox(t("comum.semana"), semanas_pg, key="sem_pacotes_grandes")
             sem_pg, ano_pg = sem_pg_sel.split("/")
             ano_pg = int(ano_pg)
 
             df_pg = buscar_pacotes_grandes(semana=sem_pg, ano=ano_pg)
 
             if df_pg.empty:
-                st.warning("Sem dados para a semana selecionada.")
+                st.warning(t("comum.sem_dados_semana"))
             else:
                 col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Total Pacotes",  fmt_numero(len(df_pg)))
-                col2.metric("Peso Médio",     f"{df_pg['peso_kg'].mean():.1f} kg")
-                col3.metric("Volume Médio",   f"{df_pg['volume_m3'].mean():.2f} m³")
-                col4.metric("Entregues", fmt_numero(len(df_pg[df_pg["status"] == "Pedido entregue"])))
+                col1.metric(t("pg.total_pacotes"),  fmt_numero(len(df_pg)))
+                col2.metric(t("pg.peso_medio"),     f"{df_pg['peso_kg'].mean():.1f} kg")
+                col3.metric(t("pg.volume_medio"),   f"{df_pg['volume_m3'].mean():.2f} m³")
+                col4.metric(t("pg.entregues"), fmt_numero(len(df_pg[df_pg["status"] == "Pedido entregue"])))
 
                 st.divider()
 
                 col_g1, col_g2 = st.columns(2)
                 with col_g1:
-                    st.markdown("**Por Status**")
+                    st.markdown(f"**{t('pg.por_status')}**")
                     df_st_pg = df_pg.groupby("status").size().reset_index(name="qtd")
                     df_st_pg = df_st_pg.sort_values("qtd", ascending=False)
                     cores_pg  = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_st_pg) - 1)
@@ -305,7 +307,7 @@ def render():
                     st.plotly_chart(fig_st, use_container_width=True, key="pg_status")
 
                 with col_g2:
-                    st.markdown("**Por Estado**")
+                    st.markdown(f"**{t('pg.por_estado')}**")
                     df_est_pg = df_pg.groupby("estado").size().reset_index(name="qtd")
                     df_est_pg = df_est_pg.sort_values("qtd", ascending=False)
                     cores_est = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_est_pg) - 1)
@@ -314,7 +316,7 @@ def render():
                     st.plotly_chart(fig_est_pg, use_container_width=True, key="pg_estado")
 
                 st.divider()
-                st.markdown("**Tabela Detalhada**")
+                st.markdown(f"**{t('pg.tabela_detalhada')}**")
                 tabela_padrao(df_pg[[
                     "waybill_mae", "cliente", "status",
                     "estado", "cidade", "produto", "peso_kg", "volume_m3"
@@ -333,7 +335,7 @@ def render():
     # TAB 3 — PRESENÇA E EFICIÊNCIA
     # ════════════════════════════════════════
     with tab3:
-        st.markdown("""<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#009640"
      stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -341,29 +343,30 @@ def render():
 <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
 <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Presença e Eficiência Operacional</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("pres.titulo")}</span>
 </div>""", unsafe_allow_html=True)
 
         df_sem_pres = buscar_semanas_presenca()
 
         if df_sem_pres.empty:
-            st.warning("Sem dados. Importe a planilha de Presença na página de Importação.")
+            st.warning(t("pres.sem_dados"))
         else:
             col_f1, col_f2 = st.columns(2)
             opcoes_pres = [f"{r['semana']}/{int(r['ano'])}" for _, r in df_sem_pres.iterrows()]
-            sem_pres = col_f1.selectbox("Semana", opcoes_pres, key="sem_pres")
+            sem_pres = col_f1.selectbox(t("comum.semana"), opcoes_pres, key="sem_pres")
             s_pres, a_pres = sem_pres.split("/")
             a_pres = int(a_pres)
 
-            turno_pres = col_f2.selectbox("Turno", ["Todos", "T1", "T2", "T3"], key="turno_pres")
+            _todos_t = t("comum.todos")
+            turno_pres = col_f2.selectbox(t("comum.turno"), [_todos_t, "T1", "T2", "T3"], key="turno_pres")
 
             df_turno  = buscar_presenca_turno(semana=s_pres, ano=a_pres)
             df_diario = buscar_presenca_diaria(semana=s_pres, ano=a_pres)
 
             if df_turno.empty:
-                st.warning("Sem dados para a semana selecionada.")
+                st.warning(t("comum.sem_dados_semana"))
             else:
-                df_turno_f = df_turno[df_turno["turno"] == turno_pres] if turno_pres != "Todos" else df_turno.copy()
+                df_turno_f = df_turno[df_turno["turno"] == turno_pres] if turno_pres != _todos_t else df_turno.copy()
 
                 # KPIs
                 total_prod         = int(df_turno_f["produzido_turno"].sum())
@@ -373,18 +376,18 @@ def render():
                 perc_falta_med     = round(df_turno_f["perc_falta"].mean() * 100, 1) if df_turno_f["perc_falta"].notna().any() else 0
 
                 col1, col2, col3, col4, col5 = st.columns(5)
-                col1.metric("Produzido na semana",  fmt_numero(total_prod))
-                col2.metric("Presença média/dia",   int(media_presenca) if pd.notna(media_presenca) else 0)
-                col3.metric("Faltas Anjun",          total_faltas_anjun)
-                col4.metric("Faltas Temporários",    total_faltas_temp)
-                col5.metric("% Absenteísmo médio",  f"{perc_falta_med}%")
+                col1.metric(t("pres.produzido_semana"),  fmt_numero(total_prod))
+                col2.metric(t("pres.presenca_media"),   int(media_presenca) if pd.notna(media_presenca) else 0)
+                col3.metric(t("pres.faltas_anjun"),          total_faltas_anjun)
+                col4.metric(t("pres.faltas_temp"),    total_faltas_temp)
+                col5.metric(t("pres.absenteismo"),  f"{perc_falta_med}%")
 
                 st.divider()
 
                 col_g1, col_g2 = st.columns(2)
 
                 with col_g1:
-                    st.markdown("**Produção por Turno**")
+                    st.markdown(f"**{t('pres.producao_turno')}**")
                     df_prod_turno = (
                         df_turno_f.groupby("turno")["produzido_turno"]
                         .sum().reset_index()
@@ -393,13 +396,13 @@ def render():
                     cores_t = {"T1": COR_PRINCIPAL, "T2": COR_SECUNDARIA, "T3": COR_APOIO}
                     fig_pt = grafico_barra(df_prod_turno, x="turno", y="produzido_turno", text="produzido_turno")
                     fig_pt.update_traces(
-                        marker_color=[cores_t.get(t, COR_PRINCIPAL) for t in df_prod_turno["turno"]],
+                        marker_color=[cores_t.get(tr, COR_PRINCIPAL) for tr in df_prod_turno["turno"]],
                         hovertemplate="<b>%{x}</b><br>Produzido: %{y}<extra></extra>"
                     )
                     st.plotly_chart(fig_pt, use_container_width=True, key="fig_prod_turno_pres")
 
                 with col_g2:
-                    st.markdown("**Eficiência por Turno (vol/pessoa)**")
+                    st.markdown(f"**{t('pres.eficiencia_turno')}**")
                     df_turno_f2 = df_turno_f.copy()
                     df_turno_f2["eficiencia"] = (
                         df_turno_f2["produzido_turno"] /
@@ -414,7 +417,7 @@ def render():
                 st.divider()
 
                 if not df_diario.empty:
-                    st.markdown("**Evolução do Volume Diário por Cliente**")
+                    st.markdown(f"**{t('pres.vol_diario_cliente')}**")
                     df_diario["data"] = pd.to_datetime(df_diario["data"])
                     fig_vol = px.bar(
                         df_diario.melt(
@@ -443,7 +446,7 @@ def render():
 
                 st.divider()
 
-                st.markdown("**Custo de Diaristas por Dia**")
+                st.markdown(f"**{t('pres.custo_diaristas')}**")
                 df_custo = (
                     df_turno_f.groupby("data")["custo_diaristas"]
                     .sum().reset_index().sort_values("data")
@@ -460,7 +463,7 @@ def render():
 
                 st.divider()
 
-                st.markdown("**Detalhamento por Turno**")
+                st.markdown(f"**{t('pres.detalhamento_turno')}**")
                 df_tab = df_turno_f[[
                     "data", "turno", "produzido_turno", "presenca_turno",
                     "anjun", "temporarios", "diaristas_presenciais",
