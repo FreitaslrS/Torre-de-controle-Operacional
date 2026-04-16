@@ -47,10 +47,15 @@ def render():
         st.warning(t("hc.sem_dados"))
         return
 
-    opcoes = [f"{r['semana']}/{int(r['ano'])}" for _, r in df_sems.iterrows()]
+    opcoes = [f"{r['semana']}/{int(r['ano'])}" for _, r in df_sems.iterrows()
+              if pd.notna(r['semana']) and pd.notna(r['ano'])]
     sem_sel = st.selectbox(t("comum.semana_referencia"), opcoes, key="hc_semana")
-    sem_str, ano_hc = sem_sel.split("/")
-    ano_hc = int(ano_hc)
+    try:
+        sem_str, ano_hc = sem_sel.split("/")
+        ano_hc = int(ano_hc)
+    except (ValueError, AttributeError):
+        st.error("Formato de semana inválido.")
+        return
 
     data_inicio, data_fim = semana_para_datas(sem_str, ano_hc)
     label_periodo = datas_para_label(data_inicio, data_fim)
@@ -64,8 +69,11 @@ def render():
     _nenhuma = t("comum.nenhuma")
     comp_ativo = sem_comp != _nenhuma
     if comp_ativo:
-        sem_str_c, ano_hc_c = sem_comp.split("/")
-        ano_hc_c = int(ano_hc_c)
+        try:
+            sem_str_c, ano_hc_c = sem_comp.split("/")
+            ano_hc_c = int(ano_hc_c)
+        except (ValueError, AttributeError):
+            comp_ativo = False
         data_inicio_c, data_fim_c = semana_para_datas(sem_str_c, ano_hc_c)
 
     st.divider()

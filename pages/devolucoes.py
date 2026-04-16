@@ -42,13 +42,20 @@ def _opcoes_semana(df_semanas):
     """Converte DataFrame de semana/ano em lista de strings para selectbox."""
     if df_semanas.empty:
         return []
-    return [f"{row['semana']}/{row['ano']}" for _, row in df_semanas.iterrows()]
+    return [
+        f"{row['semana']}/{int(row['ano'])}"
+        for _, row in df_semanas.iterrows()
+        if pd.notna(row['semana']) and pd.notna(row['ano'])
+    ]
 
 
 def _parse_semana(opcao):
-    """'w15/2025' -> ('w15', 2025)"""
-    partes = opcao.split("/")
-    return partes[0], int(partes[1])
+    """'w15/2025' -> ('w15', 2025). Retorna (None, None) se formato inválido."""
+    try:
+        partes = opcao.split("/")
+        return partes[0], int(partes[1])
+    except (ValueError, AttributeError, IndexError):
+        return None, None
 
 
 def _cliente_multiselect(key, clientes_df):
@@ -108,10 +115,12 @@ def render():
             opcoes = _opcoes_semana(df_semanas)
             sel = st.selectbox(t("dev.semana_label"), opcoes, key="semana_resumo")
             semana_sel, ano_sel = _parse_semana(sel)
+            if semana_sel is None:
+                st.warning(t("comum.sem_dados"))
+            else:
+                df_res = buscar_dev_status_semanal(semana=semana_sel, ano=ano_sel)
 
-            df_res = buscar_dev_status_semanal(semana=semana_sel, ano=ano_sel)
-
-            if df_res.empty:
+            if semana_sel and df_res.empty:
                 st.warning(t("dev.sem_dados_semana"))
             else:
                 col1, col2, col3 = st.columns(3)
@@ -178,8 +187,11 @@ def render():
             opcoes_wbr = _opcoes_semana(df_semanas_wbr)
             sel_wbr = st.selectbox(t("dev.semana_dev"), opcoes_wbr, key="semana_wbr")
             semana_wbr, ano_wbr = _parse_semana(sel_wbr)
+            if semana_wbr is None:
+                st.warning(t("comum.sem_dados"))
+                semana_wbr, ano_wbr = None, None
 
-            data_ini_wbr, data_fim_wbr = semana_para_datas(semana_wbr, ano_wbr)
+            data_ini_wbr, data_fim_wbr = semana_para_datas(semana_wbr, ano_wbr) if semana_wbr else (None, None)
             st.caption(f"Período: **{datas_para_label(data_ini_wbr, data_fim_wbr)}**")
 
             df_status = buscar_dev_status_semanal(semana=semana_wbr, ano=ano_wbr, cliente=cliente_cod_wbr)
@@ -266,8 +278,10 @@ def render():
             opcoes_int = _opcoes_semana(df_semanas_int)
             sel_int = st.selectbox(t("dev.semana_dev"), opcoes_int, key="semana_int")
             semana_int, ano_int = _parse_semana(sel_int)
+            if semana_int is None:
+                semana_int, ano_int = None, None
 
-            data_ini_int, data_fim_int = semana_para_datas(semana_int, ano_int)
+            data_ini_int, data_fim_int = semana_para_datas(semana_int, ano_int) if semana_int else (None, None)
             st.caption(f"Período: **{datas_para_label(data_ini_int, data_fim_int)}**")
 
             df_st_int = buscar_dev_status_semanal(semana=semana_int, ano=ano_int, cliente=cliente_cod_int)
@@ -480,10 +494,16 @@ def render():
             st.warning(t("dev.sem_dados_import"))
         else:
             col_f1, col_f2 = st.columns(2)
-            opcoes_det = [f"{r['semana']}/{int(r['ano'])}" for _, r in df_sem_det.iterrows()]
+            opcoes_det = [
+                f"{r['semana']}/{int(r['ano'])}"
+                for _, r in df_sem_det.iterrows()
+                if pd.notna(r['semana']) and pd.notna(r['ano'])
+            ]
             sel_det    = col_f1.selectbox(t("dev.semana_label"), opcoes_det, key="sem_det")
-            sem_det, ano_det = sel_det.split("/")
-            ano_det = int(ano_det)
+            sem_det, ano_det = _parse_semana(sel_det)
+            if sem_det is None:
+                st.warning(t("comum.sem_dados"))
+                return
 
             clientes_det = _cliente_multiselect("cliente_det", df_clientes)
 
