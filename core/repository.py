@@ -879,3 +879,85 @@ def buscar_produtividade_turno_hc(data_inicio, data_fim):
         GROUP BY turno
         ORDER BY turno
     """, [data_inicio, data_fim])
+
+
+# =========================
+# 🛍️ SHEIN BACKLOG
+# =========================
+@st.cache_data(ttl=300)
+def buscar_shein_datas():
+    return consultar_devolucoes("""
+        SELECT DISTINCT data_referencia
+        FROM dev_shein_sla
+        ORDER BY data_referencia DESC
+    """)
+
+
+@st.cache_data(ttl=300)
+def buscar_shein_sla(data_ref=None):
+    query = """
+        SELECT segmento, qtd_total, qtd_concluido, qtd_pendente, pct_sla
+        FROM dev_shein_sla
+        WHERE 1=1
+    """
+    params = []
+    if data_ref:
+        query += " AND data_referencia = %s"
+        params.append(data_ref)
+    query += " ORDER BY segmento"
+    return consultar_devolucoes(query, params if params else None)
+
+
+@st.cache_data(ttl=300)
+def buscar_shein_motivos(data_ref=None, segmento=None):
+    query = """
+        SELECT segmento, motivo, SUM(qtd) AS qtd
+        FROM dev_shein_motivos
+        WHERE 1=1
+    """
+    params = []
+    if data_ref:
+        query += " AND data_referencia = %s"
+        params.append(data_ref)
+    if segmento:
+        query += " AND segmento = %s"
+        params.append(segmento)
+    query += " GROUP BY segmento, motivo ORDER BY qtd DESC"
+    return consultar_devolucoes(query, params if params else None)
+
+
+@st.cache_data(ttl=300)
+def buscar_shein_aging(data_ref=None, segmento=None):
+    query = """
+        SELECT segmento, aging_range, SUM(qtd) AS qtd
+        FROM dev_shein_aging
+        WHERE 1=1
+    """
+    params = []
+    if data_ref:
+        query += " AND data_referencia = %s"
+        params.append(data_ref)
+    if segmento:
+        query += " AND segmento = %s"
+        params.append(segmento)
+    query += " GROUP BY segmento, aging_range ORDER BY segmento, aging_range"
+    return consultar_devolucoes(query, params if params else None)
+
+
+@st.cache_data(ttl=300)
+def buscar_shein_backlog(data_ref=None, segmento=None):
+    query = """
+        SELECT waybill, segmento, is_d2d, aging_day, aging_range,
+               return_initiaded_data, status_folha
+        FROM dev_shein_backlog
+        WHERE 1=1
+    """
+    params = []
+    if data_ref:
+        query += " AND data_referencia = %s"
+        params.append(data_ref)
+    if segmento:
+        query += " AND segmento = %s"
+        params.append(segmento)
+    query += " ORDER BY aging_day DESC NULLS LAST"
+    return consultar_devolucoes(query, params if params else None)

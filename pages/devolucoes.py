@@ -13,6 +13,11 @@ from core.repository import (
     buscar_clientes_fantasia,
     buscar_p90_por_estado_detalhado,
     buscar_semanas_dev_detalhado,
+    buscar_shein_datas,
+    buscar_shein_sla,
+    buscar_shein_motivos,
+    buscar_shein_aging,
+    buscar_shein_backlog,
 )
 from utils.theme import grafico_barra, grafico_pizza, aplicar_layout_padrao
 from utils.style import tabela_padrao, aplicar_css_global, rodape_autoria
@@ -92,11 +97,12 @@ def render():
 </div>
 """, unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         t("dev.tab_resumo"),
         t("dev.tab_wbr_cliente"),
         t("dev.tab_semanal_interno"),
         t("dev.tab_p90"),
+        t("dev.tab_shein"),
     ])
 
     df_clientes    = buscar_clientes_fantasia()
@@ -577,5 +583,161 @@ def render():
                     "p90_dias": t("dev.col_p90"),
                     "qtd": t("dev.total_dev_count"),
                 }))
+
+    # ════════════════════════════════════════
+    # TAB 5 — SHEIN BACKLOG
+    # ════════════════════════════════════════
+    with tab5:
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Shein — Backlog Completo</span>
+</div>""", unsafe_allow_html=True)
+
+        df_shein_datas = buscar_shein_datas()
+
+        if df_shein_datas.empty:
+            st.warning(t("dev.shein_sem_dados"))
+        else:
+            datas_shein = pd.to_datetime(df_shein_datas["data_referencia"]).dt.date.tolist()
+
+            col_f1, col_f2 = st.columns([2, 2])
+            with col_f1:
+                data_shein = st.selectbox(t("dev.shein_data_ref"), datas_shein, key="data_shein")
+            with col_f2:
+                segmentos_opts = [t("dev.shein_todos_seg"), "D2D", "Internacional", "Nacional"]
+                seg_sel = st.selectbox(t("dev.shein_filtro_seg"), segmentos_opts, key="seg_shein")
+            segmento_filtro = None if seg_sel == t("dev.shein_todos_seg") else seg_sel
+
+            # ── KPIs ─────────────────────────────────────────────────
+            df_sla_sh = buscar_shein_sla(data_ref=data_shein)
+
+            if not df_sla_sh.empty:
+                total_bk   = int(df_sla_sh["qtd_total"].sum())
+                total_conc = int(df_sla_sh["qtd_concluido"].sum())
+                total_pend = int(df_sla_sh["qtd_pendente"].sum())
+                pct_geral  = round(total_conc / total_bk * 100, 1) if total_bk > 0 else 0
+
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric(t("dev.shein_backlog_ativo"), f"{total_bk:,}")
+                c2.metric(t("dev.shein_concluido"),     f"{total_conc:,}")
+                c3.metric(t("dev.shein_pendente"),      f"{total_pend:,}")
+                c4.metric(t("dev.shein_sla_pct"),       f"{pct_geral}%")
+
+                st.divider()
+
+                # ── SLA por segmento ──────────────────────────────────
+                st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:0.5rem 0 0.3rem;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#009640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+</svg>
+<span style="font-size:14px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.shein_sla_pct")} {t("dev.shein_segmento")}</span>
+</div>""", unsafe_allow_html=True)
+
+                df_sla_plot = df_sla_sh.copy()
+                if segmento_filtro:
+                    df_sla_plot = df_sla_plot[df_sla_plot["segmento"] == segmento_filtro]
+
+                col_sla1, col_sla2 = st.columns(2)
+                with col_sla1:
+                    cores_sla = []
+                    for v in df_sla_plot["pct_sla"]:
+                        if v >= 90:   cores_sla.append(COR_POSITIVO)
+                        elif v >= 70: cores_sla.append(COR_PRINCIPAL)
+                        else:         cores_sla.append(COR_SECUNDARIA)
+                    fig_sla_sh = grafico_barra(df_sla_plot, x="segmento", y="pct_sla", text="pct_sla")
+                    fig_sla_sh.update_traces(marker_color=cores_sla,
+                                             hovertemplate="<b>%{x}</b><br>SLA: %{y}%<extra></extra>")
+                    fig_sla_sh.update_layout(yaxis_title="SLA (%)", yaxis_range=[0, 105])
+                    st.plotly_chart(fig_sla_sh, use_container_width=True, key="fig_sla_shein")
+                with col_sla2:
+                    tabela_padrao(df_sla_plot.rename(columns={
+                        "segmento":      t("dev.shein_segmento"),
+                        "qtd_total":     t("comum.total"),
+                        "qtd_concluido": t("dev.shein_concluido"),
+                        "qtd_pendente":  t("dev.shein_pendente"),
+                        "pct_sla":       t("dev.shein_sla_pct"),
+                    }))
+
+            st.divider()
+
+            # ── Motivos ───────────────────────────────────────────────
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:0.5rem 0 0.3rem;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+</svg>
+<span style="font-size:14px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.shein_motivos")}</span>
+</div>""", unsafe_allow_html=True)
+
+            df_mot_sh = buscar_shein_motivos(data_ref=data_shein, segmento=segmento_filtro)
+
+            if not df_mot_sh.empty:
+                df_mot_top = df_mot_sh.head(15)
+                cores_mot_sh = [COR_PRINCIPAL] + [COR_SECUNDARIA] * (len(df_mot_top) - 1)
+                fig_mot_sh = grafico_barra(df_mot_top, x="qtd", y="motivo", text="qtd")
+                fig_mot_sh.update_traces(marker_color=cores_mot_sh)
+                fig_mot_sh.update_layout(yaxis=dict(autorange="reversed"))
+                st.plotly_chart(fig_mot_sh, use_container_width=True, key="fig_mot_shein")
+            else:
+                st.info(t("dev.sem_dados_data"))
+
+            st.divider()
+
+            # ── Aging ─────────────────────────────────────────────────
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:0.5rem 0 0.3rem;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+</svg>
+<span style="font-size:14px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.shein_aging")}</span>
+</div>""", unsafe_allow_html=True)
+
+            df_aging_sh = buscar_shein_aging(data_ref=data_shein, segmento=segmento_filtro)
+
+            if not df_aging_sh.empty:
+                fig_aging_sh = px.bar(
+                    df_aging_sh,
+                    x="aging_range", y="qtd", color="segmento",
+                    barmode="group",
+                    text="qtd",
+                    labels={
+                        "aging_range": t("dev.shein_col_aging"),
+                        "qtd": t("col.qtd"),
+                        "segmento": t("dev.shein_segmento"),
+                    },
+                    color_discrete_sequence=PALETA_PAGINA,
+                )
+                fig_aging_sh = aplicar_layout_padrao(fig_aging_sh)
+                fig_aging_sh.update_traces(textposition="outside")
+                st.plotly_chart(fig_aging_sh, use_container_width=True, key="fig_aging_shein")
+            else:
+                st.info(t("dev.sem_dados_data"))
+
+            st.divider()
+
+            # ── Backlog detalhado (download) ──────────────────────────
+            with st.expander("📥 Backlog detalhado (download)"):
+                df_bk_sh = buscar_shein_backlog(data_ref=data_shein, segmento=segmento_filtro)
+                if df_bk_sh.empty:
+                    st.info(t("dev.sem_dados_data"))
+                else:
+                    st.caption(f"{len(df_bk_sh):,} registros")
+                    tabela_padrao(df_bk_sh.rename(columns={
+                        "waybill":               "Waybill",
+                        "segmento":              t("dev.shein_segmento"),
+                        "is_d2d":                "D2D",
+                        "aging_day":             "Aging (dias)",
+                        "aging_range":           t("dev.shein_col_aging"),
+                        "return_initiaded_data": "Início Devolução",
+                        "status_folha":          t("dev.shein_col_status"),
+                    }))
+                    csv = df_bk_sh.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        label="⬇️ Download CSV",
+                        data=csv,
+                        file_name=f"shein_backlog_{data_shein}.csv",
+                        mime="text/csv",
+                        key="dl_shein_backlog",
+                    )
 
     rodape_autoria()

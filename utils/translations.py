@@ -1426,6 +1426,54 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
 
     # ─────────────────────────────────────────────
+    # DEV — SHEIN BACKLOG
+    # ─────────────────────────────────────────────
+    "dev.tab_shein": {
+        "pt": "Shein Backlog", "en": "Shein Backlog", "zh": "Shein 退货",
+    },
+    "dev.shein_sem_dados": {
+        "pt": "Nenhum dado Shein importado ainda. Use a importação 「Shein — Backlog Completo」.",
+        "en": "No Shein data imported yet. Use the 「Shein — Full Backlog」 import.",
+        "zh": "尚未导入 Shein 数据。请使用「Shein — 完整退货」导入。",
+    },
+    "dev.shein_segmento": {
+        "pt": "Segmento", "en": "Segment", "zh": "细分",
+    },
+    "dev.shein_backlog_ativo": {
+        "pt": "Backlog Ativo", "en": "Active Backlog", "zh": "活跃退货量",
+    },
+    "dev.shein_concluido": {
+        "pt": "Concluídos", "en": "Completed", "zh": "已完成",
+    },
+    "dev.shein_pendente": {
+        "pt": "Pendentes", "en": "Pending", "zh": "待处理",
+    },
+    "dev.shein_sla_pct": {
+        "pt": "SLA (%)", "en": "SLA (%)", "zh": "SLA (%)",
+    },
+    "dev.shein_motivos": {
+        "pt": "Motivos de Insucesso", "en": "Failure Reasons", "zh": "失败原因",
+    },
+    "dev.shein_aging": {
+        "pt": "Aging por Segmento", "en": "Aging by Segment", "zh": "按细分的账龄分布",
+    },
+    "dev.shein_col_aging": {
+        "pt": "Faixa de Aging", "en": "Aging Range", "zh": "账龄范围",
+    },
+    "dev.shein_col_status": {
+        "pt": "Status (Folha)", "en": "Status (Sheet)", "zh": "状态（退货表）",
+    },
+    "dev.shein_data_ref": {
+        "pt": "Data de Referência", "en": "Reference Date", "zh": "参考日期",
+    },
+    "dev.shein_filtro_seg": {
+        "pt": "Filtrar por segmento", "en": "Filter by segment", "zh": "按细分筛选",
+    },
+    "dev.shein_todos_seg": {
+        "pt": "Todos", "en": "All", "zh": "全部",
+    },
+
+    # ─────────────────────────────────────────────
     # RODAPE
     # ─────────────────────────────────────────────
     "rodape.texto": {
