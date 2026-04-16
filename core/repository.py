@@ -357,7 +357,7 @@ def buscar_p90(ano=None, cliente=None):
 # 📊 DASHBOARDS DEVOLUÇÃO
 # ================================
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_semanas_disponiveis_dev():
     """Retorna semana/ano disponíveis — lê de dev_detalhado (fonte unificada)."""
     return consultar_devolucoes("""
@@ -367,7 +367,7 @@ def buscar_semanas_disponiveis_dev():
     """)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_datas_disponiveis_mon():
     """Retorna datas disponíveis em dev_sla_semanal (arquivo diário de Monitoramento)."""
     return consultar_devolucoes("""
@@ -477,7 +477,7 @@ def buscar_dev_dsp_sem3tent(data_ref=None, cliente=None):
 # ================================
 # 📊 DEV DETALHADO — P90 por Estado Real
 # ================================
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1800)
 def buscar_p90_por_estado_detalhado(semana=None, ano=None, clientes=None):
     query = """
         SELECT
@@ -506,7 +506,7 @@ def buscar_p90_por_estado_detalhado(semana=None, ano=None, clientes=None):
     return consultar_devolucoes(query, params if params else None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_semanas_dev_detalhado():
     return consultar_devolucoes("""
         SELECT DISTINCT semana, ano
@@ -576,7 +576,7 @@ def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
 
     return consultar_processamento(query, params)
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1800)
 def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
 
     query_prod = """
@@ -706,7 +706,7 @@ def buscar_pacotes_grandes(semana=None, ano=None):
     return consultar_operacional(query, params if params else None)
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1800)
 def buscar_semanas_pacotes_grandes():
     return consultar_operacional("""
         SELECT DISTINCT semana, ano
@@ -714,7 +714,7 @@ def buscar_semanas_pacotes_grandes():
         ORDER BY ano DESC, semana DESC
     """)
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_datas_coletas(tipo="descarregamento"):
     return consultar_coletas("""
         SELECT DISTINCT data_referencia
@@ -754,7 +754,7 @@ def buscar_coletas(data_ref, tipo="descarregamento"):
     """, [data_ref, tipo])
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_datas_coletas_grandes():
     return consultar_coletas("""
         SELECT DISTINCT data_referencia
@@ -774,7 +774,7 @@ def buscar_coletas_grandes(data_ref):
     """, [data_ref])
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_datas_coleta_final():
     return consultar_coletas("""
         SELECT DISTINCT data_referencia
@@ -795,7 +795,7 @@ def buscar_coleta_final(data_ref):
     """, [data_ref])
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1800)
 def buscar_semanas_presenca():
     return consultar_operacional("""
         SELECT DISTINCT semana, ano
@@ -827,7 +827,7 @@ def buscar_presenca_diaria(semana, ano):
 # =========================
 # 🏥 HEALTH CHECK
 # =========================
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1800)
 def buscar_semanas_health_check():
     return consultar_processamento("""
         SELECT DISTINCT
@@ -855,7 +855,7 @@ def buscar_sla_hub(data_inicio, data_fim):
     """, [data_inicio, data_fim])
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1800)
 def buscar_backlog_faixas_hc():
     """Retorna backlog 24h e 48h em uma única query para o Health Check."""
     return consultar_backlog("""
@@ -884,7 +884,7 @@ def buscar_produtividade_turno_hc(data_inicio, data_fim):
 # =========================
 # 🛍️ SHEIN BACKLOG
 # =========================
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_shein_datas():
     return consultar_devolucoes("""
         SELECT DISTINCT data_referencia

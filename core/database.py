@@ -308,6 +308,17 @@ def inicializar_banco():
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_dsp_sem3tent_data ON dev_dsp_sem3tent (data_referencia)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_iatas_semanal_estado ON dev_iatas_semanal (semana, ano, estado)")
 
+    # ── SHEIN BACKLOG ─────────────────────────────────────────────────────
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_backlog_data   ON dev_shein_backlog  (data_referencia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_backlog_seg    ON dev_shein_backlog  (data_referencia, segmento)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_backlog_arq    ON dev_shein_backlog  (nome_arquivo)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_sla_data       ON dev_shein_sla      (data_referencia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_sla_arq        ON dev_shein_sla      (nome_arquivo)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_motivos_data   ON dev_shein_motivos  (data_referencia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_motivos_seg    ON dev_shein_motivos  (data_referencia, segmento)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_aging_data     ON dev_shein_aging    (data_referencia)")
+    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_aging_seg      ON dev_shein_aging    (data_referencia, segmento)")
+
     # ── COLETAS (banco separado) ───────────────────────────────────────────
     executar_coletas("""
         CREATE TABLE IF NOT EXISTS coletas (
