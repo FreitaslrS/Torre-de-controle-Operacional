@@ -726,17 +726,57 @@ def buscar_datas_coletas(tipo="descarregamento"):
 @st.cache_data(ttl=300)
 def buscar_coletas(data_ref, tipo="descarregamento"):
     return consultar_coletas("""
-        SELECT num_registro, placa, motorista, carregador, estado_origem,
-               centro_transito, local_carregamento, proximo_ponto,
-               tempo_carregamento, tempo_bloqueio, tempo_liberacao,
-               ja_descarregado, num_lacre,
-               sacos_carregados, sacos_descarregados, sacos_anomalia, sacos_nao_desc, dif_sacos,
-               pacotes_carregados, pacotes_descarregados, pacotes_anomalia,
-               pacotes_nao_desc, pacotes_triados, pacotes_nao_triados, dif_pacotes
+        SELECT num_registro, placa, carregador, rede_carregador,
+               tempo_carregamento, secao_destino,
+               descarregador, rede_descarregador, tempo_descarga,
+               sacos_carregados, sacos_descarregados, dif_sacos,
+               pacotes_carregados, pacotes_descarregados, dif_pacotes,
+               modo_operacao, tipo_veiculo
         FROM coletas
         WHERE data_referencia = %s AND tipo = %s
         ORDER BY tempo_carregamento DESC
     """, [data_ref, tipo])
+
+
+@st.cache_data(ttl=300)
+def buscar_datas_coletas_grandes():
+    return consultar_coletas("""
+        SELECT DISTINCT data_referencia
+        FROM coletas_grandes
+        ORDER BY data_referencia DESC
+    """)
+
+
+@st.cache_data(ttl=300)
+def buscar_coletas_grandes(data_ref):
+    return consultar_coletas("""
+        SELECT tempo_coleta, cliente, waybill_anjun, waybill_escaneado,
+               coletador, estado_origem, placa, motorista
+        FROM coletas_grandes
+        WHERE data_referencia = %s
+        ORDER BY tempo_coleta DESC
+    """, [data_ref])
+
+
+@st.cache_data(ttl=300)
+def buscar_datas_coleta_final():
+    return consultar_coletas("""
+        SELECT DISTINCT data_referencia
+        FROM coleta_final
+        ORDER BY data_referencia DESC
+    """)
+
+
+@st.cache_data(ttl=300)
+def buscar_coleta_final(data_ref):
+    return consultar_coletas("""
+        SELECT data, cliente, pac_a_coletar, pac_coletados, taxa_coleta,
+               dif_coleta, pedidos_nao_coletados, falta_bipagem_coleta, perda_coleta,
+               pac_carregados, dif_carregamento, falta_bipagem_carga, perda_carga
+        FROM coleta_final
+        WHERE data_referencia = %s
+        ORDER BY pac_coletados DESC
+    """, [data_ref])
 
 
 @st.cache_data(ttl=600)

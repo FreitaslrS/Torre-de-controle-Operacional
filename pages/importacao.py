@@ -19,6 +19,7 @@ from core.processar_arquivo import (
     importar_tempo_processamento, importar_devolucoes, importar_p90,
     importar_devolucao_monitoramento, importar_devolucao_enriquecida,
     importar_coletas, importar_coletas_saida,
+    importar_coletas_grandes, importar_coleta_final,
     importar_pacotes_grandes, importar_presenca,
 )
 
@@ -185,6 +186,12 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
         elif tipo_importacao == "Coletas — Saída para Bases":
             resultado = importar_coletas_saida(arquivo, data_ref)
 
+        elif tipo_importacao == "Coletas — Itens Grandes":
+            resultado = importar_coletas_grandes(arquivo, data_ref)
+
+        elif tipo_importacao == "Coletas — Monitoramento Final":
+            resultado = importar_coleta_final(arquivo, data_ref)
+
         elif tipo_importacao == "Pacotes Grandes":
             resultado = importar_pacotes_grandes(arquivo, data_ref)
 
@@ -244,6 +251,8 @@ def render():
             "Devolução - Monitoramento",
             "Coletas — Descarregamento em Perus",
             "Coletas — Saída para Bases",
+            "Coletas — Itens Grandes",
+            "Coletas — Monitoramento Final",
             "Pacotes Grandes",
             "Presença / Diário de Bordo",
         ]
@@ -463,6 +472,8 @@ def excluir_arquivo(nome_arquivo):
         executar_devolucoes(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arquivo])
 
     executar_coletas("DELETE FROM coletas WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_coletas("DELETE FROM coletas_grandes WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_coletas("DELETE FROM coleta_final WHERE nome_arquivo = %s", [nome_arquivo])
     executar_operacional("DELETE FROM presenca_turno WHERE nome_arquivo = %s", [nome_arquivo])
     executar_operacional("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
     st.cache_data.clear()
