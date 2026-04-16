@@ -20,6 +20,7 @@ from core.processar_arquivo import (
     importar_devolucao_monitoramento, importar_devolucao_enriquecida,
     importar_coletas_auto,
     importar_pacotes_grandes, importar_presenca,
+    importar_shein_backlog,
 )
 
 load_dotenv()
@@ -73,6 +74,10 @@ def _carregar_historico():
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, 'Devolução + Monitoramento' as tipo
             FROM dev_detalhado GROUP BY nome_arquivo"""),
+        (consultar_devolucoes, """
+            SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data_referencia) as data_referencia, 'Shein — Backlog Completo' as tipo
+            FROM dev_shein_sla GROUP BY nome_arquivo"""),
         (consultar_operacional, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Presença / Diário de Bordo' as tipo
@@ -166,7 +171,7 @@ def _extrair_detalhe(resultado):
     return ""
 
 
-def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_secundario=None):
+def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_secundario=None, arquivo_terciario=None):
     inicio = time.time()
 
     try:
@@ -192,6 +197,11 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
             if arquivo_secundario is None:
                 raise ValueError("Arquivo de Monitoramento não selecionado")
             resultado = importar_devolucao_enriquecida(arquivo, arquivo_secundario, data_ref)
+
+        elif tipo_importacao == "Shein — Backlog Completo":
+            if arquivo_secundario is None or arquivo_terciario is None:
+                raise ValueError("Selecione os 3 arquivos: Insucesso LM, Folha e Monitoramento")
+            resultado = importar_shein_backlog(arquivo, arquivo_secundario, arquivo_terciario, data_ref)
 
         elif tipo_importacao == "Coletas":
             resultado = importar_coletas_auto(arquivo, data_ref)
@@ -253,6 +263,7 @@ def render():
             "Tempo de Processamento",
             "Devolução + Monitoramento",
             "Devolução - Monitoramento",
+            "Shein — Backlog Completo",
             "Coletas",
             "Pacotes Grandes",
             "Presença / Diário de Bordo",
@@ -277,12 +288,27 @@ def render():
             key="uploader_monitor_sec"
         )
 
+    arquivo_folha_shein   = None
+    arquivo_monitor_shein = None
+    if tipo_importacao == "Shein — Backlog Completo":
+        st.info("Selecione os 3 arquivos: o principal (Insucesso LM) no uploader acima + os dois abaixo.")
+        arquivo_folha_shein = st.file_uploader(
+            "Folha de Devolução (Shein)",
+            type=["xlsx", "xls"],
+            key="uploader_folha_shein"
+        )
+        arquivo_monitor_shein = st.file_uploader(
+            "Monitoramento de Pontualidade (Shein)",
+            type=["xlsx", "xls"],
+            key="uploader_monitor_shein"
+        )
+
     # ========================
     # 📅 SELETOR DE DATA / SEMANA
     # ========================
     TIPOS_SEMANAIS = {
         "Devolução", "Devolução - P90", "Devolução + Monitoramento",
-        "Pacotes Grandes",
+        "Pacotes Grandes", "Shein — Backlog Completo",
     }
 
     if tipo_importacao in TIPOS_SEMANAIS:
@@ -335,6 +361,12 @@ def render():
             st.warning(t("imp.selecione_monitoramento"))
             return
 
+        if tipo_importacao == "Shein — Backlog Completo" and (
+            arquivo_folha_shein is None or arquivo_monitor_shein is None
+        ):
+            st.warning("Selecione os 3 arquivos: Insucesso LM + Folha de Devolução + Monitoramento.")
+            return
+
         resultados    = []
         logs          = []
         total_registros = 0
@@ -345,8 +377,10 @@ def render():
                 total = len(arquivos)
                 st.write(f"[{n}/{total}] Lendo `{arq.name}`...")
                 inicio = time.time()
+                sec = arquivo_folha_shein   if tipo_importacao == "Shein — Backlog Completo" else arquivo_monitor_secundario
+                ter = arquivo_monitor_shein if tipo_importacao == "Shein — Backlog Completo" else None
                 r = processar_arquivo_individual(
-                    arq, data_ref, tipo_importacao, arquivo_monitor_secundario
+                    arq, data_ref, tipo_importacao, sec, ter
                 )
                 tempo = time.time() - inicio
                 registros = r["registros"] or 0

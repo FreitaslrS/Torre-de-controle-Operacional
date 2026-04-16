@@ -981,6 +981,222 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
 
 
 # ================================
+# 🛍️ SHEIN — BACKLOG COMPLETO
+# ================================
+def _bulk_insert(tabela, colunas, df):
+    """Insert em lote via execute_values no banco de devoluções."""
+    valores = [
+        tuple(None if pd.isna(v) else v for v in row)
+        for row in df[colunas].itertuples(index=False, name=None)
+    ]
+    if not valores:
+        return
+    sql = f"INSERT INTO {tabela} ({','.join(colunas)}) VALUES %s"
+    with _conn("DATABASE_URL_DEVOLUCOES") as conn:
+        cur = conn.cursor()
+        try:
+            execute_values(cur, sql, valores)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
+
+def importar_shein_backlog(arq_insucesso, arq_folha, arq_monitoramento, data_ref):
+    """
+    Processa o backlog Shein cruzando três fontes:
+      - Insucesso LM (shpp_no): lista de AJs em aberto enviada pela Shein
+      - Folha de Devolução: status atual de cada AJ no Express
+      - Monitoramento de Pontualidade: motivos, estados e SLA
+
+    Segmentação automática pelo campo cliente no Monitoramento:
+      sheind2d → D2D | szanjun → Internacional | shein → Nacional
+
+    Tabelas gravadas (DATABASE_URL_DEVOLUCOES):
+      dev_shein_backlog, dev_shein_sla, dev_shein_motivos, dev_shein_aging
+    """
+    COL_WB_FOLHA  = "运单号(Número do Waybill)"
+    COL_ST_FOLHA  = "运单状态(Status do Pacote)"
+    COL_OP_FOLHA  = "操作时间(tempo de operação)"
+
+    COL_WB_MON    = "运单号(Número do Waybill)"
+    COL_CLI_MON   = "客户名称(Nome do cliente)"
+    COL_MOTIVO    = "问题件原因(Motivo da Ocorrência)"
+
+    COL_WB_LM     = "shpp_no"
+    COL_D2D       = "is_d2d"
+    COL_AGING_DAY = "aging_day"
+    COL_AGING_RNG = "aging_range"
+    COL_DATA_INI  = "return_initiaded_data"
+
+    STATUS_CONCLUIDO        = {"Recebido de devolução"}
+    STATUS_REMOVER_BACKLOG  = {"Recebido de devolução", "Pedido entregue"}
+
+    agora    = datetime.now(timezone.utc)
+    nome_arq = arq_insucesso.name
+
+    # ── 1. Leitura ────────────────────────────────────────────────────────
+    df_lm  = pd.read_excel(io.BytesIO(arq_insucesso.read()))
+    df_fol = pd.read_excel(io.BytesIO(arq_folha.read()))
+    df_mon = pd.read_excel(io.BytesIO(arq_monitoramento.read()))
+
+    df_lm[COL_WB_LM]    = df_lm[COL_WB_LM].astype(str).str.strip()
+    df_fol[COL_WB_FOLHA] = df_fol[COL_WB_FOLHA].astype(str).str.strip()
+    df_mon[COL_WB_MON]  = df_mon[COL_WB_MON].astype(str).str.strip()
+
+    ajs_lm = set(df_lm[COL_WB_LM].dropna())
+
+    # ── 2. Filtrar pelos AJs do LM ────────────────────────────────────────
+    df_fol_shein = df_fol[df_fol[COL_WB_FOLHA].isin(ajs_lm)].copy()
+    df_mon_shein = df_mon[df_mon[COL_WB_MON].isin(ajs_lm)].copy()
+
+    # ── 3. Segmentação ────────────────────────────────────────────────────
+    mapa_segmento_mon = {}
+    for _, row in df_mon_shein[[COL_WB_MON, COL_CLI_MON]].iterrows():
+        wb  = row[COL_WB_MON]
+        cli = str(row[COL_CLI_MON]).strip().lower() if pd.notna(row[COL_CLI_MON]) else ""
+        if cli == "sheind2d":
+            mapa_segmento_mon[wb] = "D2D"
+        elif cli == "szanjun":
+            mapa_segmento_mon[wb] = "Internacional"
+        elif cli == "shein":
+            mapa_segmento_mon[wb] = "Nacional"
+        else:
+            mapa_segmento_mon[wb] = "Outros"
+
+    mapa_d2d_lm = dict(zip(df_lm[COL_WB_LM], df_lm[COL_D2D].astype(str).str.strip()))
+
+    def _segmento(wb):
+        if wb in mapa_segmento_mon:
+            return mapa_segmento_mon[wb]
+        return "D2D" if mapa_d2d_lm.get(wb, "No") == "Yes" else "Nacional"
+
+    df_lm["segmento"] = df_lm[COL_WB_LM].map(_segmento)
+
+    # ── 4. dev_shein_backlog ──────────────────────────────────────────────
+    if not df_fol_shein.empty and COL_ST_FOLHA in df_fol_shein.columns:
+        sort_col = COL_OP_FOLHA if COL_OP_FOLHA in df_fol_shein.columns else df_fol_shein.columns[0]
+        df_fol_ultimo = (
+            df_fol_shein
+            .sort_values(sort_col, ascending=False)
+            .drop_duplicates(subset=[COL_WB_FOLHA])
+            [[COL_WB_FOLHA, COL_ST_FOLHA]]
+            .rename(columns={COL_WB_FOLHA: "waybill", COL_ST_FOLHA: "status_folha"})
+        )
+    else:
+        df_fol_ultimo = pd.DataFrame(columns=["waybill", "status_folha"])
+
+    df_backlog = df_lm[[COL_WB_LM, COL_D2D, COL_AGING_DAY,
+                         COL_AGING_RNG, COL_DATA_INI, "segmento"]].copy()
+    df_backlog = df_backlog.rename(columns={
+        COL_WB_LM:     "waybill",
+        COL_D2D:       "is_d2d",
+        COL_AGING_DAY: "aging_day",
+        COL_AGING_RNG: "aging_range",
+        COL_DATA_INI:  "return_initiaded_data",
+    })
+    df_backlog = df_backlog.merge(df_fol_ultimo, on="waybill", how="left")
+    df_backlog["data_referencia"] = data_ref
+    df_backlog["data_importacao"] = agora
+    df_backlog["nome_arquivo"]    = nome_arq
+
+    df_backlog_ativo = df_backlog[
+        ~df_backlog["status_folha"].isin(STATUS_REMOVER_BACKLOG)
+    ].copy()
+
+    # ── 5. dev_shein_sla ──────────────────────────────────────────────────
+    df_sla_rows = []
+    for segmento, grp in df_backlog.groupby("segmento"):
+        total      = len(grp)
+        concluidos = int(grp["status_folha"].isin(STATUS_CONCLUIDO).sum())
+        df_sla_rows.append({
+            "segmento":        segmento,
+            "qtd_total":       total,
+            "qtd_concluido":   concluidos,
+            "qtd_pendente":    total - concluidos,
+            "pct_sla":         round(concluidos / total * 100, 2) if total > 0 else 0,
+            "data_referencia": data_ref,
+            "data_importacao": agora,
+            "nome_arquivo":    nome_arq,
+        })
+    df_sla = pd.DataFrame(df_sla_rows)
+
+    # ── 6. dev_shein_motivos ──────────────────────────────────────────────
+    if not df_mon_shein.empty and COL_MOTIVO in df_mon_shein.columns:
+        df_mon_shein["segmento"] = df_mon_shein[COL_WB_MON].map(_segmento)
+        df_mot = (
+            df_mon_shein
+            .groupby(["segmento", COL_MOTIVO])
+            .size()
+            .reset_index(name="qtd")
+            .rename(columns={COL_MOTIVO: "motivo"})
+        )
+        df_mot["motivo"] = df_mot["motivo"].fillna("Pacote cancelado")
+        df_mot["motivo"] = df_mot["motivo"].replace("0", "Sem falha de entrega")
+        df_mot["data_referencia"] = data_ref
+        df_mot["data_importacao"] = agora
+        df_mot["nome_arquivo"]    = nome_arq
+    else:
+        df_mot = pd.DataFrame(columns=["segmento", "motivo", "qtd",
+                                        "data_referencia", "data_importacao", "nome_arquivo"])
+
+    # ── 7. dev_shein_aging ────────────────────────────────────────────────
+    df_aging = (
+        df_lm.groupby(["segmento", COL_AGING_RNG])
+        .size()
+        .reset_index(name="qtd")
+        .rename(columns={COL_AGING_RNG: "aging_range"})
+    )
+    df_aging["data_referencia"] = data_ref
+    df_aging["data_importacao"] = agora
+    df_aging["nome_arquivo"]    = nome_arq
+
+    # ── 8. Persistir ──────────────────────────────────────────────────────
+    total_gravado = 0
+
+    executar_devolucoes("DELETE FROM dev_shein_backlog WHERE nome_arquivo = %s", [nome_arq])
+    if not df_backlog_ativo.empty:
+        cols_bk = ["waybill", "segmento", "is_d2d", "aging_day", "aging_range",
+                   "return_initiaded_data", "status_folha",
+                   "data_referencia", "data_importacao", "nome_arquivo"]
+        _bulk_insert("dev_shein_backlog", cols_bk, df_backlog_ativo[cols_bk])
+        total_gravado += len(df_backlog_ativo)
+
+    executar_devolucoes("DELETE FROM dev_shein_sla WHERE nome_arquivo = %s", [nome_arq])
+    if not df_sla.empty:
+        cols_sla = ["segmento", "qtd_total", "qtd_concluido", "qtd_pendente", "pct_sla",
+                    "data_referencia", "data_importacao", "nome_arquivo"]
+        _bulk_insert("dev_shein_sla", cols_sla, df_sla[cols_sla])
+        total_gravado += len(df_sla)
+
+    executar_devolucoes("DELETE FROM dev_shein_motivos WHERE nome_arquivo = %s", [nome_arq])
+    if not df_mot.empty:
+        cols_mot = ["segmento", "motivo", "qtd",
+                    "data_referencia", "data_importacao", "nome_arquivo"]
+        _bulk_insert("dev_shein_motivos", cols_mot, df_mot[cols_mot])
+        total_gravado += len(df_mot)
+
+    executar_devolucoes("DELETE FROM dev_shein_aging WHERE nome_arquivo = %s", [nome_arq])
+    if not df_aging.empty:
+        cols_ag = ["segmento", "aging_range", "qtd",
+                   "data_referencia", "data_importacao", "nome_arquivo"]
+        _bulk_insert("dev_shein_aging", cols_ag, df_aging[cols_ag])
+        total_gravado += len(df_aging)
+
+    return {
+        "registros": total_gravado,
+        "detalhe": (
+            f"LM: {len(df_lm)} AJs | "
+            f"Backlog ativo: {len(df_backlog_ativo)} | "
+            f"Match Folha: {len(df_fol_shein)} | "
+            f"Match Monitoramento: {len(df_mon_shein)}"
+        ),
+    }
+
+
+# ================================
 # 🚛 COLETAS — CARREGAMENTO/DESCARREGAMENTO
 # ================================
 def _coletas_colunas_base(df):
