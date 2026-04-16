@@ -86,10 +86,10 @@ def render():
 """, unsafe_allow_html=True)
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📋 Resumo",
-        "📊 WBR — Cliente",
-        "📊 Semanal — Interno",
-        "🗺️ P90 por Estado (Detalhado)"
+        t("dev.tab_resumo"),
+        t("dev.tab_wbr_cliente"),
+        t("dev.tab_semanal_interno"),
+        t("dev.tab_p90"),
     ])
 
     df_clientes    = buscar_clientes_fantasia()
@@ -103,45 +103,45 @@ def render():
         df_semanas = df_semanas_all
 
         if df_semanas.empty:
-            st.warning("Sem dados. Importe usando 'Devolução + Monitoramento'.")
+            st.warning(t("dev.sem_dados_import"))
         else:
             opcoes = _opcoes_semana(df_semanas)
-            sel = st.selectbox("Semana / 周", opcoes, key="semana_resumo")
+            sel = st.selectbox(t("dev.semana_label"), opcoes, key="semana_resumo")
             semana_sel, ano_sel = _parse_semana(sel)
 
             df_res = buscar_dev_status_semanal(semana=semana_sel, ano=ano_sel)
 
             if df_res.empty:
-                st.warning("Sem dados para a semana selecionada.")
+                st.warning(t("dev.sem_dados_semana"))
             else:
                 col1, col2, col3 = st.columns(3)
-                col1.metric("Total", int(df_res["qtd"].sum()))
-                col2.metric("Clientes", df_res["cliente"].nunique())
-                col3.metric("Estados", df_res["estado"].nunique())
+                col1.metric(t("comum.total"), int(df_res["qtd"].sum()))
+                col2.metric(t("dev.col_clientes"), df_res["cliente"].nunique())
+                col3.metric(t("dev.col_estados"), df_res["estado"].nunique())
 
                 st.divider()
 
                 df_status_res = df_res.groupby("status")["qtd"].sum().reset_index()
                 df_status_res = df_status_res.sort_values("qtd", ascending=False)
-                df_status_res.columns = ["Status", "Qtd"]
+                df_status_res.columns = [t("dev.col_status"), t("col.qtd")]
                 tabela_padrao(df_status_res)
 
     # ════════════════════════════════════════
     # TAB 2 — WBR CLIENTE
     # ════════════════════════════════════════
     with tab2:
-        st.subheader("📊 WBR — Relatório ao Cliente")
+        st.subheader(t("dev.wbr_relatorio"))
 
         # ── Filtro de cliente ─────────────────────────────────────
         clientes_wbr = _cliente_multiselect("cliente_wbr", df_clientes)
         cliente_cod_wbr = clientes_wbr if clientes_wbr else None
 
         # ── SLA (Monitoramento — diário) ──────────────────────────
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">SLA — Entregas no Prazo</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.sla_entregas")}</span>
 </div>""", unsafe_allow_html=True)
         df_sla = buscar_dev_sla_semanal(cliente=cliente_cod_wbr)
 
@@ -159,13 +159,13 @@ def render():
                 df_sla_dia.sort_values("data_referencia"),
                 x="data_referencia", y="pct_sla",
                 markers=True,
-                labels={"data_referencia": "Data", "pct_sla": "SLA (%)"},
+                labels={"data_referencia": t("col.data"), "pct_sla": "SLA (%)"},
                 color_discrete_sequence=[COR_POSITIVO]
             )
             fig_sla = aplicar_layout_padrao(fig_sla)
             st.plotly_chart(fig_sla, use_container_width=True, key="fig_sla_wbr")
         else:
-            st.info("Sem dados de SLA. Importe 'Devolução - Monitoramento'.")
+            st.info(t("dev.sem_dados_mon"))
 
         st.divider()
 
@@ -173,10 +173,10 @@ def render():
         df_semanas_wbr = df_semanas_all
 
         if df_semanas_wbr.empty:
-            st.info("Sem dados de status. Importe 'Devolução + Monitoramento'.")
+            st.info(t("dev.sem_dados_import"))
         else:
             opcoes_wbr = _opcoes_semana(df_semanas_wbr)
-            sel_wbr = st.selectbox("Semana (Devolução) / 周", opcoes_wbr, key="semana_wbr")
+            sel_wbr = st.selectbox(t("dev.semana_dev"), opcoes_wbr, key="semana_wbr")
             semana_wbr, ano_wbr = _parse_semana(sel_wbr)
 
             data_ini_wbr, data_fim_wbr = semana_para_datas(semana_wbr, ano_wbr)
@@ -185,30 +185,30 @@ def render():
             df_status = buscar_dev_status_semanal(semana=semana_wbr, ano=ano_wbr, cliente=cliente_cod_wbr)
 
             if not df_status.empty:
-                st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+                st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Backlog — Status Atual</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.backlog_status")}</span>
 </div>""", unsafe_allow_html=True)
                 df_backlog = df_status.groupby("status")["qtd"].sum().reset_index()
                 df_backlog = df_backlog.sort_values("qtd", ascending=False)
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Total na semana", int(df_backlog["qtd"].sum()))
-                    tabela_padrao(df_backlog.rename(columns={"status": "Status", "qtd": "Qtd"}))
+                    st.metric(t("dev.total_semana"), int(df_backlog["qtd"].sum()))
+                    tabela_padrao(df_backlog.rename(columns={"status": t("dev.col_status"), "qtd": t("col.qtd")}))
                 with col2:
                     fig_status = grafico_pizza(df_backlog, names="status", values="qtd")
                     st.plotly_chart(fig_status, use_container_width=True, key="fig_status_wbr")
 
                 st.divider()
 
-                st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+                st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Devoluções por Estado</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.por_estado")}</span>
 </div>""", unsafe_allow_html=True)
                 df_por_estado = df_status.groupby("estado")["qtd"].sum().reset_index()
                 df_por_estado = df_por_estado.sort_values("qtd", ascending=False)
@@ -220,19 +220,19 @@ def render():
         st.divider()
 
         # ── Motivos (Monitoramento — diário) ─────────────────────
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Motivos de Falha de Entrega</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.motivos_falha")}</span>
 </div>""", unsafe_allow_html=True)
         df_datas_mon_wbr = df_datas_mon
 
         if df_datas_mon_wbr.empty:
-            st.info("Sem dados de motivos. Importe 'Devolução - Monitoramento'.")
+            st.info(t("dev.sem_dados_mon"))
         else:
             datas_mon_wbr = pd.to_datetime(df_datas_mon_wbr["data_referencia"]).dt.date.tolist()
-            data_mon_wbr = st.selectbox("Data (Monitoramento) / 日期", datas_mon_wbr, key="data_mon_wbr")
+            data_mon_wbr = st.selectbox(t("dev.data_mon"), datas_mon_wbr, key="data_mon_wbr")
 
             df_motivos = buscar_dev_motivos(data_ref=data_mon_wbr, cliente=cliente_cod_wbr)
             if not df_motivos.empty:
@@ -242,13 +242,13 @@ def render():
                 fig_mot.update_layout(yaxis=dict(autorange="reversed"))
                 st.plotly_chart(fig_mot, use_container_width=True, key="fig_mot_wbr")
             else:
-                st.info("Sem dados de motivos para esta data.")
+                st.info(t("dev.sem_dados_data"))
 
     # ════════════════════════════════════════
     # TAB 3 — SEMANAL INTERNO
     # ════════════════════════════════════════
     with tab3:
-        st.subheader("📊 Relatório Semanal — Interno")
+        st.subheader(t("dev.rel_semanal_interno"))
 
         # ── Filtro de cliente ─────────────────────────────────────
         clientes_int = _cliente_multiselect("cliente_int", df_clientes)
@@ -258,13 +258,13 @@ def render():
         df_semanas_int = df_semanas_all
 
         if df_semanas_int.empty:
-            st.warning("Sem dados. Importe usando 'Devolução + Monitoramento'.")
+            st.warning(t("dev.sem_dados_import"))
             semana_int = None
             ano_int    = None
             df_st_int  = pd.DataFrame()
         else:
             opcoes_int = _opcoes_semana(df_semanas_int)
-            sel_int = st.selectbox("Semana (Devolução) / 周", opcoes_int, key="semana_int")
+            sel_int = st.selectbox(t("dev.semana_dev"), opcoes_int, key="semana_int")
             semana_int, ano_int = _parse_semana(sel_int)
 
             data_ini_int, data_fim_int = semana_para_datas(semana_int, ano_int)
@@ -279,16 +279,16 @@ def render():
             data_mon_int = None
         else:
             datas_mon_int = pd.to_datetime(df_datas_mon_int["data_referencia"]).dt.date.tolist()
-            data_mon_int = st.selectbox("Data (Monitoramento) / 日期", datas_mon_int, key="data_mon_int")
+            data_mon_int = st.selectbox(t("dev.data_mon"), datas_mon_int, key="data_mon_int")
 
         st.divider()
 
         # ── Pizza — Total processado (Devolução) ──────────────────
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Total Processado</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.total_proc")}</span>
 </div>""", unsafe_allow_html=True)
 
         if not df_st_int.empty:
@@ -304,34 +304,34 @@ def render():
             total_geral = total_dev + total_proc + total_agu
 
             col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Total", total_geral)
-            col2.metric("Devolvidos", total_dev)
-            col3.metric("Retornou ao Processo", total_proc)
-            col4.metric("Aguardando", total_agu)
+            col1.metric(t("comum.total"), total_geral)
+            col2.metric(t("dev.devolvidos"), total_dev)
+            col3.metric(t("dev.retornou_processo"), total_proc)
+            col4.metric(t("dev.aguardando"), total_agu)
 
             df_pizza_int = pd.DataFrame([
-                {"categoria": "Devolvidos",           "qtd": total_dev},
-                {"categoria": "Retornou ao Processo", "qtd": total_proc},
-                {"categoria": "Aguardando tratativa", "qtd": total_agu},
+                {"categoria": t("dev.devolvidos"),          "qtd": total_dev},
+                {"categoria": t("dev.retornou_processo"),   "qtd": total_proc},
+                {"categoria": t("dev.aguardando"),          "qtd": total_agu},
             ])
             col_p1, col_p2 = st.columns(2)
             with col_p1:
                 fig_pizza_int = grafico_pizza(df_pizza_int, names="categoria", values="qtd")
                 st.plotly_chart(fig_pizza_int, use_container_width=True, key="fig_pizza_int")
             with col_p2:
-                tabela_padrao(df_pizza_int.rename(columns={"categoria": "Categoria", "qtd": "Qtd"}))
+                tabela_padrao(df_pizza_int.rename(columns={"categoria": t("dev.categoria"), "qtd": t("col.qtd")}))
         else:
-            st.info("Sem dados de status. Importe 'Devolução + Monitoramento'.")
+            st.info(t("dev.sem_dados_import"))
 
         st.divider()
 
         # ── Motivos (Monitoramento — diário) ─────────────────────
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
 <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Principais Motivos</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.principais_motivos")}</span>
 </div>""", unsafe_allow_html=True)
         if data_mon_int:
             df_mot_int = buscar_dev_motivos(data_ref=data_mon_int, cliente=cliente_cod_int)
@@ -342,62 +342,62 @@ def render():
                 fig_mot_int.update_layout(yaxis=dict(autorange="reversed"))
                 st.plotly_chart(fig_mot_int, use_container_width=True, key="fig_mot_int")
             else:
-                st.info("Sem dados de motivos para esta data.")
+                st.info(t("dev.sem_dados_data"))
         else:
-            st.info("Sem dados de motivos. Importe 'Devolução - Monitoramento'.")
+            st.info(t("dev.sem_dados_mon"))
 
         st.divider()
 
         # ── Interceptados (Monitoramento — diário) ────────────────
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
 <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Interceptados por Iata</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.interceptados_iata")}</span>
 </div>""", unsafe_allow_html=True)
         if data_mon_int:
             df_inter = buscar_dev_interceptados(data_ref=data_mon_int, cliente=cliente_cod_int)
             if not df_inter.empty:
                 tabela_padrao(df_inter.rename(columns={
-                    "ponto_entrada": "Iata",
-                    "estado": "Estado",
-                    "qtd": "Qtd"
+                    "ponto_entrada": t("dev.iata"),
+                    "estado": t("col.estado"),
+                    "qtd": t("col.qtd"),
                 }))
             else:
-                st.info("Sem dados de interceptados para esta data.")
+                st.info(t("dev.sem_dados_data"))
         else:
-            st.info("Sem dados de interceptados. Importe 'Devolução - Monitoramento'.")
+            st.info(t("dev.sem_dados_mon"))
 
         st.divider()
 
         # ── Principais Estados (Devolução — semanal) ──────────────
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Principais Estados com Devoluções</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.principais_estados")}</span>
 </div>""", unsafe_allow_html=True)
         if not df_st_int.empty:
             df_est_int = df_st_int.groupby("estado")["qtd"].sum().reset_index()
             df_est_int = df_est_int.sort_values("qtd", ascending=False)
-            tabela_padrao(df_est_int.rename(columns={"estado": "Estado", "qtd": "Qtd"}))
+            tabela_padrao(df_est_int.rename(columns={"estado": t("col.estado"), "qtd": t("col.qtd")}))
 
         st.divider()
 
         # ── Top 5 Pré-entregas por Estado (DINÂMICO) ─────────────
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 5 Pré-entregas por Estado</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.top5_pre_estado")}</span>
 </div>""", unsafe_allow_html=True)
         st.caption("Estados e pré-entregas calculados a partir do monitoramento de pontualidade")
 
         df_iatas_todos = buscar_dev_iatas_semanal(semana=semana_int, ano=ano_int)
 
         if df_iatas_todos.empty:
-            st.info("Sem dados de pré-entregas para a semana selecionada.")
+            st.info(t("dev.sem_dados_semana"))
         else:
             top_estados_semana = (
                 df_iatas_todos.groupby("estado")["qtd"]
@@ -432,12 +432,12 @@ def render():
         st.divider()
 
         # ── DSPs sem 3 tentativas (Monitoramento — diário) ────────
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DE121C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
 <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">DSPs que Devolvem sem 3 Tentativas</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.dsps_sem3tent")}</span>
 </div>""", unsafe_allow_html=True)
         if data_mon_int:
             df_dsp = buscar_dev_dsp_sem3tent(data_ref=data_mon_int, cliente=cliente_cod_int)
@@ -452,36 +452,36 @@ def render():
                     st.plotly_chart(fig_dsp, use_container_width=True, key="fig_dsp_int")
                 with col2:
                     tabela_padrao(df_dsp.rename(columns={
-                        "ponto_entrada": "Iata",
-                        "estado": "Estado",
-                        "qtd": "Qtd"
+                        "ponto_entrada": t("dev.iata"),
+                        "estado": t("col.estado"),
+                        "qtd": t("col.qtd"),
                     }))
             else:
-                st.info("Sem dados de DSPs para esta data.")
+                st.info(t("dev.sem_dados_data"))
         else:
-            st.info("Sem dados de DSPs. Importe 'Devolução - Monitoramento'.")
+            st.info(t("dev.sem_dados_mon"))
 
     # ════════════════════════════════════════
     # TAB 4 — P90 POR ESTADO DETALHADO
     # ════════════════════════════════════════
     with tab4:
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2D42" stroke-width="2.2">
 <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
 <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">P90 Real por Estado de Destino</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("dev.p90_real")}</span>
 </div>""", unsafe_allow_html=True)
         st.caption("Calculado com cruzamento Folha de Devolução + Monitoramento. Estado = destino real do pedido.")
 
         df_sem_det = df_semanas_all
 
         if df_sem_det.empty:
-            st.warning("Sem dados. Importe usando o tipo 'Devolução + Monitoramento'.")
+            st.warning(t("dev.sem_dados_import"))
         else:
             col_f1, col_f2 = st.columns(2)
             opcoes_det = [f"{r['semana']}/{int(r['ano'])}" for _, r in df_sem_det.iterrows()]
-            sel_det    = col_f1.selectbox("Semana", opcoes_det, key="sem_det")
+            sel_det    = col_f1.selectbox(t("dev.semana_label"), opcoes_det, key="sem_det")
             sem_det, ano_det = sel_det.split("/")
             ano_det = int(ano_det)
 
@@ -493,16 +493,16 @@ def render():
             )
 
             if df_det.empty:
-                st.warning("Sem dados para o período selecionado.")
+                st.warning(t("dev.sem_dados_periodo"))
             else:
                 col1, col2, col3 = st.columns(3)
                 total_ped       = int(df_det["qtd_pedidos"].sum())
                 estados_com_dados = df_det["estado"].nunique()
                 p90_medio       = round(float(df_det.groupby("estado")["p90_dias"].mean().mean()), 1)
 
-                col1.metric("Total devoluções", total_ped)
-                col2.metric("P90 médio geral", f"{p90_medio} dias")
-                col3.metric("Estados com dados", estados_com_dados)
+                col1.metric(t("dev.total_dev_count"), total_ped)
+                col2.metric(t("dev.p90_medio"), f"{p90_medio} dias")
+                col3.metric(t("dev.estados_dados"), estados_com_dados)
 
                 st.divider()
 
@@ -531,7 +531,7 @@ def render():
                 col_m1, col_m2 = st.columns(2)
 
                 with col_m1:
-                    st.markdown("**Top Motivos de Devolução**")
+                    st.markdown(f"**{t('dev.top_motivos')}**")
                     df_mot = (df_det.groupby("motivo")["qtd_pedidos"].sum()
                               .reset_index().sort_values("qtd_pedidos", ascending=False).head(8))
                     if not df_mot.empty:
@@ -541,7 +541,7 @@ def render():
                         st.plotly_chart(fig_mot, use_container_width=True, key="fig_mot_det")
 
                 with col_m2:
-                    st.markdown("**Top Pré-entregas com Devolução**")
+                    st.markdown(f"**{t('dev.top_pre_dev')}**")
                     df_pre = (df_det.groupby("pre_entrega")["qtd_pedidos"].sum()
                               .reset_index().sort_values("qtd_pedidos", ascending=False).head(8))
                     if not df_pre.empty:
@@ -551,9 +551,11 @@ def render():
                         st.plotly_chart(fig_pre, use_container_width=True, key="fig_pre_det")
 
                 st.divider()
-                st.markdown("**Tabela detalhada**")
+                st.markdown(f"**{t('dev.tabela_detalhada')}**")
                 tabela_padrao(df_p90_estado.rename(columns={
-                    "estado": "Estado", "p90_dias": "P90 (dias)", "qtd": "Qtd Devoluções"
+                    "estado": t("col.estado"),
+                    "p90_dias": t("dev.col_p90"),
+                    "qtd": t("dev.total_dev_count"),
                 }))
 
     rodape_autoria()

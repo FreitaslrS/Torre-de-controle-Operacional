@@ -163,12 +163,12 @@ def render():
             df.drop(columns=["_tempo_pond"], inplace=True)
             tabela_dia.rename(columns={"dentro_sla": "0-24h", "fora_sla": ">24h"}, inplace=True)
 
-            tabela_dia["Média (h)"] = tabela_dia["tempo_medio"].apply(_formatar_horas)
-            tabela_dia["% SLA"] = (
+            tabela_dia[t("col.media_h")] = tabela_dia["tempo_medio"].apply(_formatar_horas)
+            tabela_dia[t("col.perc_sla")] = (
                 tabela_dia["0-24h"] / tabela_dia["qtd_total"].replace(0, 1) * 100
             ).round(1).astype(str) + "%"
             tabela_dia = tabela_dia.sort_values("data", ascending=False)
-            tabela_padrao(tabela_dia[["data", "0-24h", ">24h", "sem_saida", "qtd_total", "Média (h)", "% SLA"]])
+            tabela_padrao(tabela_dia[["data", "0-24h", ">24h", "sem_saida", "qtd_total", t("col.media_h"), t("col.perc_sla")]])
 
         st.divider()
 
@@ -235,22 +235,26 @@ def render():
         tabela_estado = (
             df.groupby("estado").agg(
                 **{
-                    "0-24h":     ("qtd_dentro_sla", "sum"),
-                    ">24h":      ("qtd_fora_sla",   "sum"),
-                    "Sem saída": ("qtd_sem_saida",  "sum"),
-                    "Total":     ("qtd_total",      "sum"),
+                    "0-24h":    ("qtd_dentro_sla", "sum"),
+                    ">24h":     ("qtd_fora_sla",   "sum"),
+                    "sem_saida": ("qtd_sem_saida",  "sum"),
+                    "total":    ("qtd_total",      "sum"),
                 }
             ).reset_index()
         )
 
         total_linha = pd.DataFrame([{
-            "estado":     "TOTAL",
-            "0-24h":      tabela_estado["0-24h"].sum(),
-            ">24h":       tabela_estado[">24h"].sum(),
-            "Sem saída":  tabela_estado["Sem saída"].sum(),
-            "Total":      tabela_estado["Total"].sum(),
+            "estado":    "TOTAL",
+            "0-24h":     tabela_estado["0-24h"].sum(),
+            ">24h":      tabela_estado[">24h"].sum(),
+            "sem_saida": tabela_estado["sem_saida"].sum(),
+            "total":     tabela_estado["total"].sum(),
         }])
         tabela_estado = pd.concat([tabela_estado, total_linha], ignore_index=True)
+        tabela_estado.rename(columns={
+            "sem_saida": t("col.sem_saida"),
+            "total":     t("comum.total"),
+        }, inplace=True)
         tabela_padrao(tabela_estado)
 
     with tab2:
@@ -289,8 +293,8 @@ def render():
             media_total = df_cons["total_geral"].mean()
 
             col1, col2, col3 = st.columns(3)
-            col1.metric("Perus", f"{media_perus:.0f}/dia")
-            col2.metric("TFK Direto", f"{media_tfk:.0f}/dia")
+            col1.metric(t("tempo.perus"), f"{media_perus:.0f}/dia")
+            col2.metric(t("tempo.tfk_direto"), f"{media_tfk:.0f}/dia")
             col3.metric(t("comum.total"), f"{media_total:.0f}/dia")
 
             for col in ["total_perus", "total_tfk", "total_geral"]:

@@ -54,7 +54,7 @@ def gerar_download(df, key_prefix):
 def render():
     aplicar_css_global()
 
-    st.markdown("""
+    st.markdown(f"""
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
          stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -88,10 +88,10 @@ def render():
     # =========================
     # 🎛️ FILTROS
     # =========================
-    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+    st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Filtros</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("comum.filtros")}</span>
 </div>""", unsafe_allow_html=True)
 
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
@@ -182,22 +182,22 @@ def render():
     col_g1, col_g2 = st.columns(2)
 
     with col_g1:
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Estado</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("col.estado")}</span>
 </div>""", unsafe_allow_html=True)
         fig_e = grafico_barra(df_estado, x="estado", y="qtd", text="qtd")
         fig_e.update_traces(marker_color=[COR_PRINCIPAL] + [COR_SECUNDARIA] * (len(df_estado) - 1))
         st.plotly_chart(fig_e, use_container_width=True)
 
     with col_g2:
-        st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Cliente</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("col.cliente")}</span>
 </div>""", unsafe_allow_html=True)
         fig_c = grafico_barra(df_cliente, x="cliente", y="qtd", text="qtd")
         fig_c.update_traces(marker_color=[COR_PRINCIPAL] + [COR_SECUNDARIA] * (len(df_cliente) - 1))
@@ -212,25 +212,25 @@ def render():
 
     with col_pp1:
         if "proximo_ponto" in df_f.columns:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Próximo Ponto</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("comum.proximo_ponto")}</span>
 </div>""", unsafe_allow_html=True)
             df_pp = (df_f.groupby("proximo_ponto")["qtd"].sum()
                         .reset_index().sort_values("qtd", ascending=False))
-            df_pp.columns = ["Próximo Ponto / 下一站", "Qtd / 数量"]
+            df_pp.columns = [t("col.proximo_ponto"), t("col.qtd")]
             tabela_padrao(df_pp)
 
     with col_pp2:
         if "pre_entrega" in df_f.columns:
-            st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
 <path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Top 10 Pré-entrega</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("backlog.top10_pre")}</span>
 </div>""", unsafe_allow_html=True)
             df_pre = (df_f.groupby("pre_entrega")["qtd"].sum()
                          .reset_index().sort_values("qtd", ascending=False).head(10))
@@ -243,11 +243,11 @@ def render():
     # =========================
     # 📊 BACKLOG POR ESTADO × FAIXA
     # =========================
-    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+    st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Backlog por Estado (Faixa de Tempo)</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("historico.por_estado_faixa")}</span>
 </div>""", unsafe_allow_html=True)
 
     tabela_estado = (
@@ -266,12 +266,12 @@ def render():
     # =========================
     # ⬇️ DOWNLOAD
     # =========================
-    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+    st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#053B31" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
 <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
 </svg>
-<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">Download</span>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("comum.download")}</span>
 </div>""", unsafe_allow_html=True)
     gerar_download(df_f, "backlog_historico")
 

@@ -1046,6 +1046,381 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
 
     # ─────────────────────────────────────────────
+    # COLUNAS COMUNS (tabelas e gráficos)
+    # ─────────────────────────────────────────────
+    "col.hora": {
+        "pt": "Hora", "en": "Hour", "zh": "时间",
+    },
+    "col.data": {
+        "pt": "Data", "en": "Date", "zh": "日期",
+    },
+    "col.volumes": {
+        "pt": "Volumes", "en": "Volumes", "zh": "件数",
+    },
+    "col.dispositivo": {
+        "pt": "Dispositivo", "en": "Device", "zh": "设备",
+    },
+    "col.cliente": {
+        "pt": "Cliente", "en": "Client", "zh": "客户",
+    },
+    "col.estado": {
+        "pt": "Estado", "en": "State", "zh": "州",
+    },
+    "col.cidade": {
+        "pt": "Cidade", "en": "City", "zh": "城市",
+    },
+    "col.waybill": {
+        "pt": "Waybill", "en": "Waybill", "zh": "运单号",
+    },
+    "col.turno": {
+        "pt": "Turno", "en": "Shift", "zh": "班次",
+    },
+    "col.produzido": {
+        "pt": "Produzido", "en": "Produced", "zh": "已处理",
+    },
+    "col.presenca": {
+        "pt": "Presença", "en": "Attendance", "zh": "出勤",
+    },
+    "col.anjun": {
+        "pt": "Anjun", "en": "Anjun", "zh": "安骏",
+    },
+    "col.temporario": {
+        "pt": "Temp.", "en": "Temp.", "zh": "临时工",
+    },
+    "col.diaristas": {
+        "pt": "Diaristas", "en": "Daily Workers", "zh": "日工",
+    },
+    "col.faltas_anjun": {
+        "pt": "Faltas Anjun", "en": "Anjun Absences", "zh": "安骏缺勤",
+    },
+    "col.faltas_temp": {
+        "pt": "Faltas Temp.", "en": "Temp Absences", "zh": "临时工缺勤",
+    },
+    "col.perc_falta": {
+        "pt": "% Falta", "en": "% Absence", "zh": "缺勤率",
+    },
+    "col.custo_pedido": {
+        "pt": "Custo/Pedido", "en": "Cost/Order", "zh": "每单成本",
+    },
+    "col.custo_diaristas": {
+        "pt": "Custo Diaristas", "en": "Daily Worker Cost", "zh": "日工成本",
+    },
+    "col.placa": {
+        "pt": "Placa", "en": "Plate", "zh": "车牌",
+    },
+    "col.motorista": {
+        "pt": "Motorista", "en": "Driver", "zh": "司机",
+    },
+    "col.estado_origem": {
+        "pt": "Estado Origem", "en": "Origin State", "zh": "始发州",
+    },
+    "col.base_origem": {
+        "pt": "Base Origem", "en": "Origin Hub", "zh": "始发站",
+    },
+    "col.hora_car": {
+        "pt": "Hora Car.", "en": "Load Time", "zh": "装货时间",
+    },
+    "col.descarregado": {
+        "pt": "Descarregado?", "en": "Unloaded?", "zh": "已卸货？",
+    },
+    "col.sacos_car": {
+        "pt": "Sacos Car.", "en": "Bags Loaded", "zh": "装袋数",
+    },
+    "col.sacos_desc": {
+        "pt": "Sacos Desc.", "en": "Bags Unloaded", "zh": "卸袋数",
+    },
+    "col.pac_car": {
+        "pt": "Pac. Car.", "en": "Pkgs Loaded", "zh": "装包数",
+    },
+    "col.pac_desc": {
+        "pt": "Pac. Desc.", "en": "Pkgs Unloaded", "zh": "卸包数",
+    },
+    "col.dif_pac": {
+        "pt": "Dif. Pac.", "en": "Pkg Diff.", "zh": "包差",
+    },
+    "col.destino": {
+        "pt": "Destino", "en": "Destination", "zh": "目的地",
+    },
+    "col.confirmado_desc": {
+        "pt": "Confirmado Desc.?", "en": "Unload Confirmed?", "zh": "已确认卸货？",
+    },
+    "col.pac_enviados": {
+        "pt": "Pac. Enviados", "en": "Pkgs Sent", "zh": "发出包数",
+    },
+    "col.lbl_diferenca": {
+        "pt": "Diferença (pacotes)", "en": "Difference (packages)", "zh": "差异（包）",
+    },
+    "col.lbl_pac_desc": {
+        "pt": "Pacotes Descarregados", "en": "Packages Unloaded", "zh": "卸货包数",
+    },
+    "col.lbl_pac_car": {
+        "pt": "Pacotes Carregados", "en": "Packages Loaded", "zh": "装货包数",
+    },
+    "col.pre_entrega": {
+        "pt": "Pré-entrega", "en": "Pre-delivery", "zh": "预派送",
+    },
+    "col.proximo_ponto": {
+        "pt": "Próximo Ponto", "en": "Next Hub", "zh": "下一站",
+    },
+    "col.tempo_backlog": {
+        "pt": "Tempo em Backlog", "en": "Time in Backlog", "zh": "积压时间",
+    },
+    "col.qtd": {
+        "pt": "Qtd", "en": "Qty", "zh": "数量",
+    },
+    "col.volume": {
+        "pt": "Volume", "en": "Volume", "zh": "件量",
+    },
+    "col.sem_saida": {
+        "pt": "Sem Saída", "en": "No Exit", "zh": "无出库",
+    },
+    "col.media_h": {
+        "pt": "Média (h)", "en": "Avg (h)", "zh": "平均（小时）",
+    },
+    "col.perc_sla": {
+        "pt": "% SLA", "en": "% SLA", "zh": "SLA达标率",
+    },
+
+    # ─────────────────────────────────────────────
+    # PRODUTIVIDADE — colunas/labels
+    # ─────────────────────────────────────────────
+    "prod.cubometro": {
+        "pt": "Cubômetro", "en": "Cubing Machine", "zh": "体积仪",
+    },
+    "prod.sorter_linear": {
+        "pt": "Sorter Linear", "en": "Linear Sorter", "zh": "直线分拣机",
+    },
+    "prod.sorter_oval": {
+        "pt": "Sorter Oval", "en": "Oval Sorter", "zh": "环形分拣机",
+    },
+
+    # ─────────────────────────────────────────────
+    # TEMPO DE PROCESSAMENTO — labels
+    # ─────────────────────────────────────────────
+    "tempo.perus": {
+        "pt": "Perus", "en": "Perus", "zh": "Perus",
+    },
+    "tempo.tfk_direto": {
+        "pt": "TFK Direto", "en": "TFK Direct", "zh": "TFK直送",
+    },
+
+    # ─────────────────────────────────────────────
+    # HEALTH CHECK — labels
+    # ─────────────────────────────────────────────
+    "hc.top5_estados": {
+        "pt": "Top 5 Estados", "en": "Top 5 States", "zh": "前5个州",
+    },
+    "hc.top5_pre": {
+        "pt": "Top 5 Pré-entregas", "en": "Top 5 Pre-deliveries", "zh": "前5个预派送",
+    },
+    "hc.perc_sla": {
+        "pt": "% SLA", "en": "% SLA", "zh": "SLA达标率",
+    },
+    "hc.sla_critico_msg": {
+        "pt": "SLA crítico: apenas {p:.1f}% dentro do prazo",
+        "en": "Critical SLA: only {p:.1f}% on time",
+        "zh": "SLA严重不足：仅 {p:.1f}% 准时",
+    },
+    "hc.sla_atencao_msg": {
+        "pt": "SLA em atenção: {p:.1f}% dentro do prazo",
+        "en": "SLA needs attention: {p:.1f}% on time",
+        "zh": "SLA需关注：{p:.1f}% 准时",
+    },
+    "hc.sla_saudavel_msg": {
+        "pt": "SLA saudável: {p:.1f}% dentro do prazo",
+        "en": "Healthy SLA: {p:.1f}% on time",
+        "zh": "SLA健康：{p:.1f}% 准时",
+    },
+    "hc.status_dentro_prazo": {
+        "pt": "Dentro do Prazo ({p:.1f}%)",
+        "en": "On Time ({p:.1f}%)",
+        "zh": "准时 ({p:.1f}%)",
+    },
+    "hc.status_fora_prazo": {
+        "pt": "Fora do Prazo",
+        "en": "Late",
+        "zh": "超时",
+    },
+    "hc.status_sem_saida": {
+        "pt": "Sem Saída",
+        "en": "No Exit",
+        "zh": "无出库",
+    },
+
+    # ─────────────────────────────────────────────
+    # BACKLOG — labels e colunas
+    # ─────────────────────────────────────────────
+    "backlog.btn_baixar": {
+        "pt": "Baixar {n} waybills",
+        "en": "Download {n} waybills",
+        "zh": "下载 {n} 运单",
+    },
+    "backlog.lbl_volume": {
+        "pt": "Volume", "en": "Volume", "zh": "件量",
+    },
+
+    # ─────────────────────────────────────────────
+    # DEVOLUÇÕES — tabs, headers, colunas
+    # ─────────────────────────────────────────────
+    "dev.tab_resumo": {
+        "pt": "📋 Resumo", "en": "📋 Summary", "zh": "📋 摘要",
+    },
+    "dev.tab_wbr_cliente": {
+        "pt": "📊 WBR — Cliente", "en": "📊 WBR — Client", "zh": "📊 WBR — 客户",
+    },
+    "dev.tab_semanal_interno": {
+        "pt": "📊 Semanal — Interno", "en": "📊 Weekly — Internal", "zh": "📊 每周 — 内部",
+    },
+    "dev.tab_p90": {
+        "pt": "🗺️ P90 por Estado (Detalhado)", "en": "🗺️ P90 by State (Detailed)", "zh": "🗺️ 各州P90（详细）",
+    },
+    "dev.semana_label": {
+        "pt": "Semana", "en": "Week", "zh": "周",
+    },
+    "dev.col_status": {
+        "pt": "Status", "en": "Status", "zh": "状态",
+    },
+    "dev.col_clientes": {
+        "pt": "Clientes", "en": "Clients", "zh": "客户数",
+    },
+    "dev.col_estados": {
+        "pt": "Estados", "en": "States", "zh": "州数",
+    },
+    "dev.col_semana": {
+        "pt": "Semana", "en": "Week", "zh": "周",
+    },
+    "dev.col_ocorrencias": {
+        "pt": "Ocorrências", "en": "Occurrences", "zh": "发生次数",
+    },
+    "dev.col_perc": {
+        "pt": "%", "en": "%", "zh": "%",
+    },
+    "dev.col_prazo": {
+        "pt": "Prazo (dias)", "en": "Deadline (days)", "zh": "时限（天）",
+    },
+    "dev.col_p90": {
+        "pt": "P90 (dias)", "en": "P90 (days)", "zh": "P90（天）",
+    },
+    "dev.col_dentro_prazo": {
+        "pt": "Dentro do Prazo", "en": "On Time", "zh": "准时",
+    },
+    "dev.col_fora_prazo": {
+        "pt": "Fora do Prazo", "en": "Late", "zh": "超时",
+    },
+    "dev.col_total_dev": {
+        "pt": "Total Dev.", "en": "Total Dev.", "zh": "退货总量",
+    },
+    "dev.col_perc_no_prazo": {
+        "pt": "% no Prazo", "en": "% On Time", "zh": "准时率",
+    },
+    "dev.sem_dados_semana": {
+        "pt": "Sem dados para a semana selecionada.",
+        "en": "No data for the selected week.",
+        "zh": "所选周无数据。",
+    },
+    "dev.sla_entregas": {
+        "pt": "SLA — Entregas no Prazo", "en": "SLA — On-Time Deliveries", "zh": "SLA — 准时交付",
+    },
+    "dev.wbr_relatorio": {
+        "pt": "📊 WBR — Relatório ao Cliente", "en": "📊 WBR — Client Report", "zh": "📊 WBR — 客户报告",
+    },
+    "dev.sem_dados_import": {
+        "pt": "Sem dados. Importe usando 'Devolução + Monitoramento'.",
+        "en": "No data. Import using 'Return + Monitoring'.",
+        "zh": "无数据。请使用"退货 + 监控"导入。",
+    },
+    "dev.sem_dados_mon": {
+        "pt": "Sem dados. Importe 'Devolução - Monitoramento'.",
+        "en": "No data. Import 'Return - Monitoring'.",
+        "zh": "无数据。请导入"退货 - 监控"。",
+    },
+    "dev.sem_dados_data": {
+        "pt": "Sem dados para esta data.",
+        "en": "No data for this date.",
+        "zh": "此日期无数据。",
+    },
+    "dev.sem_dados_periodo": {
+        "pt": "Sem dados para o período selecionado.",
+        "en": "No data for the selected period.",
+        "zh": "所选期间无数据。",
+    },
+    "dev.semana_dev": {
+        "pt": "Semana (Devolução)", "en": "Week (Return)", "zh": "周（退货）",
+    },
+    "dev.data_mon": {
+        "pt": "Data (Monitoramento)", "en": "Date (Monitoring)", "zh": "日期（监控）",
+    },
+    "dev.total_semana": {
+        "pt": "Total na semana", "en": "Total this week", "zh": "本周总量",
+    },
+    "dev.devolvidos": {
+        "pt": "Devolvidos", "en": "Returned", "zh": "已退货",
+    },
+    "dev.retornou_processo": {
+        "pt": "Retornou ao Processo", "en": "Returned to Process", "zh": "已重新处理",
+    },
+    "dev.aguardando": {
+        "pt": "Aguardando", "en": "Pending", "zh": "待处理",
+    },
+    "dev.backlog_status": {
+        "pt": "Backlog — Status Atual", "en": "Backlog — Current Status", "zh": "积压 — 当前状态",
+    },
+    "dev.por_estado": {
+        "pt": "Devoluções por Estado", "en": "Returns by State", "zh": "按州退货",
+    },
+    "dev.motivos_falha": {
+        "pt": "Motivos de Falha de Entrega", "en": "Delivery Failure Reasons", "zh": "交付失败原因",
+    },
+    "dev.principais_motivos": {
+        "pt": "Principais Motivos", "en": "Main Reasons", "zh": "主要原因",
+    },
+    "dev.interceptados_iata": {
+        "pt": "Interceptados por Iata", "en": "Intercepted by Hub", "zh": "被站点拦截",
+    },
+    "dev.principais_estados": {
+        "pt": "Principais Estados com Devoluções", "en": "Main States with Returns", "zh": "主要退货州",
+    },
+    "dev.top5_pre_estado": {
+        "pt": "Top 5 Pré-entregas por Estado", "en": "Top 5 Pre-deliveries by State", "zh": "各州前5预派送",
+    },
+    "dev.dsps_sem3tent": {
+        "pt": "DSPs que Devolvem sem 3 Tentativas", "en": "DSPs Returning Without 3 Attempts", "zh": "未满3次尝试退货的DSP",
+    },
+    "dev.p90_real": {
+        "pt": "P90 Real por Estado de Destino", "en": "Real P90 by Destination State", "zh": "各目的地州真实P90",
+    },
+    "dev.total_proc": {
+        "pt": "Total Processado", "en": "Total Processed", "zh": "总处理量",
+    },
+    "dev.top_motivos": {
+        "pt": "Top Motivos de Devolução", "en": "Top Return Reasons", "zh": "退货主因",
+    },
+    "dev.top_pre_dev": {
+        "pt": "Top Pré-entregas com Devolução", "en": "Top Pre-deliveries with Return", "zh": "前N预派送退货",
+    },
+    "dev.tabela_detalhada": {
+        "pt": "Tabela detalhada", "en": "Detailed table", "zh": "详细表格",
+    },
+    "dev.total_dev_count": {
+        "pt": "Total devoluções", "en": "Total returns", "zh": "退货总量",
+    },
+    "dev.p90_medio": {
+        "pt": "P90 médio geral", "en": "Average P90", "zh": "平均P90",
+    },
+    "dev.estados_dados": {
+        "pt": "Estados com dados", "en": "States with data", "zh": "有数据的州",
+    },
+    "dev.iata": {
+        "pt": "Iata", "en": "Hub", "zh": "站点",
+    },
+    "dev.categoria": {
+        "pt": "Categoria", "en": "Category", "zh": "类别",
+    },
+    "dev.rel_semanal_interno": {
+        "pt": "📊 Relatório Semanal — Interno", "en": "📊 Weekly Report — Internal", "zh": "📊 每周报告 — 内部",
+    },
+
+    # ─────────────────────────────────────────────
     # RODAPE
     # ─────────────────────────────────────────────
     "rodape.texto": {

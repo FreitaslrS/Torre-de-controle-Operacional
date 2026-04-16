@@ -37,14 +37,13 @@ color_turno = {
     "T3": "#053B31"
 }
 
-map_traducao = {
-    "Sorter Oval":   "Sorter Oval",
-    "Sorter Linear": "Sorter Linear",
-    "Cubometro":     "Cubômetro"
-}
-
-
 def render():
+    map_traducao = {
+        "Sorter Oval":   t("prod.sorter_oval"),
+        "Sorter Linear": t("prod.sorter_linear"),
+        "Cubometro":     t("prod.cubometro"),
+    }
+
     aplicar_css_global()
 
     st.markdown(f"""
@@ -175,7 +174,7 @@ def render():
             df_bar, x="hora", y="volumes",
             color="dispositivo", barmode="stack",
             color_discrete_map=color_dispositivo,
-            labels={"hora": "Hora", "volumes": "Volumes", "dispositivo": "Dispositivo"}
+            labels={"hora": t("col.hora"), "volumes": t("col.volumes"), "dispositivo": t("col.dispositivo")}
         )
         fig_bar.for_each_trace(lambda tr: tr.update(name=map_traducao.get(tr.name, tr.name)))
         fig_bar.update_xaxes(dtick=1)
@@ -207,7 +206,7 @@ def render():
         cols_disp = [map_traducao[d] for d in dispositivos if map_traducao[d] in df_tabela.columns]
         df_tabela["Total"] = df_tabela[cols_disp].sum(axis=1)
         df_tabela["hora"] = df_tabela["hora"].apply(lambda x: f"{int(x):02d}:00")
-        df_tabela.rename(columns={"hora": "Hora"}, inplace=True)
+        df_tabela.rename(columns={"hora": t("col.hora")}, inplace=True)
         tabela_padrao(df_tabela)
 
         st.divider()
@@ -236,7 +235,7 @@ def render():
             cores = [COR_SECUNDARIA] + [COR_PRINCIPAL] * (len(df_top10) - 1)
             fig_cliente = px.bar(
                 df_top10, x="volumes", y="cliente", orientation="h", text="volumes",
-                labels={"volumes": "Volumes", "cliente": "Cliente"}
+                labels={"volumes": t("col.volumes"), "cliente": t("col.cliente")}
             )
             fig_cliente.update_traces(marker_color=cores, textposition="outside")
             fig_cliente = aplicar_layout_padrao(fig_cliente)
@@ -250,7 +249,7 @@ def render():
 <span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("prod.por_cliente")}</span>
 </div>""", unsafe_allow_html=True)
             df_cliente_fmt = df_cliente.copy()
-            df_cliente_fmt.columns = ["Cliente", "Volumes"]
+            df_cliente_fmt.columns = [t("col.cliente"), t("col.volumes")]
             tabela_padrao(df_cliente_fmt)
 
     with tab2:
@@ -433,7 +432,7 @@ def render():
                             "vol_kwai":  "#F0A202",
                             "vol_b2c":   "#DE121C",
                         },
-                        labels={"data": "Data", "volume": "Volume", "cliente": "Cliente"}
+                        labels={"data": t("col.data"), "volume": t("col.volumes"), "cliente": t("col.cliente")}
                     )
                     fig_vol.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)",
@@ -475,10 +474,10 @@ def render():
                 df_tab["custo_por_pedido"] = df_tab["custo_por_pedido"].apply(lambda x: f"R$ {x:.2f}" if pd.notna(x) else "-")
                 df_tab["custo_diaristas"]  = df_tab["custo_diaristas"].apply(lambda x: f"R$ {x:,.0f}" if pd.notna(x) else "-")
                 df_tab.columns = [
-                    "Data", "Turno", "Produzido", "Presença",
-                    "Anjun", "Temp.", "Diaristas",
-                    "Faltas Anjun", "Faltas Temp.", "% Falta",
-                    "Custo/Pedido", "Custo Diaristas"
+                    t("col.data"), t("col.turno"), t("col.produzido"), t("col.presenca"),
+                    t("col.anjun"), t("col.temporario"), t("col.diaristas"),
+                    t("col.faltas_anjun"), t("col.faltas_temp"), t("col.perc_falta"),
+                    t("col.custo_pedido"), t("col.custo_diaristas"),
                 ]
                 tabela_padrao(df_tab)
 

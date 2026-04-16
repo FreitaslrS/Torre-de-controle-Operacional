@@ -56,7 +56,7 @@ def _grafico_dif_desc(df):
     fig = grafico_barra(df_dif, x="local_carregamento", y="dif", text="dif")
     fig.update_traces(marker_color=cores, texttemplate="%{text:+,}",
                       hovertemplate="<b>%{x}</b><br>Diferença: %{y:+,}<extra></extra>")
-    fig.update_layout(yaxis_title="Diferença (pacotes)")
+    fig.update_layout(yaxis_title=t("col.lbl_diferenca"))
     st.plotly_chart(fig, use_container_width=True, key="fig_dif_desc")
 
 
@@ -71,7 +71,7 @@ def _grafico_timeline_desc(df):
     fig = grafico_barra(df_hora, x="hora", y="pacotes", text="veiculos")
     fig.update_traces(marker_color=COR_SECUNDARIA, texttemplate="%{text} veíc.",
                       hovertemplate="<b>%{x}h</b><br>Pacotes: %{y}<br>Veículos: %{text}<extra></extra>")
-    fig.update_layout(xaxis_title="Hora", yaxis_title="Pacotes Descarregados")
+    fig.update_layout(xaxis_title=t("col.hora"), yaxis_title=t("col.lbl_pac_desc"))
     st.plotly_chart(fig, use_container_width=True, key="fig_time_desc")
 
 
@@ -115,10 +115,10 @@ def _tab_descarregamento(data_sel):
     ]].copy()
     df_tab["tempo_carregamento"] = pd.to_datetime(df_tab["tempo_carregamento"]).dt.strftime("%d/%m %H:%M")
     df_tab.columns = [
-        "Placa", "Motorista", "Estado Origem", "Base Origem",
-        "Hora Car.", "Descarregado?",
-        "Sacos Car.", "Sacos Desc.",
-        "Pac. Car.", "Pac. Desc.", "Dif. Pac."
+        t("col.placa"), t("col.motorista"), t("col.estado_origem"), t("col.base_origem"),
+        t("col.hora_car"), t("col.descarregado"),
+        t("col.sacos_car"), t("col.sacos_desc"),
+        t("col.pac_car"), t("col.pac_desc"), t("col.dif_pac"),
     ]
     tabela_padrao(df_tab)
 
@@ -151,7 +151,7 @@ def _grafico_dif_saida(df):
     fig = grafico_barra(df_dif, x="proximo_ponto", y="dif", text="dif")
     fig.update_traces(marker_color=cores, texttemplate="%{text:+,}",
                       hovertemplate="<b>%{x}</b><br>Diferença: %{y:+,}<extra></extra>")
-    fig.update_layout(yaxis_title="Diferença (pacotes)")
+    fig.update_layout(yaxis_title=t("col.lbl_diferenca"))
     st.plotly_chart(fig, use_container_width=True, key="fig_dif_saida")
 
 
@@ -166,7 +166,7 @@ def _grafico_timeline_saida(df):
     fig = grafico_barra(df_hora, x="hora", y="pacotes", text="veiculos")
     fig.update_traces(marker_color=COR_PRINCIPAL, texttemplate="%{text} veíc.",
                       hovertemplate="<b>%{x}h</b><br>Pacotes env.: %{y}<extra></extra>")
-    fig.update_layout(xaxis_title="Hora", yaxis_title="Pacotes Carregados")
+    fig.update_layout(xaxis_title=t("col.hora"), yaxis_title=t("col.lbl_pac_car"))
     st.plotly_chart(fig, use_container_width=True, key="fig_time_saida")
 
 
@@ -212,10 +212,10 @@ def _tab_saida(data_sel):
     ]].copy()
     df_tab["tempo_carregamento"] = pd.to_datetime(df_tab["tempo_carregamento"]).dt.strftime("%d/%m %H:%M")
     df_tab.columns = [
-        "Placa", "Motorista", "Destino",
-        "Hora Car.", "Confirmado Desc.?",
-        "Sacos Car.", "Pac. Enviados",
-        "Pac. Desc.", "Dif. Pac."
+        t("col.placa"), t("col.motorista"), t("col.destino"),
+        t("col.hora_car"), t("col.confirmado_desc"),
+        t("col.sacos_car"), t("col.pac_enviados"),
+        t("col.pac_desc"), t("col.dif_pac"),
     ]
     tabela_padrao(df_tab)
 

@@ -113,7 +113,7 @@ def render():
                       delta=int(total_a - total_c) if comp_ativo else None)
         col_s2.metric(t("hc.dentro_sla"), fmt_numero(dentro_a),
                       delta=int(dentro_a - dentro_c) if comp_ativo else None)
-        col_s3.metric("% SLA", f"{perc_sla_a}%",
+        col_s3.metric(t("hc.perc_sla"), f"{perc_sla_a}%",
                       delta=f"{round(perc_sla_a - perc_sla_c, 1)}%" if comp_ativo else None)
         col_s4.metric(t("hc.lead_time_medio"), lead_fmt,
                       delta=f"{round(lead_a - lead_c, 1)}h" if comp_ativo else None,
@@ -127,16 +127,16 @@ def render():
         pct_dentro = perc_sla_a
 
         if pct_dentro < 70:
-            st.error(f"SLA crítico: apenas {pct_dentro:.1f}% dentro do prazo")
+            st.error(t("hc.sla_critico_msg").format(p=pct_dentro))
         elif pct_dentro < 85:
-            st.warning(f"SLA em atenção: {pct_dentro:.1f}% dentro do prazo")
+            st.warning(t("hc.sla_atencao_msg").format(p=pct_dentro))
         else:
-            st.success(f"SLA saudável: {pct_dentro:.1f}% dentro do prazo")
+            st.success(t("hc.sla_saudavel_msg").format(p=pct_dentro))
 
         df_pizza_sla = pd.DataFrame([
-            {"status": f"Dentro do Prazo ({pct_dentro:.1f}%)",  "qtd": dentro},
-            {"status": f"Fora do Prazo ({pct_fora:.1f}%)",      "qtd": fora},
-            {"status": f"Sem Info ({pct_sem_info:.1f}%)",       "qtd": sem_info},
+            {"status": t("hc.status_dentro_prazo").format(p=pct_dentro),  "qtd": dentro},
+            {"status": t("hc.status_fora_prazo"),                          "qtd": fora},
+            {"status": t("hc.status_sem_saida"),                           "qtd": sem_info},
         ])
         fig_sla = px.pie(
             df_pizza_sla, names="status", values="qtd",
@@ -168,7 +168,7 @@ def render():
         col_b1, col_b2 = st.columns(2)
 
         with col_b1:
-            st.markdown("**Top 5 Estados**")
+            st.markdown(f"**{t('hc.top5_estados')}**")
             df_est_24 = df_24.groupby("estado")["total"].sum().reset_index()
             df_est_24 = df_est_24.sort_values("total", ascending=False).head(5)
             cores_24 = [COR_PRINCIPAL] + [COR_APOIO] * 4
@@ -177,7 +177,7 @@ def render():
             st.plotly_chart(fig_est_24, use_container_width=True, key="fig_est24_hc")
 
         with col_b2:
-            st.markdown("**Top 5 Pré-entregas**")
+            st.markdown(f"**{t('hc.top5_pre')}**")
             df_pre_24 = df_24.groupby("pre_entrega")["total"].sum().reset_index()
             df_pre_24 = df_pre_24.sort_values("total", ascending=False).head(5)
             cores_pre24 = [COR_PRINCIPAL] + [COR_APOIO] * 4
@@ -208,7 +208,7 @@ def render():
         col_b3, col_b4 = st.columns(2)
 
         with col_b3:
-            st.markdown("**Top 5 Estados**")
+            st.markdown(f"**{t('hc.top5_estados')}**")
             df_est_48 = df_48.groupby("estado")["total"].sum().reset_index()
             df_est_48 = df_est_48.sort_values("total", ascending=False).head(5)
             cores_48 = [COR_PRINCIPAL] + [COR_APOIO] * 4
@@ -217,7 +217,7 @@ def render():
             st.plotly_chart(fig_est_48, use_container_width=True, key="fig_est48_hc")
 
         with col_b4:
-            st.markdown("**Top 5 Pré-entregas**")
+            st.markdown(f"**{t('hc.top5_pre')}**")
             df_pre_48 = df_48.groupby("pre_entrega")["total"].sum().reset_index()
             df_pre_48 = df_pre_48.sort_values("total", ascending=False).head(5)
             cores_pre48 = [COR_PRINCIPAL] + [COR_APOIO] * 4
