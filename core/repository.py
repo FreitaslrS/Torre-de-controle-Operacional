@@ -726,12 +726,27 @@ def buscar_datas_coletas(tipo="descarregamento"):
 @st.cache_data(ttl=300)
 def buscar_coletas(data_ref, tipo="descarregamento"):
     return consultar_coletas("""
-        SELECT num_registro, placa, carregador, rede_carregador,
-               tempo_carregamento, secao_destino,
-               descarregador, rede_descarregador, tempo_descarga,
-               sacos_carregados, sacos_descarregados, dif_sacos,
-               pacotes_carregados, pacotes_descarregados, dif_pacotes,
-               modo_operacao, tipo_veiculo
+        SELECT
+            num_registro,
+            placa,
+            carregador                                          AS motorista,
+            rede_carregador                                     AS local_carregamento,
+            SPLIT_PART(rede_carregador, '-', 1)                 AS estado_origem,
+            tempo_carregamento,
+            secao_destino                                       AS proximo_ponto,
+            descarregador,
+            rede_descarregador,
+            tempo_descarga,
+            CASE WHEN tempo_descarga IS NOT NULL THEN 'Sim'
+                 ELSE 'Não' END                                 AS ja_descarregado,
+            sacos_carregados,
+            sacos_descarregados,
+            dif_sacos,
+            pacotes_carregados,
+            pacotes_descarregados,
+            dif_pacotes,
+            modo_operacao,
+            tipo_veiculo
         FROM coletas
         WHERE data_referencia = %s AND tipo = %s
         ORDER BY tempo_carregamento DESC
