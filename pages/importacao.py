@@ -18,8 +18,7 @@ from core.processar_arquivo import (
     importar_excel, importar_produtividade, limpar_base,
     importar_tempo_processamento, importar_devolucoes, importar_p90,
     importar_devolucao_monitoramento, importar_devolucao_enriquecida,
-    importar_coletas, importar_coletas_saida,
-    importar_coletas_grandes, importar_coleta_final,
+    importar_coletas_auto,
     importar_pacotes_grandes, importar_presenca,
 )
 
@@ -59,8 +58,17 @@ def _carregar_historico():
             FROM pacotes_grandes GROUP BY nome_arquivo"""),
         (consultar_coletas, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
-                   MAX(data_referencia) as data_referencia, CONCAT('Coletas — ', MAX(tipo)) as tipo
+                   MAX(data_referencia) as data_referencia,
+                   CONCAT('Coletas — ', MAX(tipo)) as tipo
             FROM coletas GROUP BY nome_arquivo"""),
+        (consultar_coletas, """
+            SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data_referencia) as data_referencia, 'Coletas — Itens Grandes' as tipo
+            FROM coletas_grandes GROUP BY nome_arquivo"""),
+        (consultar_coletas, """
+            SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
+                   MAX(data_referencia) as data_referencia, 'Coletas — Monitoramento Final' as tipo
+            FROM coleta_final GROUP BY nome_arquivo"""),
         (consultar_devolucoes, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, 'Devolução + Monitoramento' as tipo
@@ -180,17 +188,8 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
                 raise ValueError("Arquivo de Monitoramento não selecionado")
             resultado = importar_devolucao_enriquecida(arquivo, arquivo_secundario, data_ref)
 
-        elif tipo_importacao == "Coletas — Descarregamento em Perus":
-            resultado = importar_coletas(arquivo, data_ref)
-
-        elif tipo_importacao == "Coletas — Saída para Bases":
-            resultado = importar_coletas_saida(arquivo, data_ref)
-
-        elif tipo_importacao == "Coletas — Itens Grandes":
-            resultado = importar_coletas_grandes(arquivo, data_ref)
-
-        elif tipo_importacao == "Coletas — Monitoramento Final":
-            resultado = importar_coleta_final(arquivo, data_ref)
+        elif tipo_importacao == "Coletas":
+            resultado = importar_coletas_auto(arquivo, data_ref)
 
         elif tipo_importacao == "Pacotes Grandes":
             resultado = importar_pacotes_grandes(arquivo, data_ref)
@@ -249,16 +248,21 @@ def render():
             "Tempo de Processamento",
             "Devolução + Monitoramento",
             "Devolução - Monitoramento",
-            "Coletas — Descarregamento em Perus",
-            "Coletas — Saída para Bases",
-            "Coletas — Itens Grandes",
-            "Coletas — Monitoramento Final",
+            "Coletas",
             "Pacotes Grandes",
             "Presença / Diário de Bordo",
         ]
     )
 
     # Uploader secundário para "Devolução + Monitoramento"
+    if tipo_importacao == "Coletas":
+        st.info(
+            "O sistema detecta automaticamente o tipo pelo número de colunas do arquivo:\n"
+            "- **Monitoramento de caminhões** (≥ 19 colunas) → grava descarregamento **e** saída ao mesmo tempo\n"
+            "- **Monitoramento Final** (13 colunas) → coleta_final\n"
+            "- **Itens Grandes** (10 colunas) → coletas_grandes"
+        )
+
     arquivo_monitor_secundario = None
     if tipo_importacao == "Devolução + Monitoramento":
         st.info(t("imp.dois_arquivos_info"))

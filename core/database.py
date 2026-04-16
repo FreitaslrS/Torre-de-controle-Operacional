@@ -335,3 +335,44 @@ def inicializar_banco():
         )
     """)
     executar_coletas("CREATE INDEX IF NOT EXISTS idx_coletas_data ON coletas (data_referencia, tipo)")
+
+    executar_coletas("""
+        CREATE TABLE IF NOT EXISTS coletas_grandes (
+            tempo_coleta        TIMESTAMP,
+            cliente             TEXT,
+            waybill_anjun       TEXT,
+            waybill_escaneado   TEXT,
+            coletador           TEXT,
+            ponto_responsavel   TEXT,
+            estado_origem       TEXT,
+            num_registro_carro  TEXT,
+            placa               TEXT,
+            motorista           TEXT,
+            data_referencia     DATE,
+            nome_arquivo        TEXT,
+            data_importacao     TIMESTAMP
+        )
+    """)
+    executar_coletas("CREATE INDEX IF NOT EXISTS idx_coletas_grandes_data ON coletas_grandes (data_referencia)")
+
+    executar_coletas("""
+        CREATE TABLE IF NOT EXISTS coleta_final (
+            data                    DATE,
+            cliente                 TEXT,
+            pac_a_coletar           INTEGER,
+            pac_coletados           INTEGER,
+            taxa_coleta             DOUBLE PRECISION,
+            dif_coleta              INTEGER,
+            pedidos_nao_coletados   INTEGER,
+            falta_bipagem_coleta    INTEGER,
+            perda_coleta            INTEGER,
+            pac_carregados          INTEGER,
+            dif_carregamento        INTEGER,
+            falta_bipagem_carga     INTEGER,
+            perda_carga             INTEGER,
+            data_referencia         DATE,
+            nome_arquivo            TEXT,
+            data_importacao         TIMESTAMP
+        )
+    """)
+    executar_coletas("CREATE INDEX IF NOT EXISTS idx_coleta_final_data ON coleta_final (data_referencia)")

@@ -1182,6 +1182,53 @@ def importar_coleta_final(arquivo, data_ref):
     return {"registros": qtd, "detalhe": f"{linhas:,} lidas → {qtd:,} linhas de monitoramento final importadas"}
 
 
+# ================================
+# 🔀 COLETAS — IMPORTAÇÃO AUTOMÁTICA
+# ================================
+def importar_coletas_auto(arquivo, data_ref):
+    """
+    Detecta o tipo de arquivo de coletas pelo número de colunas e importa:
+    - >= 19 cols → Monitoramento de caminhões (grava descarregamento + saída juntos)
+    - >= 13 cols → Monitoramento Final (coleta_final)
+    -  >= 10 cols → Itens Grandes (coletas_grandes)
+    """
+    df = xlsx_para_dataframe(arquivo)
+    if df.empty:
+        return {"registros": 0, "detalhe": "Arquivo vazio"}
+
+    ncols = df.shape[1]
+
+    if ncols >= 19:
+        # Arquivo de caminhões — processa descarregamento E saída na mesma operação
+        df_base = _coletas_colunas_base(df)
+        linhas  = len(df)
+
+        df_desc = df_base[df_base["rede_descarregador"].isin(["SP-RR-001", "ANJUN"])].copy()
+        df_said = df_base[df_base["rede_carregador"] == "SP-RR-001"].copy()
+
+        qtd_desc = _salvar_coletas(df_desc, arquivo, data_ref, "descarregamento") if not df_desc.empty else 0
+        qtd_said = _salvar_coletas(df_said, arquivo, data_ref, "saida")           if not df_said.empty else 0
+
+        partes = []
+        if qtd_desc: partes.append(f"{qtd_desc:,} descarregamentos")
+        if qtd_said: partes.append(f"{qtd_said:,} saídas")
+        return {
+            "registros": qtd_desc + qtd_said,
+            "detalhe":   f"{linhas:,} lidas → {' + '.join(partes) or '0 registros'}",
+        }
+
+    elif ncols >= 13:
+        arquivo.seek(0)
+        return importar_coleta_final(arquivo, data_ref)
+
+    elif ncols >= 10:
+        arquivo.seek(0)
+        return importar_coletas_grandes(arquivo, data_ref)
+
+    else:
+        raise ValueError(f"Formato de arquivo de coletas não reconhecido: {ncols} colunas (esperado ≥ 10)")
+
+
 def _parse_linha_presenca(row, data_atual, nome_arquivo, data_importacao):
     """Extrai tuplas de presenca_turno e presenca_diaria de uma linha do DataFrame."""
     ts = pd.Timestamp(data_atual)
