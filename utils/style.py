@@ -113,7 +113,7 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     th_style = (
         f"background-color:{HEADER_BG};"
         f"color:{HEADER_COLOR};"
-        "font-weight:700;font-size:12px;"
+        "font-weight:700;font-size:clamp(10px,1.2vw,12px);"
         "padding:10px 14px;text-align:left;"
         "white-space:nowrap;"
         "position:sticky;top:0;z-index:2;"
@@ -125,7 +125,7 @@ def tabela_padrao(df, use_container_width=True, altura_linhas=13):
     header_html = "".join(f'<th style="{th_style}">{c}</th>' for c in cols)
 
     td_style = (
-        "padding:9px 14px;font-size:12px;"
+        "padding:9px 14px;font-size:clamp(10px,1.2vw,12px);"
         f"color:{TEXT_COLOR};"
         f"border-bottom:1px solid {BORDER_COLOR};"
         "font-family:'Montserrat',Arial,sans-serif;"

@@ -36,7 +36,7 @@ def _card_html(pagina, titulo, subtitulo):
         border:1px solid rgba(0,150,64,0.15);
         border-top:3px solid #009640;
         border-radius:14px;
-        padding:24px 20px 20px;
+        padding:clamp(14px,2vw,24px) clamp(10px,1.5vw,20px);
         text-align:center;
         height:{CARD_H}px;
         box-sizing:border-box;
@@ -45,9 +45,9 @@ def _card_html(pagina, titulo, subtitulo):
         <div style="width:50px;height:50px;background:rgba(0,150,64,0.08);
                     border-radius:12px;display:flex;align-items:center;
                     justify-content:center;margin:0 auto 12px;">{svg}</div>
-        <div style="font-size:14px;font-weight:700;color:#053B31;
+        <div style="font-size:clamp(11px,1.3vw,14px);font-weight:700;color:#053B31;
                     margin-bottom:4px;font-family:'Montserrat',sans-serif;">{titulo}</div>
-        <div style="font-size:11px;color:#6b7280;
+        <div style="font-size:clamp(9px,1vw,11px);color:#6b7280;
                     font-family:'Montserrat',sans-serif;">{subtitulo}</div>
     </div>
     """

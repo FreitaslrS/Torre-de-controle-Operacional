@@ -61,7 +61,12 @@ st.markdown("""
 section[data-testid="stSidebar"],
 button[data-testid="baseButton-headerNoPadding"],
 [data-testid="collapsedControl"] { display: none !important; }
-.block-container { padding-left:3rem !important; padding-right:3rem !important; max-width:1400px !important; }
+.block-container {
+    padding-left: clamp(1rem, 4vw, 3rem) !important;
+    padding-right: clamp(1rem, 4vw, 3rem) !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
