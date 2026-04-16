@@ -82,7 +82,7 @@ def render():
 
     df_sla = buscar_sla_hub(data_inicio, data_fim)
 
-    if df_sla.empty or df_sla["total"].iloc[0] is None:
+    if df_sla.empty or df_sla["total"].isna().all():
         st.warning(t("comum.sem_dados_periodo"))
     else:
         total_a  = int(df_sla["total"].iloc[0]  or 0)

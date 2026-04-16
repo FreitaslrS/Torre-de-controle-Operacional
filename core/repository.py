@@ -621,8 +621,13 @@ def buscar_consolidado_por_dia(data_inicio=None, data_fim=None):
     df_prod = consultar_operacional(query_prod, params)
     df_tfk = consultar_processamento(query_tfk, params)
 
-    df_prod["data"] = pd.to_datetime(df_prod["data"]).dt.date
-    df_tfk["data"] = pd.to_datetime(df_tfk["data"]).dt.date
+    if df_prod.empty and df_tfk.empty:
+        return pd.DataFrame(columns=["data", "total_perus", "total_tfk", "total_geral"])
+
+    if not df_prod.empty:
+        df_prod["data"] = pd.to_datetime(df_prod["data"]).dt.date
+    if not df_tfk.empty:
+        df_tfk["data"] = pd.to_datetime(df_tfk["data"]).dt.date
 
     df = pd.merge(df_prod, df_tfk, on="data", how="outer")
 

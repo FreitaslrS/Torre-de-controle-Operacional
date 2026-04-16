@@ -277,8 +277,11 @@ def render():
         if remover_clientes:
             df_pedidos = df_pedidos[~df_pedidos["cliente"].isin(remover_clientes)]
 
-        df_export = df_pedidos[["waybill", "estado", "cliente", "cidade",
-                                 "pre_entrega", "proximo_ponto", "horas_backlog_snapshot"]].copy()
+        df_export = df_pedidos[[
+            "waybill", "estado", "cliente", "cidade",
+            "pre_entrega", "horas_backlog_snapshot"
+        ]].copy()
+        df_export["proximo_ponto"] = df_pedidos["proximo_ponto"] if "proximo_ponto" in df_pedidos.columns else "—"
         df_export["tempo_backlog"] = df_export["horas_backlog_snapshot"].apply(
             lambda h: "—" if pd.isna(h) else (f"{int(h)}h" if h <= 72 else f"{h/24:.1f} dias")
         )

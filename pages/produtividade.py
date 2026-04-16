@@ -372,7 +372,9 @@ def render():
                 media_presenca     = round(df_turno_f["presenca_total"].mean(), 0)
                 total_faltas_anjun = int(df_turno_f["faltas_anjun"].sum())
                 total_faltas_temp  = int(df_turno_f["faltas_temporarios"].sum())
-                perc_falta_med     = round(df_turno_f["perc_falta"].mean() * 100, 1) if df_turno_f["perc_falta"].notna().any() else 0
+                perc_falta_med = round(
+                    df_turno_f["perc_falta"].mean() * (100 if df_turno_f["perc_falta"].max() <= 1 else 1), 1
+                ) if df_turno_f["perc_falta"].notna().any() else 0
 
                 col1, col2, col3, col4, col5 = st.columns(5)
                 col1.metric(t("pres.produzido_semana"),  fmt_numero(total_prod))
