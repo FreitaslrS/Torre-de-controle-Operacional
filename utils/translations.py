@@ -2,8 +2,13 @@
 # Dicionario central de traducoes: PT (padrao) → EN → ZH (mandarin simplificado)
 # Uso: from utils.i18n import t  →  t("chave")
 #
-# ATENÇÃO: strings zh (chinês) que precisem de aspas no meio devem usar 「」 em vez de ""
-# pois "" dentro de uma string Python delimitada por "" causa SyntaxError.
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  ATENÇÃO — regra obrigatória para strings zh (chinês):                   ║
+# ║  Aspas dentro do texto devem usar 「」 e nunca ""                         ║
+# ║  Exemplo correto:  "zh": "请使用「退货 + 监控」导入。"                   ║
+# ║  Exemplo ERRADO:   "zh": "请使用"退货 + 监控"导入。"  ← SyntaxError!    ║
+# ║  Para validar o arquivo: python -c "import utils.translations"           ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
 
@@ -1327,12 +1332,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "dev.sem_dados_import": {
         "pt": "Sem dados. Importe usando 'Devolução + Monitoramento'.",
         "en": "No data. Import using 'Return + Monitoring'.",
-        "zh": "无数据。请使用"退货 + 监控"导入。",
+        "zh": "无数据。请使用「退货 + 监控」导入。",
     },
     "dev.sem_dados_mon": {
         "pt": "Sem dados. Importe 'Devolução - Monitoramento'.",
         "en": "No data. Import 'Return - Monitoring'.",
-        "zh": "无数据。请导入"退货 - 监控"。",
+        "zh": "无数据。请导入「退货 - 监控」。",
     },
     "dev.sem_dados_data": {
         "pt": "Sem dados para esta data.",
