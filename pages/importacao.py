@@ -86,7 +86,10 @@ def _carregar_historico():
             pass  # banco indisponível não derruba o histórico inteiro
     if not dfs:
         return pd.DataFrame()
-    return pd.concat(dfs, ignore_index=True).sort_values("data_importacao", ascending=False)
+    df = pd.concat(dfs, ignore_index=True)
+    # Normaliza tz-aware e tz-naive para UTC antes de ordenar
+    df["data_importacao"] = pd.to_datetime(df["data_importacao"], utc=True, errors="coerce")
+    return df.sort_values("data_importacao", ascending=False)
 
 
 def _senha_configurada():
