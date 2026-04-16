@@ -81,15 +81,17 @@ def _carregar_historico():
     dfs = []
     for fn, sql in consultas:
         try:
-            dfs.append(fn(sql))
+            df_item = fn(sql)
+            if "data_importacao" in df_item.columns:
+                df_item["data_importacao"] = pd.to_datetime(
+                    df_item["data_importacao"], utc=True, errors="coerce"
+                )
+            dfs.append(df_item)
         except Exception:
             pass  # banco indisponível não derruba o histórico inteiro
     if not dfs:
         return pd.DataFrame()
-    df = pd.concat(dfs, ignore_index=True)
-    # Normaliza tz-aware e tz-naive para UTC antes de ordenar
-    df["data_importacao"] = pd.to_datetime(df["data_importacao"], utc=True, errors="coerce")
-    return df.sort_values("data_importacao", ascending=False)
+    return pd.concat(dfs, ignore_index=True).sort_values("data_importacao", ascending=False)
 
 
 def _senha_configurada():
