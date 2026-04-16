@@ -10,6 +10,7 @@ from core.database import (
     consultar_devolucoes,
     consultar_coletas,
     executar_backlog,
+    executar_historico,
     executar_operacional,
     _conn,
 )
@@ -38,7 +39,7 @@ def _filtro_cliente(query, params, cliente):
 # 🗑️ DELETE
 # =========================
 def deletar_arquivo(nome_arquivo):
-    executar_backlog(
+    executar_historico(
         "DELETE FROM pedidos WHERE nome_arquivo = %s",
         [nome_arquivo]
     )
@@ -49,8 +50,8 @@ def deletar_arquivo(nome_arquivo):
 # =========================
 @st.cache_data(ttl=300)
 def listar_arquivos():
-    return consultar_backlog("""
-        SELECT 
+    return consultar_historico("""
+        SELECT
             nome_arquivo,
             COUNT(*) as registros
         FROM pedidos
@@ -196,7 +197,7 @@ def buscar_produtividade(data_inicio=None, data_fim=None):
 # =========================
 @st.cache_data(ttl=300)
 def buscar_pedidos(limit=1000):
-    return consultar_backlog("""
+    return consultar_historico("""
         SELECT 
             waybill,
             cliente,
