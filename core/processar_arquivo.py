@@ -650,7 +650,7 @@ def _agregar_sla(df, col_estado, col_cliente, data_ref, nome_arquivo, agora):
     df_ent["prazo"]    = df_ent["prazo_dias"].fillna(7) if "prazo_dias" in df_ent.columns else 7
     df_ent["no_prazo"] = df_ent["dias"] <= df_ent["prazo"]
     agg = (
-        df_ent.groupby([col_estado, col_cliente, "cliente_fantasia"])
+        df_ent.groupby([col_estado, col_cliente, "cliente_fantasia"], dropna=False)
         .agg(qtd_total=("waybill", "count"), qtd_no_prazo=("no_prazo", "sum"))
         .reset_index()
         .rename(columns={col_estado: "estado", col_cliente: "cliente"})
@@ -667,7 +667,7 @@ def _agregar_motivos(df, col_estado, col_cliente, data_ref, nome_arquivo, agora)
     if df_mot.empty:
         return pd.DataFrame()
     agg = (
-        df_mot.groupby([col_estado, "motivo", col_cliente, "cliente_fantasia"])
+        df_mot.groupby([col_estado, "motivo", col_cliente, "cliente_fantasia"], dropna=False)
         .size().reset_index(name="qtd")
         .rename(columns={col_estado: "estado", col_cliente: "cliente"})
     )
@@ -700,7 +700,7 @@ def _salvar_dev_resumo(cur, df_save, nome_arq, agora, data_ref):
 
 def _salvar_status_iata(cur, df, semana, ano, data_ref, nome_arq, agora):
     for tabela in ["dev_status_semanal", "dev_iatas_semanal"]:
-        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+        cur.execute(f"DELETE FROM {tabela} WHERE data_referencia = %s", [data_ref])
     status_agg = (
         df.groupby(["status", "estado_dest", "cliente"])
         .size().reset_index(name="qtd")
@@ -746,7 +746,7 @@ def _salvar_status_iata(cur, df, semana, ano, data_ref, nome_arq, agora):
 
 def _salvar_sla_motivos_dsp(cur, df_mon_full, data_ref, nome_arq, agora):
     for tabela in ["dev_sla_semanal", "dev_motivos_semanal", "dev_dsp_sem3tent"]:
-        cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arq])
+        cur.execute(f"DELETE FROM {tabela} WHERE data_referencia = %s", [data_ref])
     sla_agg     = _agregar_sla(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
     motivos_agg = _agregar_motivos(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
     dsp_agg     = _agregar_dsp_sem3tent(df_mon_full, "estado_dest", "cliente_mon", data_ref, nome_arq, agora)
@@ -772,7 +772,7 @@ def _salvar_sla_motivos_dsp(cur, df_mon_full, data_ref, nome_arq, agora):
 
 def _salvar_p90(cur, df, semana, ano, data_ref, nome_arq, agora):
     """Agrega e persiste p90_semanal a partir de dev_detalhado. Recebe cursor aberto."""
-    cur.execute("DELETE FROM p90_semanal WHERE nome_arquivo = %s", [nome_arq])
+    cur.execute("DELETE FROM p90_semanal WHERE data_referencia = %s", [data_ref])
     df_src = df[df["status"] == "Recebido de devolução"].copy()
     if df_src.empty:
         return
@@ -819,7 +819,7 @@ def _agregar_dsp_sem3tent(df, col_estado, col_cliente, data_ref, nome_arquivo, a
     if dsp.empty:
         return pd.DataFrame()
     agg = (
-        dsp.groupby(["ponto_entrada", col_estado, "motivo", col_cliente, "cliente_fantasia"])
+        dsp.groupby(["ponto_entrada", col_estado, "motivo", col_cliente, "cliente_fantasia"], dropna=False)
         .size().reset_index(name="qtd")
         .rename(columns={col_estado: "estado", col_cliente: "cliente"})
     )
@@ -844,6 +844,7 @@ def _ler_monitoramento_simples(arquivo):
     ]
     for col in ["tent1", "tent2", "tent3", "assinatura", "data_criacao"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
+    df["cliente_fantasia"] = df["cliente_fantasia"].fillna("Shein Nacional")
     return df
 
 
@@ -884,6 +885,8 @@ def _ler_monitoramento(arquivo_monitor):
         if col in df_mon_full.columns:
             df_mon_full[col] = pd.to_datetime(df_mon_full[col], errors="coerce")
     df_mon_full["waybill"] = df_mon_full["waybill"].astype(str).str.strip()
+    if "cliente_fantasia" in df_mon_full.columns:
+        df_mon_full["cliente_fantasia"] = df_mon_full["cliente_fantasia"].fillna("Shein Nacional")
 
     merge_cols = [c for c in ["waybill", "status_mon", "motivo", "estado_dest", "cidade_dest",
                                "cliente_mon", "pre_entrega", "ponto_entrada", "data_criacao"]

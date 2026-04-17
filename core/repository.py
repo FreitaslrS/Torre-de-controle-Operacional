@@ -340,7 +340,7 @@ def buscar_devolucoes(limit=1000):
 # ================================
 # 📊 P90 DEVOLUÇÕES
 # ================================
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_p90(ano=None, cliente=None):
     """
     Calcula P90 diretamente de dev_detalhado (fonte unificada).
@@ -397,7 +397,7 @@ def buscar_datas_disponiveis_mon():
     """)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_dev_status_semanal(semana=None, ano=None, cliente=None):
     query = "SELECT estado, status, semana, ano, data_referencia, cliente, cliente_fantasia, qtd FROM dev_status_semanal WHERE 1=1"
     params = []
@@ -411,7 +411,7 @@ def buscar_dev_status_semanal(semana=None, ano=None, cliente=None):
     return consultar_devolucoes(query, params if params else None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_dev_iatas_semanal(semana=None, ano=None, estado=None, cliente=None):
     """Retorna pré-entregas por estado (col Y do monitoramento) agrupados por semana."""
     query = "SELECT ponto_operacao, estado, semana, ano, qtd FROM dev_iatas_semanal WHERE 1=1"
@@ -432,7 +432,7 @@ def buscar_dev_iatas_semanal(semana=None, ano=None, estado=None, cliente=None):
     return consultar_devolucoes(query, params if params else None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_dev_sla_semanal(cliente=None):
     query = """
         SELECT data_referencia, cliente, cliente_fantasia,
@@ -447,7 +447,7 @@ def buscar_dev_sla_semanal(cliente=None):
     return consultar_devolucoes(query, params if params else None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_dev_motivos(data_ref=None, cliente=None):
     query = """
         SELECT motivo, SUM(qtd) as qtd
@@ -463,6 +463,7 @@ def buscar_dev_motivos(data_ref=None, cliente=None):
     return consultar_devolucoes(query, params if params else None)
 
 
+@st.cache_data(ttl=1800)
 def buscar_dev_interceptados(data_ref=None, cliente=None):
     query = """
         SELECT ponto_entrada, estado, SUM(qtd) as qtd
@@ -478,7 +479,7 @@ def buscar_dev_interceptados(data_ref=None, cliente=None):
     return consultar_devolucoes(query, params if params else None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_dev_dsp_sem3tent(data_ref=None, cliente=None):
     query = """
         SELECT ponto_entrada, estado, SUM(qtd) as qtd
@@ -676,7 +677,6 @@ def buscar_clientes_fantasia():
             cliente_fantasia
         FROM dev_sla_semanal
         WHERE cliente_fantasia IS NOT NULL
-          AND cliente_fantasia != ''
         ORDER BY cliente_fantasia
     """)
 
@@ -915,7 +915,7 @@ def buscar_shein_datas():
     """)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_shein_sla(data_ref=None):
     query = """
         SELECT segmento, qtd_total, qtd_concluido, qtd_pendente, pct_sla
@@ -930,7 +930,7 @@ def buscar_shein_sla(data_ref=None):
     return consultar_devolucoes(query, params if params else None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_shein_motivos(data_ref=None, segmento=None):
     query = """
         SELECT segmento, motivo, SUM(qtd) AS qtd
@@ -948,7 +948,7 @@ def buscar_shein_motivos(data_ref=None, segmento=None):
     return consultar_devolucoes(query, params if params else None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_shein_aging(data_ref=None, segmento=None):
     query = """
         SELECT segmento, aging_range, SUM(qtd) AS qtd
@@ -966,7 +966,7 @@ def buscar_shein_aging(data_ref=None, segmento=None):
     return consultar_devolucoes(query, params if params else None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def buscar_shein_backlog(data_ref=None, segmento=None):
     query = """
         SELECT waybill, segmento, is_d2d, aging_day, aging_range,
