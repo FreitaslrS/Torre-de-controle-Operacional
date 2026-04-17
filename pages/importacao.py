@@ -506,12 +506,15 @@ def render():
 # ========================
 def excluir_arquivo(nome_arquivo):
     executar_historico("DELETE FROM pedidos WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_historico("DELETE FROM pedidos_resumo WHERE nome_arquivo = %s", [nome_arquivo])
     executar_operacional("DELETE FROM produtividade WHERE nome_arquivo = %s", [nome_arquivo])
     executar_operacional("DELETE FROM pacotes_grandes WHERE nome_arquivo = %s", [nome_arquivo])
     executar_processamento("DELETE FROM tempo_processamento WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_processamento("DELETE FROM percentis_operacao WHERE nome_arquivo = %s", [nome_arquivo])
 
     for tabela in ["dev_status_semanal", "dev_iatas_semanal", "dev_sla_semanal",
-                   "dev_motivos_semanal", "dev_dsp_sem3tent", "p90_semanal", "dev_detalhado"]:
+                   "dev_motivos_semanal", "dev_dsp_sem3tent", "p90_semanal", "dev_detalhado",
+                   "dev_shein_backlog", "dev_shein_sla", "dev_shein_motivos", "dev_shein_aging"]:
         executar_devolucoes(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arquivo])
 
     executar_coletas("DELETE FROM coletas WHERE nome_arquivo = %s", [nome_arquivo])
