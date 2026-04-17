@@ -553,6 +553,36 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Operational Consolidated",
         "zh": "运营汇总",
     },
+    "tempo.tab_percentis": {
+        "pt": "📊 P50 / P80 / P90",
+        "en": "📊 P50 / P80 / P90",
+        "zh": "📊 P50 / P80 / P90",
+    },
+    "tempo.percentis_titulo": {
+        "pt": "Percentis de Entrega por Estado (Hub → Saída)",
+        "en": "Delivery Percentiles by State (Hub → Out)",
+        "zh": "各州配送百分位（枢纽→出库）",
+    },
+    "tempo.p_percentis_por_estado": {
+        "pt": "P50 / P80 / P90 por Estado",
+        "en": "P50 / P80 / P90 by State",
+        "zh": "各州P50/P80/P90",
+    },
+    "tempo.p50_medio": {
+        "pt": "P50 médio",
+        "en": "Average P50",
+        "zh": "平均P50",
+    },
+    "tempo.p80_medio": {
+        "pt": "P80 médio",
+        "en": "Average P80",
+        "zh": "平均P80",
+    },
+    "tempo.p90_medio": {
+        "pt": "P90 médio",
+        "en": "Average P90",
+        "zh": "平均P90",
+    },
     "tempo.sla_24h": {
         "pt": "SLA 24h",
         "en": "24h SLA",
@@ -1303,6 +1333,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "dev.col_prazo": {
         "pt": "Prazo (dias)", "en": "Deadline (days)", "zh": "时限（天）",
     },
+    "dev.col_p50": {
+        "pt": "P50 (dias)", "en": "P50 (days)", "zh": "P50（天）",
+    },
+    "dev.col_p80": {
+        "pt": "P80 (dias)", "en": "P80 (days)", "zh": "P80（天）",
+    },
     "dev.col_p90": {
         "pt": "P90 (dias)", "en": "P90 (days)", "zh": "P90（天）",
     },
@@ -1408,6 +1444,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "dev.total_dev_count": {
         "pt": "Total devoluções", "en": "Total returns", "zh": "退货总量",
+    },
+    "dev.p50_medio": {
+        "pt": "P50 médio geral", "en": "Average P50", "zh": "平均P50",
+    },
+    "dev.p80_medio": {
+        "pt": "P80 médio geral", "en": "Average P80", "zh": "平均P80",
     },
     "dev.p90_medio": {
         "pt": "P90 médio geral", "en": "Average P90", "zh": "平均P90",

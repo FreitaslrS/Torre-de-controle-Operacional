@@ -411,6 +411,9 @@ def importar_tempo_processamento(arquivo):
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
     _persistir_tempo_processamento(agg, arquivo.name)
+    perc = _calcular_percentis_operacao(df, arquivo.name)
+    if not perc.empty:
+        _persistir_percentis_operacao(perc, arquivo.name)
     limpar_historico_antigo()
     grupos = len(agg)
     return {"registros": grupos, "detalhe": f"{linhas:,} lidas → {grupos:,} grupos estado/hiata/cliente/data"}
@@ -432,6 +435,49 @@ def _persistir_tempo_processamento(agg, nome_arquivo):
         cur.close()
 
 
+def _calcular_percentis_operacao(df_raw, nome_arquivo):
+    """Calcula P50/P80/P90 de tempo de hub (horas) por estado/cliente/data a partir de waybills individuais."""
+    df = df_raw.copy()
+    df["entrada_hub1"] = pd.to_datetime(df["entrada_hub1"], errors="coerce")
+    df["saida_hub1"]   = pd.to_datetime(df["saida_hub1"],   errors="coerce")
+    df = df[df["entrada_hub1"].notna() & df["saida_hub1"].notna()].copy()
+    if df.empty:
+        return pd.DataFrame()
+    df["data"]        = df["entrada_hub1"].dt.date
+    df["tempo_horas"] = (df["saida_hub1"] - df["entrada_hub1"]).dt.total_seconds() / 3600
+    df = df[(df["tempo_horas"] >= 0) & (df["tempo_horas"] <= 240)]
+    if df.empty:
+        return pd.DataFrame()
+    agg = (
+        df.groupby(["estado", "cliente", "data"])["tempo_horas"]
+        .agg(
+            p50_horas   = lambda x: round(float(np.percentile(x, 50)), 2),
+            p80_horas   = lambda x: round(float(np.percentile(x, 80)), 2),
+            p90_horas   = lambda x: round(float(np.percentile(x, 90)), 2),
+            qtd_pedidos = "count",
+        )
+        .reset_index()
+    )
+    agg["nome_arquivo"]    = nome_arquivo
+    agg["data_importacao"] = datetime.now(timezone.utc)
+    return agg
+
+
+def _persistir_percentis_operacao(agg, nome_arquivo):
+    colunas = [
+        "estado", "cliente", "data", "p50_horas", "p80_horas", "p90_horas",
+        "qtd_pedidos", "nome_arquivo", "data_importacao"
+    ]
+    values = [tuple(None if pd.isna(v) else v for v in row)
+              for row in agg[colunas].itertuples(index=False, name=None)]
+    with _conn("DATABASE_URL_PROCESSAMENTO") as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM percentis_operacao WHERE nome_arquivo = %s", [nome_arquivo])
+        execute_values(cur, f"INSERT INTO percentis_operacao ({','.join(colunas)}) VALUES %s", values)
+        conn.commit()
+        cur.close()
+
+
 def _extrair_data_criacao(waybill):
     try:
         w = str(waybill).strip()
@@ -442,7 +488,7 @@ def _extrair_data_criacao(waybill):
 
 def _persistir_p90_arquivo(agg, nome_arquivo):
     colunas = [
-        "estado", "semana", "ano", "cliente", "p90_dias",
+        "estado", "semana", "ano", "cliente", "p50_dias", "p80_dias", "p90_dias",
         "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
     ]
     values = [tuple(None if pd.isna(v) else v for v in row)
@@ -474,6 +520,8 @@ def _transformar_p90(df, data_ref):
     return (
         df.groupby(["estado", "semana", "ano", "cliente"])
         .agg(
+            p50_dias    = ("dias", lambda x: round(float(np.percentile(x, 50)), 1)),
+            p80_dias    = ("dias", lambda x: round(float(np.percentile(x, 80)), 1)),
             p90_dias    = ("dias", lambda x: round(float(np.percentile(x, 90)), 1)),
             qtd_pedidos = ("dias", "count")
         )
@@ -735,6 +783,8 @@ def _salvar_p90(cur, df, semana, ano, data_ref, nome_arq, agora):
     p90_agg = (
         df_src.groupby(["estado_p90", "cliente"])
         .agg(
+            p50_dias    = ("dias_dev", lambda x: round(float(np.percentile(x, 50)), 1)),
+            p80_dias    = ("dias_dev", lambda x: round(float(np.percentile(x, 80)), 1)),
             p90_dias    = ("dias_dev", lambda x: round(float(np.percentile(x, 90)), 1)),
             qtd_pedidos = ("dias_dev", "count")
         )
@@ -747,7 +797,7 @@ def _salvar_p90(cur, df, semana, ano, data_ref, nome_arq, agora):
     p90_agg["nome_arquivo"]    = nome_arq
     p90_agg["data_importacao"] = agora
     colunas_p90 = [
-        "estado", "semana", "ano", "cliente", "p90_dias",
+        "estado", "semana", "ano", "cliente", "p50_dias", "p80_dias", "p90_dias",
         "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
     ]
     execute_values(cur,

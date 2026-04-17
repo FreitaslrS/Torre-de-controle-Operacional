@@ -280,9 +280,27 @@ def inicializar_banco():
             semana          TEXT,
             ano             INTEGER,
             cliente         TEXT,
+            p50_dias        DOUBLE PRECISION,
+            p80_dias        DOUBLE PRECISION,
             p90_dias        DOUBLE PRECISION,
             qtd_pedidos     INTEGER,
             data_referencia DATE,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+    executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS p50_dias DOUBLE PRECISION")
+    executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS p80_dias DOUBLE PRECISION")
+
+    executar_processamento("""
+        CREATE TABLE IF NOT EXISTS percentis_operacao (
+            estado          TEXT,
+            cliente         TEXT,
+            data            DATE,
+            p50_horas       DOUBLE PRECISION,
+            p80_horas       DOUBLE PRECISION,
+            p90_horas       DOUBLE PRECISION,
+            qtd_pedidos     INTEGER,
             nome_arquivo    TEXT,
             data_importacao TIMESTAMP
         )
@@ -297,6 +315,7 @@ def inicializar_banco():
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_resumo_semana ON dev_resumo (semana, ano)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_data ON produtividade (data)")
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_data ON tempo_processamento (data)")
+    executar_processamento("CREATE INDEX IF NOT EXISTS idx_percentis_operacao_data ON percentis_operacao (data)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_pacotes_grandes_semana ON pacotes_grandes (semana, ano)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_presenca_turno_semana ON presenca_turno (semana, ano)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_presenca_diaria_semana ON presenca_diaria (semana, ano)")

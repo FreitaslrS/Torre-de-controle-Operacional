@@ -4,7 +4,8 @@ import pandas as pd
 from core.repository import (
     buscar_tempo_processamento,
     buscar_hiata_por_dia,
-    buscar_consolidado_por_dia
+    buscar_consolidado_por_dia,
+    buscar_percentis_operacao,
 )
 
 from utils.theme import grafico_barra, grafico_pizza
@@ -69,10 +70,11 @@ def render():
         st.warning(t("comum.sem_dados"))
         return
 
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         t("tempo.tab_sla"),
         t("tempo.tab_hiata"),
         t("tempo.tab_consolidado"),
+        t("tempo.tab_percentis"),
     ])
 
     with tab1:
@@ -302,5 +304,98 @@ def render():
             tabela_padrao(df_cons)
         else:
             st.warning(t("tempo.sem_dados_periodo"))
+
+    with tab4:
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin:1rem 0 0.4rem;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+</svg>
+<span style="font-size:15px;font-weight:700;color:#053B31;font-family:'Montserrat',sans-serif;">{t("tempo.percentis_titulo")}</span>
+</div>""", unsafe_allow_html=True)
+        st.caption("Calculado por waybill individual — tempo de permanência no hub (entrada → saída). Unidade: horas.")
+
+        df_perc = buscar_percentis_operacao(data_inicio, data_fim)
+
+        if df_perc.empty:
+            st.warning(t("comum.sem_dados"))
+        else:
+            p50_med = round(float(df_perc["p50_horas"].mean()), 1)
+            p80_med = round(float(df_perc["p80_horas"].mean()), 1)
+            p90_med = round(float(df_perc["p90_horas"].mean()), 1)
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric(t("tempo.p50_medio"), f"{p50_med}h")
+            col2.metric(t("tempo.p80_medio"), f"{p80_med}h")
+            col3.metric(t("tempo.p90_medio"), f"{p90_med}h")
+
+            st.divider()
+
+            df_estado = (
+                df_perc.groupby("estado")
+                .agg(
+                    p50_horas   = ("p50_horas", "mean"),
+                    p80_horas   = ("p80_horas", "mean"),
+                    p90_horas   = ("p90_horas", "mean"),
+                    qtd_pedidos = ("qtd_pedidos", "sum"),
+                )
+                .reset_index()
+            )
+            for col in ["p50_horas", "p80_horas", "p90_horas"]:
+                df_estado[col] = df_estado[col].round(1)
+
+            def _cores_h(serie, limites=(12, 24)):
+                return [
+                    COR_SECUNDARIA if v > limites[1]
+                    else COR_PRINCIPAL if v > limites[0]
+                    else COR_POSITIVO
+                    for v in serie
+                ]
+
+            st.markdown(f"**{t('tempo.p_percentis_por_estado')}**")
+            col_c1, col_c2, col_c3 = st.columns(3)
+
+            with col_c1:
+                st.markdown("**P50**")
+                df50 = df_estado.sort_values("p50_horas", ascending=False)
+                fig50 = grafico_barra(df50, x="estado", y="p50_horas", text="p50_horas")
+                fig50.update_traces(
+                    marker_color=_cores_h(df50["p50_horas"], (8, 16)),
+                    hovertemplate="<b>%{x}</b><br>P50: %{y}h<extra></extra>"
+                )
+                fig50.update_layout(yaxis_title="horas")
+                st.plotly_chart(fig50, use_container_width=True, key="fig_op_p50")
+
+            with col_c2:
+                st.markdown("**P80**")
+                df80 = df_estado.sort_values("p80_horas", ascending=False)
+                fig80 = grafico_barra(df80, x="estado", y="p80_horas", text="p80_horas")
+                fig80.update_traces(
+                    marker_color=_cores_h(df80["p80_horas"], (12, 24)),
+                    hovertemplate="<b>%{x}</b><br>P80: %{y}h<extra></extra>"
+                )
+                fig80.update_layout(yaxis_title="horas")
+                st.plotly_chart(fig80, use_container_width=True, key="fig_op_p80")
+
+            with col_c3:
+                st.markdown("**P90**")
+                df90 = df_estado.sort_values("p90_horas", ascending=False)
+                fig90 = grafico_barra(df90, x="estado", y="p90_horas", text="p90_horas")
+                fig90.update_traces(
+                    marker_color=_cores_h(df90["p90_horas"], (16, 30)),
+                    hovertemplate="<b>%{x}</b><br>P90: %{y}h<extra></extra>"
+                )
+                fig90.update_layout(yaxis_title="horas")
+                st.plotly_chart(fig90, use_container_width=True, key="fig_op_p90")
+
+            st.divider()
+            tabela_padrao(
+                df_estado.rename(columns={
+                    "estado":      "Estado",
+                    "p50_horas":   "P50 (h)",
+                    "p80_horas":   "P80 (h)",
+                    "p90_horas":   "P90 (h)",
+                    "qtd_pedidos": "Qtd",
+                })
+            )
 
     rodape_autoria()

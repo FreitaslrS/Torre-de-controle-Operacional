@@ -289,6 +289,24 @@ def buscar_waybills_por_faixa_dias(data_inicio, data_fim, faixa):
 # ⏱️ TEMPO PROCESSAMENTO
 # =========================
 @st.cache_data(ttl=300)
+def buscar_percentis_operacao(data_inicio=None, data_fim=None):
+    """Retorna P50/P80/P90 de tempo de hub por estado/cliente/data."""
+    query = """
+        SELECT estado, cliente, data, p50_horas, p80_horas, p90_horas, qtd_pedidos
+        FROM percentis_operacao
+        WHERE 1=1
+    """
+    params = []
+    if data_inicio and data_fim:
+        query += " AND data BETWEEN %s AND %s"
+        params.extend([data_inicio, data_fim])
+    else:
+        query += " AND data >= CURRENT_DATE - INTERVAL '30 days'"
+    query += " ORDER BY data DESC, estado"
+    return consultar_processamento(query, params)
+
+
+@st.cache_data(ttl=300)
 def buscar_tempo_processamento(data_inicio=None, data_fim=None):
     query = """
         SELECT
@@ -330,16 +348,18 @@ def buscar_p90(ano=None, cliente=None):
     """
     query = """
         SELECT
-            estado_dest         AS estado,
+            COALESCE(estado_dest, estado) AS estado,
             semana,
             ano,
             cliente,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dias_dev) AS p50_dias,
+            PERCENTILE_CONT(0.8) WITHIN GROUP (ORDER BY dias_dev) AS p80_dias,
             PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY dias_dev) AS p90_dias,
             COUNT(*)            AS qtd_pedidos
         FROM dev_detalhado
         WHERE status = 'Recebido de devolução'
           AND dias_dev >= 0
-          AND estado_dest IS NOT NULL
+          AND COALESCE(estado_dest, estado) IS NOT NULL
     """
     params = []
 
@@ -348,7 +368,7 @@ def buscar_p90(ano=None, cliente=None):
         params.append(ano)
 
     query, params = _filtro_cliente(query, params, cliente)
-    query += " GROUP BY estado_dest, semana, ano, cliente ORDER BY estado, ano, semana"
+    query += " GROUP BY COALESCE(estado_dest, estado), semana, ano, cliente ORDER BY estado, ano, semana"
 
     return consultar_devolucoes(query, params if params else None)
 
@@ -481,18 +501,20 @@ def buscar_dev_dsp_sem3tent(data_ref=None, cliente=None):
 def buscar_p90_por_estado_detalhado(semana=None, ano=None, clientes=None):
     query = """
         SELECT
-            estado_dest         AS estado,
+            COALESCE(estado_dest, estado) AS estado,
             semana,
             ano,
             cliente,
             pre_entrega,
             motivo,
             COUNT(*)            AS qtd_pedidos,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dias_dev) AS p50_dias,
+            PERCENTILE_CONT(0.8) WITHIN GROUP (ORDER BY dias_dev) AS p80_dias,
             PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY dias_dev) AS p90_dias
         FROM dev_detalhado
         WHERE status = 'Recebido de devolução'
           AND dias_dev >= 0
-          AND estado_dest IS NOT NULL
+          AND COALESCE(estado_dest, estado) IS NOT NULL
     """
     params = []
     if semana:
@@ -502,7 +524,7 @@ def buscar_p90_por_estado_detalhado(semana=None, ano=None, clientes=None):
         query += " AND ano = %s"
         params.append(ano)
     query, params = _filtro_cliente(query, params, clientes)
-    query += " GROUP BY estado_dest, semana, ano, cliente, pre_entrega, motivo ORDER BY p90_dias DESC"
+    query += " GROUP BY COALESCE(estado_dest, estado), semana, ano, cliente, pre_entrega, motivo ORDER BY p90_dias DESC"
     return consultar_devolucoes(query, params if params else None)
 
 

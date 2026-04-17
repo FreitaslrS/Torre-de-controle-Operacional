@@ -521,36 +521,77 @@ def render():
             if df_det.empty:
                 st.warning(t("dev.sem_dados_periodo"))
             else:
-                col1, col2, col3 = st.columns(3)
-                total_ped       = int(df_det["qtd_pedidos"].sum())
-                estados_com_dados = df_det["estado"].nunique()
-                p90_medio       = round(float(df_det.groupby("estado")["p90_dias"].mean().mean()), 1)
+                df_por_estado = (
+                    df_det.groupby("estado")
+                    .agg(
+                        p50_dias    = ("p50_dias", "mean"),
+                        p80_dias    = ("p80_dias", "mean"),
+                        p90_dias    = ("p90_dias", "mean"),
+                        qtd_pedidos = ("qtd_pedidos", "sum"),
+                    )
+                    .reset_index()
+                )
+                for col in ["p50_dias", "p80_dias", "p90_dias"]:
+                    df_por_estado[col] = df_por_estado[col].round(1)
 
+                total_ped         = int(df_por_estado["qtd_pedidos"].sum())
+                estados_com_dados = df_por_estado["estado"].nunique()
+                p50_medio = round(float(df_por_estado["p50_dias"].mean()), 1)
+                p80_medio = round(float(df_por_estado["p80_dias"].mean()), 1)
+                p90_medio = round(float(df_por_estado["p90_dias"].mean()), 1)
+
+                col1, col2, col3, col4, col5 = st.columns(5)
                 col1.metric(t("dev.total_dev_count"), total_ped)
-                col2.metric(t("dev.p90_medio"), f"{p90_medio} dias")
-                col3.metric(t("dev.estados_dados"), estados_com_dados)
+                col2.metric(t("dev.estados_dados"), estados_com_dados)
+                col3.metric(t("dev.p50_medio"), f"{p50_medio} dias")
+                col4.metric(t("dev.p80_medio"), f"{p80_medio} dias")
+                col5.metric(t("dev.p90_medio"), f"{p90_medio} dias")
 
                 st.divider()
 
-                df_p90_estado = (df_det.groupby("estado")
-                    .agg(p90_dias=("p90_dias", "mean"), qtd=("qtd_pedidos", "sum"))
-                    .reset_index()
-                    .sort_values("p90_dias", ascending=False))
-                df_p90_estado["p90_dias"] = df_p90_estado["p90_dias"].round(1)
+                def _cores_percentil(serie, limites=(30, 60)):
+                    cores = []
+                    for v in serie:
+                        if v > limites[1]:   cores.append(COR_SECUNDARIA)
+                        elif v > limites[0]: cores.append(COR_PRINCIPAL)
+                        else:                cores.append(COR_POSITIVO)
+                    return cores
 
-                cores_p90 = []
-                for v in df_p90_estado["p90_dias"]:
-                    if v > 60:   cores_p90.append(COR_SECUNDARIA)
-                    elif v > 30: cores_p90.append(COR_PRINCIPAL)
-                    else:        cores_p90.append(COR_POSITIVO)
+                df_p50 = df_por_estado.sort_values("p50_dias", ascending=False)
+                df_p80 = df_por_estado.sort_values("p80_dias", ascending=False)
+                df_p90 = df_por_estado.sort_values("p90_dias", ascending=False)
 
-                fig_p90 = grafico_barra(df_p90_estado, x="estado", y="p90_dias", text="p90_dias")
-                fig_p90.update_traces(
-                    marker_color=cores_p90,
-                    hovertemplate="<b>%{x}</b><br>P90: %{y} dias<extra></extra>"
-                )
-                fig_p90.update_layout(yaxis_title="P90 (dias)")
-                st.plotly_chart(fig_p90, use_container_width=True, key="fig_p90_det")
+                col_c1, col_c2, col_c3 = st.columns(3)
+
+                with col_c1:
+                    st.markdown(f"**P50 — {t('dev.col_p50')}**")
+                    fig50 = grafico_barra(df_p50, x="estado", y="p50_dias", text="p50_dias")
+                    fig50.update_traces(
+                        marker_color=_cores_percentil(df_p50["p50_dias"], (15, 30)),
+                        hovertemplate="<b>%{x}</b><br>P50: %{y} dias<extra></extra>"
+                    )
+                    fig50.update_layout(yaxis_title="dias", showlegend=False)
+                    st.plotly_chart(fig50, use_container_width=True, key="fig_p50_det")
+
+                with col_c2:
+                    st.markdown(f"**P80 — {t('dev.col_p80')}**")
+                    fig80 = grafico_barra(df_p80, x="estado", y="p80_dias", text="p80_dias")
+                    fig80.update_traces(
+                        marker_color=_cores_percentil(df_p80["p80_dias"], (20, 45)),
+                        hovertemplate="<b>%{x}</b><br>P80: %{y} dias<extra></extra>"
+                    )
+                    fig80.update_layout(yaxis_title="dias", showlegend=False)
+                    st.plotly_chart(fig80, use_container_width=True, key="fig_p80_det")
+
+                with col_c3:
+                    st.markdown(f"**P90 — {t('dev.col_p90')}**")
+                    fig90 = grafico_barra(df_p90, x="estado", y="p90_dias", text="p90_dias")
+                    fig90.update_traces(
+                        marker_color=_cores_percentil(df_p90["p90_dias"], (30, 60)),
+                        hovertemplate="<b>%{x}</b><br>P90: %{y} dias<extra></extra>"
+                    )
+                    fig90.update_layout(yaxis_title="dias", showlegend=False)
+                    st.plotly_chart(fig90, use_container_width=True, key="fig_p90_det")
 
                 st.divider()
 
@@ -578,10 +619,12 @@ def render():
 
                 st.divider()
                 st.markdown(f"**{t('dev.tabela_detalhada')}**")
-                tabela_padrao(df_p90_estado.rename(columns={
-                    "estado": t("col.estado"),
-                    "p90_dias": t("dev.col_p90"),
-                    "qtd": t("dev.total_dev_count"),
+                tabela_padrao(df_por_estado.rename(columns={
+                    "estado":      t("col.estado"),
+                    "p50_dias":    t("dev.col_p50"),
+                    "p80_dias":    t("dev.col_p80"),
+                    "p90_dias":    t("dev.col_p90"),
+                    "qtd_pedidos": t("dev.total_dev_count"),
                 }))
 
     # ════════════════════════════════════════
