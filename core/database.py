@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 import pandas as pd
 import psycopg2
@@ -48,7 +49,8 @@ def _com_retry(fn):
     try:
         return fn()
     except psycopg2.OperationalError as e:
-        logger.warning("Erro operacional no banco, tentando novamente: %s", e)
+        logger.warning("Erro operacional no banco, aguardando 2s e tentando novamente: %s", e)
+        time.sleep(2)
         return fn()
 
 
@@ -308,14 +310,19 @@ def inicializar_banco():
 
     # ── ÍNDICES (performance de queries por data/semana) ─────────────────
     executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_data ON pedidos_resumo (data_referencia)")
+    executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_nome_arquivo ON pedidos (nome_arquivo)")
+    executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_arq ON pedidos_resumo (nome_arquivo)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_data ON dev_detalhado (data_referencia)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_semana ON dev_detalhado (semana, ano)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_status ON dev_detalhado (status) WHERE status = 'Recebido de devolução'")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_p90 ON dev_detalhado (semana, ano, estado_dest, cliente) WHERE status = 'Recebido de devolução' AND dias_dev >= 0")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_resumo_semana ON dev_resumo (semana, ano)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_data ON produtividade (data)")
+    executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_arq ON produtividade (nome_arquivo)")
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_data ON tempo_processamento (data)")
+    executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_arq ON tempo_processamento (nome_arquivo)")
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_percentis_operacao_data ON percentis_operacao (data)")
+    executar_processamento("CREATE INDEX IF NOT EXISTS idx_percentis_operacao_arq ON percentis_operacao (nome_arquivo)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_pacotes_grandes_semana ON pacotes_grandes (semana, ano)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_presenca_turno_semana ON presenca_turno (semana, ano)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_presenca_diaria_semana ON presenca_diaria (semana, ano)")

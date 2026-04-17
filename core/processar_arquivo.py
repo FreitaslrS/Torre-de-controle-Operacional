@@ -1,8 +1,11 @@
 import io
+import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime, timezone
 from psycopg2.extras import execute_values
+
+logger = logging.getLogger(__name__)
 from core.database import (
     executar_historico,
     executar_devolucoes,
@@ -268,7 +271,7 @@ def _upsert_backlog_atual(df_backlog):
         execute_values(
             cur,
             f"INSERT INTO backlog_atual ({','.join(colunas)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
+            [tuple(_val(v) for v in row)
              for row in df_agg[colunas].itertuples(index=False, name=None)]
         )
         conn.commit()
@@ -303,14 +306,14 @@ def _inserir_historico(df_backlog, arquivo, agora):
         cur.execute("DELETE FROM pedidos_resumo WHERE nome_arquivo = %s", [arquivo.name])
         execute_values(cur,
             f"INSERT INTO pedidos_resumo ({','.join(colunas_resumo)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
+            [tuple(_val(v) for v in row)
              for row in df_resumo[colunas_resumo].itertuples(index=False, name=None)]
         )
         cur.execute("DELETE FROM pedidos WHERE data_referencia = %s", [agora.date()])
         cur.execute("DELETE FROM pedidos WHERE data_referencia < CURRENT_DATE - INTERVAL '7 days'")
         execute_values(cur,
             f"INSERT INTO pedidos ({','.join(colunas_bruto)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
+            [tuple(_val(v) for v in row)
              for row in df_backlog[colunas_bruto].itertuples(index=False, name=None)]
         )
         conn.commit()
@@ -366,7 +369,7 @@ def importar_produtividade(arquivo):
 
 def _persistir_produtividade(df_agg, nome_arquivo):
     colunas = ["cliente", "data", "hora", "turno", "dispositivo", "volumes", "nome_arquivo", "data_importacao"]
-    values  = [tuple(None if pd.isna(v) else v for v in row)
+    values  = [tuple(_val(v) for v in row)
                for row in df_agg[colunas].itertuples(index=False, name=None)]
     with _conn("DATABASE_URL_OPERACIONAL") as conn:
         cur = conn.cursor()
@@ -411,12 +414,22 @@ def importar_tempo_processamento(arquivo):
     agg["nome_arquivo"]    = arquivo.name
     agg["data_importacao"] = datetime.now(timezone.utc)
     _persistir_tempo_processamento(agg, arquivo.name)
-    perc = _calcular_percentis_operacao(df, arquivo.name)
-    if not perc.empty:
-        _persistir_percentis_operacao(perc, arquivo.name)
+    n_percentis = 0
+    try:
+        perc = _calcular_percentis_operacao(df, arquivo.name)
+        if not perc.empty:
+            _persistir_percentis_operacao(perc, arquivo.name)
+            n_percentis = len(perc)
+    except Exception as e:
+        logger.warning("Percentis operacao nao calculados para %s: %s", arquivo.name, e)
     limpar_historico_antigo()
     grupos = len(agg)
-    return {"registros": grupos, "detalhe": f"{linhas:,} lidas → {grupos:,} grupos estado/hiata/cliente/data"}
+    perc_info = (
+        f" | {n_percentis:,} grupos p50/p80/p90"
+        if n_percentis
+        else " | sem saída_hub preenchida → percentis não calculados"
+    )
+    return {"registros": grupos, "detalhe": f"{linhas:,} lidas → {grupos:,} grupos estado/hiata/cliente/data{perc_info}"}
 
 
 def _persistir_tempo_processamento(agg, nome_arquivo):
@@ -425,7 +438,7 @@ def _persistir_tempo_processamento(agg, nome_arquivo):
         "data_snapshot", "qtd_total", "qtd_dentro_sla", "qtd_fora_sla",
         "qtd_sem_saida", "tempo_medio_h", "nome_arquivo", "data_importacao"
     ]
-    values = [tuple(None if pd.isna(v) else v for v in row)
+    values = [tuple(_val(v) for v in row)
               for row in agg[colunas].itertuples(index=False, name=None)]
     with _conn("DATABASE_URL_PROCESSAMENTO") as conn:
         cur = conn.cursor()
@@ -468,7 +481,7 @@ def _persistir_percentis_operacao(agg, nome_arquivo):
         "estado", "cliente", "data", "p50_horas", "p80_horas", "p90_horas",
         "qtd_pedidos", "nome_arquivo", "data_importacao"
     ]
-    values = [tuple(None if pd.isna(v) else v for v in row)
+    values = [tuple(_val(v) for v in row)
               for row in agg[colunas].itertuples(index=False, name=None)]
     with _conn("DATABASE_URL_PROCESSAMENTO") as conn:
         cur = conn.cursor()
@@ -491,7 +504,7 @@ def _persistir_p90_arquivo(agg, nome_arquivo):
         "estado", "semana", "ano", "cliente", "p50_dias", "p80_dias", "p90_dias",
         "qtd_pedidos", "data_referencia", "nome_arquivo", "data_importacao"
     ]
-    values = [tuple(None if pd.isna(v) else v for v in row)
+    values = [tuple(_val(v) for v in row)
               for row in agg[colunas].itertuples(index=False, name=None)]
     with _conn("DATABASE_URL_DEVOLUCOES") as conn:
         cur = conn.cursor()
@@ -602,12 +615,12 @@ def _persistir_devolucoes(status_agg, iata_agg, nome_arquivo):
             cur.execute(f"DELETE FROM {tabela} WHERE nome_arquivo = %s", [nome_arquivo])
         execute_values(cur,
             f"INSERT INTO dev_status_semanal ({','.join(colunas_status)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
+            [tuple(_val(v) for v in row)
              for row in status_agg[colunas_status].itertuples(index=False, name=None)]
         )
         execute_values(cur,
             f"INSERT INTO dev_iatas_semanal ({','.join(colunas_iata)}) VALUES %s",
-            [tuple(None if pd.isna(v) else v for v in row)
+            [tuple(_val(v) for v in row)
              for row in iata_agg[colunas_iata].itertuples(index=False, name=None)]
         )
         conn.commit()
@@ -958,7 +971,7 @@ def importar_pacotes_grandes(arquivo, data_ref=None):
         "semana", "ano", "nome_arquivo", "data_importacao"
     ]
     values = [
-        tuple(None if pd.isna(v) else v for v in row)
+        tuple(_val(v) for v in row)
         for row in df[colunas].itertuples(index=False, name=None)
     ]
 
@@ -1039,7 +1052,7 @@ def importar_devolucao_enriquecida(arquivo_folha, arquivo_monitor, data_ref):
 def _bulk_insert(tabela, colunas, df):
     """Insert em lote via execute_values no banco de devoluções."""
     valores = [
-        tuple(None if pd.isna(v) else v for v in row)
+        tuple(_val(v) for v in row)
         for row in df[colunas].itertuples(index=False, name=None)
     ]
     if not valores:
@@ -1308,7 +1321,7 @@ def _salvar_coletas(df, arquivo, data_ref, tipo):
             [arquivo.name, tipo]
         )
         values = [
-            tuple(None if pd.isna(v) else v for v in row)
+            tuple(_val(v) for v in row)
             for row in df[colunas].itertuples(index=False, name=None)
         ]
         execute_values(cur, f"INSERT INTO coletas ({','.join(colunas)}) VALUES %s", values)
@@ -1380,7 +1393,7 @@ def importar_coletas_grandes(arquivo, data_ref):
         cur = conn.cursor()
         cur.execute("DELETE FROM coletas_grandes WHERE nome_arquivo = %s", [arquivo.name])
         values = [
-            tuple(None if pd.isna(v) else v for v in row)
+            tuple(_val(v) for v in row)
             for row in df[colunas].itertuples(index=False, name=None)
         ]
         execute_values(cur, f"INSERT INTO coletas_grandes ({','.join(colunas)}) VALUES %s", values)
@@ -1441,7 +1454,7 @@ def importar_coleta_final(arquivo, data_ref):
         cur = conn.cursor()
         cur.execute("DELETE FROM coleta_final WHERE nome_arquivo = %s", [arquivo.name])
         values = [
-            tuple(None if pd.isna(v) else v for v in row)
+            tuple(_val(v) for v in row)
             for row in df[colunas].itertuples(index=False, name=None)
         ]
         execute_values(cur, f"INSERT INTO coleta_final ({','.join(colunas)}) VALUES %s", values)
@@ -1501,7 +1514,7 @@ def importar_coletas_auto(arquivo, data_ref):
 def _parse_linha_presenca(row, data_atual, nome_arquivo, data_importacao):
     """Extrai tuplas de presenca_turno e presenca_diaria de uma linha do DataFrame."""
     ts = pd.Timestamp(data_atual)
-    semana = str(ts.isocalendar()[1]).zfill(2)
+    semana = ts.strftime("w%V")
     ano    = int(ts.year)
     turno  = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
 

@@ -36,16 +36,6 @@ def _filtro_cliente(query, params, cliente):
 
 
 # =========================
-# 🗑️ DELETE
-# =========================
-def deletar_arquivo(nome_arquivo):
-    executar_historico(
-        "DELETE FROM pedidos WHERE nome_arquivo = %s",
-        [nome_arquivo]
-    )
-
-
-# =========================
 # 📂 LISTAR ARQUIVOS
 # =========================
 @st.cache_data(ttl=300)
