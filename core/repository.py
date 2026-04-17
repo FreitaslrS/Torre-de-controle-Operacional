@@ -348,7 +348,7 @@ def buscar_p90(ano=None, cliente=None):
     """
     query = """
         SELECT
-            COALESCE(estado_dest, estado) AS estado,
+            estado_dest AS estado,
             semana,
             ano,
             cliente,
@@ -359,7 +359,7 @@ def buscar_p90(ano=None, cliente=None):
         FROM dev_detalhado
         WHERE status = 'Recebido de devolução'
           AND dias_dev >= 0
-          AND COALESCE(estado_dest, estado) IS NOT NULL
+          AND estado_dest IS NOT NULL
     """
     params = []
 
@@ -368,7 +368,7 @@ def buscar_p90(ano=None, cliente=None):
         params.append(ano)
 
     query, params = _filtro_cliente(query, params, cliente)
-    query += " GROUP BY COALESCE(estado_dest, estado), semana, ano, cliente ORDER BY estado, ano, semana"
+    query += " GROUP BY estado_dest, semana, ano, cliente ORDER BY estado, ano, semana"
 
     return consultar_devolucoes(query, params if params else None)
 
@@ -501,7 +501,7 @@ def buscar_dev_dsp_sem3tent(data_ref=None, cliente=None):
 def buscar_p90_por_estado_detalhado(semana=None, ano=None, clientes=None):
     query = """
         SELECT
-            COALESCE(estado_dest, estado) AS estado,
+            estado_dest AS estado,
             semana,
             ano,
             cliente,
@@ -514,7 +514,7 @@ def buscar_p90_por_estado_detalhado(semana=None, ano=None, clientes=None):
         FROM dev_detalhado
         WHERE status = 'Recebido de devolução'
           AND dias_dev >= 0
-          AND COALESCE(estado_dest, estado) IS NOT NULL
+          AND estado_dest IS NOT NULL
     """
     params = []
     if semana:
@@ -524,7 +524,7 @@ def buscar_p90_por_estado_detalhado(semana=None, ano=None, clientes=None):
         query += " AND ano = %s"
         params.append(ano)
     query, params = _filtro_cliente(query, params, clientes)
-    query += " GROUP BY COALESCE(estado_dest, estado), semana, ano, cliente, pre_entrega, motivo ORDER BY p90_dias DESC"
+    query += " GROUP BY estado_dest, semana, ano, cliente, pre_entrega, motivo ORDER BY p90_dias DESC"
     return consultar_devolucoes(query, params if params else None)
 
 
