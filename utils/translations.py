@@ -1207,7 +1207,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "pt": "Volume", "en": "Volume", "zh": "件量",
     },
     "col.sem_saida": {
-        "pt": "Sem Saída", "en": "No Exit", "zh": "无出库",
+        "pt": "Backlog", "en": "Backlog", "zh": "积压",
     },
     "col.media_h": {
         "pt": "Média (h)", "en": "Avg (h)", "zh": "平均（小时）",

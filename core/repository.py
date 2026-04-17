@@ -302,7 +302,8 @@ def buscar_tempo_processamento(data_inicio=None, data_fim=None):
         SELECT
             estado, ponto_entrada, hiata, cliente, data,
             qtd_total, qtd_dentro_sla, qtd_fora_sla,
-            qtd_sem_saida, tempo_medio_h
+            qtd_sem_saida, COALESCE(qtd_miss_scanning, 0) AS qtd_miss_scanning,
+            tempo_medio_h
         FROM tempo_processamento
         WHERE 1=1
     """

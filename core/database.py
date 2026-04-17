@@ -221,21 +221,23 @@ def inicializar_banco():
     # ── PROCESSAMENTO ─────────────────────────────────────────────────────
     executar_processamento("""
         CREATE TABLE IF NOT EXISTS tempo_processamento (
-            estado          TEXT,
-            ponto_entrada   TEXT,
-            hiata           TEXT,
-            cliente         TEXT,
-            data            DATE,
-            data_snapshot   DATE,
-            qtd_total       INTEGER,
-            qtd_dentro_sla  INTEGER,
-            qtd_fora_sla    INTEGER,
-            qtd_sem_saida   INTEGER,
-            tempo_medio_h   DOUBLE PRECISION,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
+            estado            TEXT,
+            ponto_entrada     TEXT,
+            hiata             TEXT,
+            cliente           TEXT,
+            data              DATE,
+            data_snapshot     DATE,
+            qtd_total         INTEGER,
+            qtd_dentro_sla    INTEGER,
+            qtd_fora_sla      INTEGER,
+            qtd_sem_saida     INTEGER,
+            qtd_miss_scanning INTEGER,
+            tempo_medio_h     DOUBLE PRECISION,
+            nome_arquivo      TEXT,
+            data_importacao   TIMESTAMP
         )
     """)
+    executar_processamento("ALTER TABLE tempo_processamento ADD COLUMN IF NOT EXISTS qtd_miss_scanning INTEGER")
 
     # ── DEVOLUÇÕES ────────────────────────────────────────────────────────
     executar_devolucoes("""
@@ -319,6 +321,7 @@ def inicializar_banco():
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_resumo_semana ON dev_resumo (semana, ano)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_data ON produtividade (data)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_arq ON produtividade (nome_arquivo)")
+    executar_processamento("ALTER TABLE tempo_processamento ADD COLUMN IF NOT EXISTS qtd_miss_scanning INTEGER DEFAULT 0")
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_data ON tempo_processamento (data)")
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_arq ON tempo_processamento (nome_arquivo)")
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_percentis_operacao_data ON percentis_operacao (data)")

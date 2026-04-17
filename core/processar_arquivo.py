@@ -38,13 +38,16 @@ def _val(v):
         return v
 
 
+_OUTROS_HUBS = ["entrada_hub2", "saida_hub2", "entrada_hub3", "saida_hub3",
+                "inbound_ponto", "assinatura"]
+
+
 def _classificar_status_sla(row):
-    if pd.isna(row["saida_hub1"]):
-        return "sem_saida"
-    elif row["tempo_horas"] <= 24:
-        return "dentro_sla"
-    else:
-        return "fora_sla"
+    if pd.notna(row["saida_hub1"]):
+        return "dentro_sla" if row["tempo_horas"] <= 24 else "fora_sla"
+    if any(pd.notna(row[c]) for c in _OUTROS_HUBS if c in row.index):
+        return "miss_scanning"
+    return "sem_saida"
 
 
 def _classificar_dispositivo(op):
@@ -381,11 +384,12 @@ def _persistir_produtividade(df_agg, nome_arquivo):
 
 def _agregar_tempo_processamento(df):
     return df.groupby(["estado", "ponto_entrada", "hiata", "cliente", "data"]).agg(
-        qtd_total      = ("waybill",     "count"),
-        qtd_dentro_sla = ("status",      lambda x: (x == "dentro_sla").sum()),
-        qtd_fora_sla   = ("status",      lambda x: (x == "fora_sla").sum()),
-        qtd_sem_saida  = ("status",      lambda x: (x == "sem_saida").sum()),
-        tempo_medio_h  = ("tempo_horas", lambda x: x.dropna().mean() if x.dropna().any() else None)
+        qtd_total         = ("waybill",     "count"),
+        qtd_dentro_sla    = ("status",      lambda x: (x == "dentro_sla").sum()),
+        qtd_fora_sla      = ("status",      lambda x: (x == "fora_sla").sum()),
+        qtd_sem_saida     = ("status",      lambda x: (x == "sem_saida").sum()),
+        qtd_miss_scanning = ("status",      lambda x: (x == "miss_scanning").sum()),
+        tempo_medio_h     = ("tempo_horas", lambda x: x.dropna().mean() if x.dropna().any() else None)
     ).reset_index()
 
 
@@ -393,6 +397,9 @@ def _transformar_tempo_processamento(df):
     """Aplica filtros, calcula tempo_horas, status SLA e agrega."""
     df["entrada_hub1"] = pd.to_datetime(df["entrada_hub1"], errors="coerce")
     df["saida_hub1"]   = pd.to_datetime(df["saida_hub1"],   errors="coerce")
+    for col in _OUTROS_HUBS:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
     df = df[df["entrada_hub1"].notna()].copy()
     df["data"]        = df["entrada_hub1"].dt.date
     df["tempo_horas"] = (df["saida_hub1"] - df["entrada_hub1"]).dt.total_seconds() / 3600
@@ -403,9 +410,13 @@ def _transformar_tempo_processamento(df):
 
 
 def importar_tempo_processamento(arquivo):
-    df = xlsx_para_dataframe(arquivo, usecols=[0, 11, 21, 24, 25, 41, 42, 43])
-    df.columns = ["waybill", "estado", "cliente", "pre_entrega", "ponto_entrada",
-                  "entrada_hub1", "saida_hub1", "hiata"]
+    df = xlsx_para_dataframe(arquivo, usecols=[0, 11, 21, 24, 25, 41, 42, 43, 48, 50, 56, 58, 64, 71])
+    df.columns = [
+        "waybill", "estado", "cliente", "pre_entrega", "ponto_entrada",
+        "entrada_hub1", "saida_hub1", "hiata",
+        "entrada_hub2", "saida_hub2", "entrada_hub3", "saida_hub3",
+        "inbound_ponto", "assinatura",
+    ]
     if df.empty:
         return {"registros": 0, "detalhe": "Arquivo vazio"}
     linhas = len(df)
@@ -436,7 +447,7 @@ def _persistir_tempo_processamento(agg, nome_arquivo):
     colunas = [
         "estado", "ponto_entrada", "hiata", "cliente", "data",
         "data_snapshot", "qtd_total", "qtd_dentro_sla", "qtd_fora_sla",
-        "qtd_sem_saida", "tempo_medio_h", "nome_arquivo", "data_importacao"
+        "qtd_sem_saida", "qtd_miss_scanning", "tempo_medio_h", "nome_arquivo", "data_importacao"
     ]
     values = [tuple(_val(v) for v in row)
               for row in agg[colunas].itertuples(index=False, name=None)]

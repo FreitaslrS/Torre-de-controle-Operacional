@@ -22,9 +22,10 @@ PALETA_PAGINA  = [COR_PRINCIPAL, COR_SECUNDARIA, COR_POSITIVO, COR_APOIO]
 
 def _cores_pizza():
     return {
-        t("comum.ate_24h"): COR_POSITIVO,
-        "> 24h":            COR_PRINCIPAL,
-        t("comum.sem_info"): COR_APOIO,
+        t("comum.ate_24h"):   COR_POSITIVO,
+        "> 24h":              COR_PRINCIPAL,
+        "Miss Scanning":      "#7B2D8B",
+        t("comum.sem_info"):  COR_APOIO,
     }
 
 
@@ -81,9 +82,10 @@ def render():
         # =========================
         # 🧠 TRATAMENTO
         # =========================
-        total      = int(df["qtd_total"].sum())
-        dentro_sla = int(df["qtd_dentro_sla"].sum())
-        perc_sla   = (dentro_sla / total * 100) if total else 0
+        total         = int(df["qtd_total"].sum())
+        dentro_sla    = int(df["qtd_dentro_sla"].sum())
+        miss_scanning = int(df["qtd_miss_scanning"].sum())
+        perc_sla      = ((dentro_sla + miss_scanning) / total * 100) if total else 0
         tempo_medio = (
             (df["tempo_medio_h"] * df["qtd_total"]).sum() / df["qtd_total"].sum()
             if df["qtd_total"].sum() > 0 else 0
@@ -128,9 +130,10 @@ def render():
 </div>""", unsafe_allow_html=True)
             cores_pizza = _cores_pizza()
             df_pizza = pd.DataFrame([
-                {"status": t("comum.ate_24h"),   "qtd": int(df["qtd_dentro_sla"].sum())},
-                {"status": "> 24h",              "qtd": int(df["qtd_fora_sla"].sum())},
-                {"status": t("comum.sem_info"),  "qtd": int(df["qtd_sem_saida"].sum())},
+                {"status": t("comum.ate_24h"),  "qtd": int(df["qtd_dentro_sla"].sum())},
+                {"status": "> 24h",             "qtd": int(df["qtd_fora_sla"].sum())},
+                {"status": "Miss Scanning",     "qtd": int(df["qtd_miss_scanning"].sum())},
+                {"status": t("comum.sem_info"), "qtd": int(df["qtd_sem_saida"].sum())},
             ])
             fig_pizza = grafico_pizza(
                 df_pizza,
@@ -151,11 +154,12 @@ def render():
             df["_tempo_pond"] = df["tempo_medio_h"] * df["qtd_total"]
             tabela_dia = (
                 df.groupby("data").agg(
-                    dentro_sla  = ("qtd_dentro_sla", "sum"),
-                    fora_sla    = ("qtd_fora_sla",   "sum"),
-                    sem_saida   = ("qtd_sem_saida",  "sum"),
-                    qtd_total   = ("qtd_total",      "sum"),
-                    _pond_sum   = ("_tempo_pond",    "sum"),
+                    dentro_sla    = ("qtd_dentro_sla",    "sum"),
+                    fora_sla      = ("qtd_fora_sla",      "sum"),
+                    sem_saida     = ("qtd_sem_saida",     "sum"),
+                    miss_scanning = ("qtd_miss_scanning", "sum"),
+                    qtd_total     = ("qtd_total",         "sum"),
+                    _pond_sum     = ("_tempo_pond",       "sum"),
                 ).reset_index()
             )
             tabela_dia["tempo_medio"] = (
@@ -167,10 +171,11 @@ def render():
 
             tabela_dia[t("col.media_h")] = tabela_dia["tempo_medio"].apply(_formatar_horas)
             tabela_dia[t("col.perc_sla")] = (
-                tabela_dia["0-24h"] / tabela_dia["qtd_total"].replace(0, 1) * 100
+                (tabela_dia["0-24h"] + tabela_dia["miss_scanning"])
+                / tabela_dia["qtd_total"].replace(0, 1) * 100
             ).round(1).astype(str) + "%"
             tabela_dia = tabela_dia.sort_values("data", ascending=False)
-            tabela_padrao(tabela_dia[["data", "0-24h", ">24h", "sem_saida", "qtd_total", t("col.media_h"), t("col.perc_sla")]])
+            tabela_padrao(tabela_dia[["data", "0-24h", ">24h", "miss_scanning", "sem_saida", "qtd_total", t("col.media_h"), t("col.perc_sla")]])
 
         st.divider()
 
@@ -237,20 +242,30 @@ def render():
         tabela_estado = (
             df.groupby("estado").agg(
                 **{
-                    "0-24h":    ("qtd_dentro_sla", "sum"),
-                    ">24h":     ("qtd_fora_sla",   "sum"),
-                    "sem_saida": ("qtd_sem_saida",  "sum"),
-                    "total":    ("qtd_total",      "sum"),
+                    "0-24h":         ("qtd_dentro_sla",    "sum"),
+                    ">24h":          ("qtd_fora_sla",      "sum"),
+                    "miss_scanning": ("qtd_miss_scanning", "sum"),
+                    "sem_saida":     ("qtd_sem_saida",     "sum"),
+                    "total":         ("qtd_total",         "sum"),
                 }
             ).reset_index()
         )
+        tabela_estado[t("col.perc_sla")] = (
+            (tabela_estado["0-24h"] + tabela_estado["miss_scanning"])
+            / tabela_estado["total"].replace(0, 1) * 100
+        ).round(1).astype(str) + "%"
 
         total_linha = pd.DataFrame([{
-            "estado":    "TOTAL",
-            "0-24h":     tabela_estado["0-24h"].sum(),
-            ">24h":      tabela_estado[">24h"].sum(),
-            "sem_saida": tabela_estado["sem_saida"].sum(),
-            "total":     tabela_estado["total"].sum(),
+            "estado":        "TOTAL",
+            "0-24h":         tabela_estado["0-24h"].sum(),
+            ">24h":          tabela_estado[">24h"].sum(),
+            "miss_scanning": tabela_estado["miss_scanning"].sum(),
+            "sem_saida":     tabela_estado["sem_saida"].sum(),
+            "total":         tabela_estado["total"].sum(),
+            t("col.perc_sla"): (
+                f"{(tabela_estado['0-24h'].sum() + tabela_estado['miss_scanning'].sum()) / tabela_estado['total'].sum() * 100:.1f}%"
+                if tabela_estado["total"].sum() > 0 else "0.0%"
+            ),
         }])
         tabela_estado = pd.concat([tabela_estado, total_linha], ignore_index=True)
         tabela_estado.rename(columns={
