@@ -41,6 +41,9 @@ def _val(v):
 _OUTROS_HUBS = ["entrada_hub2", "saida_hub2", "entrada_hub3", "saida_hub3",
                 "inbound_ponto", "assinatura"]
 
+# Estados sem expedição no domingo — excluídos quando entrada_hub1 cai num sábado
+_ESTADOS_SEM_DOMINGO = {"SP", "GO", "DF", "MT"}
+
 
 def _classificar_status_sla(row):
     if pd.notna(row["saida_hub1"]):
@@ -404,6 +407,11 @@ def _transformar_tempo_processamento(df):
     df["data"]        = df["entrada_hub1"].dt.date
     df["tempo_horas"] = (df["saida_hub1"] - df["entrada_hub1"]).dt.total_seconds() / 3600
     df = df[(df["tempo_horas"].isna()) | ((df["tempo_horas"] >= 0) & (df["tempo_horas"] <= 240))]
+
+    # Sábado: SP/GO/DF/MT não têm expedição no domingo — excluir para não inflar backlog
+    sabado_mask = df["entrada_hub1"].dt.dayofweek == 5
+    estado_norm = df["estado"].astype(str).str.strip().str.upper()
+    df = df[~(sabado_mask & estado_norm.isin(_ESTADOS_SEM_DOMINGO))].copy()
     df["hiata"]  = df["hiata"].astype(str).str.strip().str.upper()
     df["status"] = df.apply(_classificar_status_sla, axis=1)
     return _agregar_tempo_processamento(df)
