@@ -284,22 +284,6 @@ def inicializar_banco():
             data_importacao     TIMESTAMP
         )
     """)
-    # Garante colunas em tabelas criadas antes da migração v2.0
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS tipo_operacao   TEXT")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS data_operacao   TIMESTAMP")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS ponto_operacao  TEXT")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS estado_dest     TEXT")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS cidade_dest     TEXT")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS pre_entrega     TEXT")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS ponto_entrada   TEXT")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS motivo          TEXT")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS data_criacao    TIMESTAMP")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS dias_dev        INTEGER")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS semana          TEXT")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS ano             INTEGER")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS data_referencia DATE")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS nome_arquivo    TEXT")
-    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMP")
 
     executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS p90_semanal (
@@ -316,12 +300,6 @@ def inicializar_banco():
             data_importacao TIMESTAMP
         )
     """)
-    executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS p50_dias        DOUBLE PRECISION")
-    executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS p80_dias        DOUBLE PRECISION")
-    executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS qtd_pedidos     INTEGER")
-    executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS data_referencia DATE")
-    executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS nome_arquivo    TEXT")
-    executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMP")
 
     executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS dev_status_semanal (
@@ -337,14 +315,6 @@ def inicializar_banco():
             data_importacao TIMESTAMP
         )
     """)
-    executar_devolucoes("ALTER TABLE dev_status_semanal ADD COLUMN IF NOT EXISTS semana          TEXT")
-    executar_devolucoes("ALTER TABLE dev_status_semanal ADD COLUMN IF NOT EXISTS ano             INTEGER")
-    executar_devolucoes("ALTER TABLE dev_status_semanal ADD COLUMN IF NOT EXISTS data_referencia DATE")
-    executar_devolucoes("ALTER TABLE dev_status_semanal ADD COLUMN IF NOT EXISTS cliente         TEXT")
-    executar_devolucoes("ALTER TABLE dev_status_semanal ADD COLUMN IF NOT EXISTS cliente_fantasia TEXT")
-    executar_devolucoes("ALTER TABLE dev_status_semanal ADD COLUMN IF NOT EXISTS qtd             INTEGER")
-    executar_devolucoes("ALTER TABLE dev_status_semanal ADD COLUMN IF NOT EXISTS nome_arquivo    TEXT")
-    executar_devolucoes("ALTER TABLE dev_status_semanal ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMP")
 
     executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS dev_iatas_semanal (
@@ -359,13 +329,6 @@ def inicializar_banco():
             data_importacao TIMESTAMP
         )
     """)
-    executar_devolucoes("ALTER TABLE dev_iatas_semanal ADD COLUMN IF NOT EXISTS semana          TEXT")
-    executar_devolucoes("ALTER TABLE dev_iatas_semanal ADD COLUMN IF NOT EXISTS ano             INTEGER")
-    executar_devolucoes("ALTER TABLE dev_iatas_semanal ADD COLUMN IF NOT EXISTS data_referencia DATE")
-    executar_devolucoes("ALTER TABLE dev_iatas_semanal ADD COLUMN IF NOT EXISTS cliente_fantasia TEXT")
-    executar_devolucoes("ALTER TABLE dev_iatas_semanal ADD COLUMN IF NOT EXISTS qtd             INTEGER")
-    executar_devolucoes("ALTER TABLE dev_iatas_semanal ADD COLUMN IF NOT EXISTS nome_arquivo    TEXT")
-    executar_devolucoes("ALTER TABLE dev_iatas_semanal ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMP")
 
     executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS dev_sla_semanal (
@@ -379,14 +342,6 @@ def inicializar_banco():
             data_importacao TIMESTAMP
         )
     """)
-    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS estado          TEXT")
-    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS data_referencia DATE")
-    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS cliente         TEXT")
-    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS cliente_fantasia TEXT")
-    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS qtd_total       INTEGER")
-    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS qtd_no_prazo    INTEGER")
-    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS nome_arquivo    TEXT")
-    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMP")
 
     executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS dev_motivos_semanal (
@@ -400,13 +355,6 @@ def inicializar_banco():
             data_importacao TIMESTAMP
         )
     """)
-    executar_devolucoes("ALTER TABLE dev_motivos_semanal ADD COLUMN IF NOT EXISTS motivo          TEXT")
-    executar_devolucoes("ALTER TABLE dev_motivos_semanal ADD COLUMN IF NOT EXISTS cliente         TEXT")
-    executar_devolucoes("ALTER TABLE dev_motivos_semanal ADD COLUMN IF NOT EXISTS cliente_fantasia TEXT")
-    executar_devolucoes("ALTER TABLE dev_motivos_semanal ADD COLUMN IF NOT EXISTS data_referencia DATE")
-    executar_devolucoes("ALTER TABLE dev_motivos_semanal ADD COLUMN IF NOT EXISTS qtd             INTEGER")
-    executar_devolucoes("ALTER TABLE dev_motivos_semanal ADD COLUMN IF NOT EXISTS nome_arquivo    TEXT")
-    executar_devolucoes("ALTER TABLE dev_motivos_semanal ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMP")
 
     executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS dev_dsp_sem3tent (
@@ -421,14 +369,57 @@ def inicializar_banco():
             data_importacao TIMESTAMP
         )
     """)
-    executar_devolucoes("ALTER TABLE dev_dsp_sem3tent ADD COLUMN IF NOT EXISTS ponto_entrada   TEXT")
-    executar_devolucoes("ALTER TABLE dev_dsp_sem3tent ADD COLUMN IF NOT EXISTS motivo          TEXT")
-    executar_devolucoes("ALTER TABLE dev_dsp_sem3tent ADD COLUMN IF NOT EXISTS cliente         TEXT")
-    executar_devolucoes("ALTER TABLE dev_dsp_sem3tent ADD COLUMN IF NOT EXISTS cliente_fantasia TEXT")
-    executar_devolucoes("ALTER TABLE dev_dsp_sem3tent ADD COLUMN IF NOT EXISTS data_referencia DATE")
-    executar_devolucoes("ALTER TABLE dev_dsp_sem3tent ADD COLUMN IF NOT EXISTS qtd             INTEGER")
-    executar_devolucoes("ALTER TABLE dev_dsp_sem3tent ADD COLUMN IF NOT EXISTS nome_arquivo    TEXT")
-    executar_devolucoes("ALTER TABLE dev_dsp_sem3tent ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMP")
+
+    # ── SHEIN BACKLOG (mesmo banco de devoluções) ─────────────────────────
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_shein_backlog (
+            waybill                 TEXT,
+            segmento                TEXT,
+            is_d2d                  BOOLEAN,
+            aging_day               INTEGER,
+            aging_range             TEXT,
+            return_initiaded_data   DATE,
+            status_folha            TEXT,
+            data_referencia         DATE,
+            nome_arquivo            TEXT,
+            data_importacao         TIMESTAMP
+        )
+    """)
+
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_shein_sla (
+            segmento        TEXT,
+            qtd_total       INTEGER,
+            qtd_concluido   INTEGER,
+            qtd_pendente    INTEGER,
+            pct_sla         DOUBLE PRECISION,
+            data_referencia DATE,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_shein_motivos (
+            segmento        TEXT,
+            motivo          TEXT,
+            qtd             INTEGER,
+            data_referencia DATE,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_shein_aging (
+            segmento        TEXT,
+            aging_range     TEXT,
+            qtd             INTEGER,
+            data_referencia DATE,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
 
     executar_processamento("""
         CREATE TABLE IF NOT EXISTS percentis_operacao (
