@@ -284,6 +284,7 @@ def inicializar_banco():
             data_importacao     TIMESTAMP
         )
     """)
+    executar_devolucoes("ALTER TABLE dev_detalhado ADD COLUMN IF NOT EXISTS dias_dev INTEGER")
 
     executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS p90_semanal (
@@ -345,6 +346,7 @@ def inicializar_banco():
         )
     """)
     executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS cliente TEXT")
+    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS cliente_fantasia TEXT")
 
     executar_devolucoes("""
         CREATE TABLE IF NOT EXISTS dev_motivos_semanal (
