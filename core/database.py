@@ -74,6 +74,18 @@ def _fazer_execucao(url_env, query, params):
             conn.commit()
 
 
+def _executar_ddl(url_env, *stmts):
+    """Executa múltiplos DDL em uma única conexão — reduz overhead de cold start."""
+    def _fn():
+        with _conn(url_env) as conn:
+            cur = conn.cursor()
+            for stmt in stmts:
+                cur.execute(stmt)
+            conn.commit()
+            cur.close()
+    _com_retry(_fn)
+
+
 # =========================
 # 📊 CONSULTAR
 # =========================
@@ -106,438 +118,182 @@ def executar_usuarios(query, params=None):      _executar("DATABASE_URL_USUARIOS
 # 🧱 CRIAR TABELAS
 # =========================
 def inicializar_banco():
+    """
+    Cria tabelas e índices em todas as bases.
+    Usa _executar_ddl para agrupar DDL por banco — 7 conexões em vez de ~60.
+    """
     # ── BACKLOG ──────────────────────────────────────────────────────────
-    executar_backlog("""
-        CREATE TABLE IF NOT EXISTS pedidos (
-            waybill TEXT,
-            cliente TEXT,
-            estado TEXT,
-            cidade TEXT,
-            pre_entrega TEXT,
-            proximo_ponto TEXT,
-            entrada_hub1 TIMESTAMP,
-            horas_backlog_snapshot DOUBLE PRECISION,
-            faixa_backlog_snapshot TEXT,
-            data_referencia DATE,
-            data_importacao TIMESTAMP,
-            nome_arquivo TEXT
-        )
-    """)
-
-    executar_backlog("""
-        CREATE TABLE IF NOT EXISTS backlog_atual (
-            waybill TEXT PRIMARY KEY,
-            cliente TEXT,
-            estado TEXT,
-            cidade TEXT,
-            pre_entrega TEXT,
-            proximo_ponto TEXT,
-            entrada_hub1 TIMESTAMP,
-            horas_backlog_snapshot DOUBLE PRECISION,
-            faixa_backlog_snapshot TEXT,
-            data_atualizacao TIMESTAMP
-        )
-    """)
+    _executar_ddl("DATABASE_URL_BACKLOG",
+        """CREATE TABLE IF NOT EXISTS pedidos (
+            waybill TEXT, cliente TEXT, estado TEXT, cidade TEXT,
+            pre_entrega TEXT, proximo_ponto TEXT, entrada_hub1 TIMESTAMP,
+            horas_backlog_snapshot DOUBLE PRECISION, faixa_backlog_snapshot TEXT,
+            data_referencia DATE, data_importacao TIMESTAMP, nome_arquivo TEXT)""",
+        """CREATE TABLE IF NOT EXISTS backlog_atual (
+            waybill TEXT PRIMARY KEY, cliente TEXT, estado TEXT, cidade TEXT,
+            pre_entrega TEXT, proximo_ponto TEXT, entrada_hub1 TIMESTAMP,
+            horas_backlog_snapshot DOUBLE PRECISION, faixa_backlog_snapshot TEXT,
+            data_atualizacao TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_pedidos_nome_arquivo ON pedidos (nome_arquivo)",
+    )
 
     # ── HISTÓRICO ─────────────────────────────────────────────────────────
-    executar_historico("""
-        CREATE TABLE IF NOT EXISTS pedidos_resumo (
-            data_referencia         DATE,
-            estado                  TEXT,
-            cliente                 TEXT,
-            pre_entrega             TEXT,
-            proximo_ponto           TEXT,
-            faixa_backlog_snapshot  TEXT,
-            qtd                     INTEGER,
-            nome_arquivo            TEXT,
-            data_importacao         TIMESTAMP
-        )
-    """)
+    _executar_ddl("DATABASE_URL_HISTORICO",
+        """CREATE TABLE IF NOT EXISTS pedidos_resumo (
+            data_referencia DATE, estado TEXT, cliente TEXT, pre_entrega TEXT,
+            proximo_ponto TEXT, faixa_backlog_snapshot TEXT, qtd INTEGER,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_data ON pedidos_resumo (data_referencia)",
+        "CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_arq  ON pedidos_resumo (nome_arquivo)",
+    )
 
     # ── OPERACIONAL ───────────────────────────────────────────────────────
-    executar_operacional("""
-        CREATE TABLE IF NOT EXISTS produtividade (
-            cliente         TEXT,
-            data            DATE,
-            hora            INTEGER,
-            turno           TEXT,
-            dispositivo     TEXT,
-            volumes         INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-    executar_operacional("ALTER TABLE produtividade ADD COLUMN IF NOT EXISTS hora INTEGER")
+    _executar_ddl("DATABASE_URL_OPERACIONAL",
+        """CREATE TABLE IF NOT EXISTS produtividade (
+            cliente TEXT, data DATE, hora INTEGER, turno TEXT, dispositivo TEXT,
+            volumes INTEGER, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        "ALTER TABLE produtividade ADD COLUMN IF NOT EXISTS hora INTEGER",
+        """CREATE TABLE IF NOT EXISTS pacotes_grandes (
+            waybill_mae TEXT, waybill TEXT, cliente TEXT, status TEXT,
+            estado TEXT, cidade TEXT, pre_entrega TEXT, produto TEXT,
+            peso_kg DOUBLE PRECISION, volume_m3 DOUBLE PRECISION,
+            semana TEXT, ano INTEGER, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS log_importacoes (
+            id INTEGER, nome_arquivo TEXT, status TEXT, registros INTEGER,
+            tempo_segundos DOUBLE PRECISION, data_importacao TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_produtividade_data     ON produtividade   (data)",
+        "CREATE INDEX IF NOT EXISTS idx_produtividade_arq      ON produtividade   (nome_arquivo)",
+        "CREATE INDEX IF NOT EXISTS idx_pacotes_grandes_semana ON pacotes_grandes (semana, ano)",
+    )
 
-    executar_operacional("""
-        CREATE TABLE IF NOT EXISTS pacotes_grandes (
-            waybill_mae     TEXT,
-            waybill         TEXT,
-            cliente         TEXT,
-            status          TEXT,
-            estado          TEXT,
-            cidade          TEXT,
-            pre_entrega     TEXT,
-            produto         TEXT,
-            peso_kg         DOUBLE PRECISION,
-            volume_m3       DOUBLE PRECISION,
-            semana          TEXT,
-            ano             INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    executar_presenca("""
-        CREATE TABLE IF NOT EXISTS presenca_turno (
-            data                    DATE,
-            semana                  TEXT,
-            ano                     INTEGER,
-            turno                   TEXT,
-            produzido_turno         INTEGER,
-            presenca_turno          INTEGER,
-            presenca_total          INTEGER,
-            anjun                   INTEGER,
-            temporarios             INTEGER,
-            diaristas_presenciais   INTEGER,
-            faltas_anjun            INTEGER,
-            faltas_temporarios      INTEGER,
-            perc_falta              DOUBLE PRECISION,
-            custo_diaristas         DOUBLE PRECISION,
-            custo_por_pedido        DOUBLE PRECISION,
-            nome_arquivo            TEXT,
-            data_importacao         TIMESTAMP
-        )
-    """)
-
-    executar_presenca("""
-        CREATE TABLE IF NOT EXISTS presenca_diaria (
-            data            DATE,
-            semana          TEXT,
-            ano             INTEGER,
-            vol_tfk         INTEGER,
-            vol_shein       INTEGER,
-            vol_d2d         INTEGER,
-            vol_kwai        INTEGER,
-            vol_b2c         INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
+    # ── PRESENÇA ──────────────────────────────────────────────────────────
+    _executar_ddl("DATABASE_URL_PRESENCA",
+        """CREATE TABLE IF NOT EXISTS presenca_turno (
+            data DATE, semana TEXT, ano INTEGER, turno TEXT,
+            produzido_turno INTEGER, presenca_turno INTEGER, presenca_total INTEGER,
+            anjun INTEGER, temporarios INTEGER, diaristas_presenciais INTEGER,
+            faltas_anjun INTEGER, faltas_temporarios INTEGER, perc_falta DOUBLE PRECISION,
+            custo_diaristas DOUBLE PRECISION, custo_por_pedido DOUBLE PRECISION,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS presenca_diaria (
+            data DATE, semana TEXT, ano INTEGER, vol_tfk INTEGER,
+            vol_shein INTEGER, vol_d2d INTEGER, vol_kwai INTEGER, vol_b2c INTEGER,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_presenca_turno_semana  ON presenca_turno  (semana, ano)",
+        "CREATE INDEX IF NOT EXISTS idx_presenca_diaria_semana ON presenca_diaria (semana, ano)",
+    )
 
     # ── PROCESSAMENTO ─────────────────────────────────────────────────────
-    executar_processamento("""
-        CREATE TABLE IF NOT EXISTS tempo_processamento (
-            estado            TEXT,
-            ponto_entrada     TEXT,
-            hiata             TEXT,
-            cliente           TEXT,
-            data              DATE,
-            data_snapshot     DATE,
-            qtd_total         INTEGER,
-            qtd_dentro_sla    INTEGER,
-            qtd_fora_sla      INTEGER,
-            qtd_sem_saida     INTEGER,
-            qtd_miss_scanning INTEGER,
-            tempo_medio_h     DOUBLE PRECISION,
-            nome_arquivo      TEXT,
-            data_importacao   TIMESTAMP
-        )
-    """)
-    executar_processamento("ALTER TABLE tempo_processamento ADD COLUMN IF NOT EXISTS qtd_miss_scanning INTEGER")
+    _executar_ddl("DATABASE_URL_PROCESSAMENTO",
+        """CREATE TABLE IF NOT EXISTS tempo_processamento (
+            estado TEXT, ponto_entrada TEXT, hiata TEXT, cliente TEXT, data DATE,
+            data_snapshot DATE, qtd_total INTEGER, qtd_dentro_sla INTEGER,
+            qtd_fora_sla INTEGER, qtd_sem_saida INTEGER, qtd_miss_scanning INTEGER,
+            tempo_medio_h DOUBLE PRECISION, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        "ALTER TABLE tempo_processamento ADD COLUMN IF NOT EXISTS qtd_miss_scanning INTEGER DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS percentis_operacao (
+            estado TEXT, cliente TEXT, data DATE,
+            p50_horas DOUBLE PRECISION, p80_horas DOUBLE PRECISION, p90_horas DOUBLE PRECISION,
+            qtd_pedidos INTEGER, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_tempo_processamento_data ON tempo_processamento (data)",
+        "CREATE INDEX IF NOT EXISTS idx_tempo_processamento_arq  ON tempo_processamento (nome_arquivo)",
+        "CREATE INDEX IF NOT EXISTS idx_percentis_operacao_data  ON percentis_operacao  (data)",
+        "CREATE INDEX IF NOT EXISTS idx_percentis_operacao_arq   ON percentis_operacao  (nome_arquivo)",
+    )
 
-    # ── DEVOLUÇÕES ────────────────────────────────────────────────────────
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_resumo (
-            semana          TEXT,
-            ano             INTEGER,
-            data_referencia DATE,
-            status          TEXT,
-            cliente         TEXT,
-            estado_dest     TEXT,
-            motivo          TEXT,
-            qtd             INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
+    # ── DEVOLUÇÕES + SHEIN ────────────────────────────────────────────────
+    _executar_ddl("DATABASE_URL_DEVOLUCOES",
+        """CREATE TABLE IF NOT EXISTS dev_resumo (
+            semana TEXT, ano INTEGER, data_referencia DATE, status TEXT,
+            cliente TEXT, estado_dest TEXT, motivo TEXT, qtd INTEGER,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_detalhado (
+            waybill TEXT, status TEXT, tipo_operacao TEXT, cliente TEXT,
+            data_operacao TIMESTAMP, ponto_operacao TEXT, estado_dest TEXT,
+            cidade_dest TEXT, pre_entrega TEXT, ponto_entrada TEXT, motivo TEXT,
+            data_criacao TIMESTAMP, dias_dev INTEGER, semana TEXT, ano INTEGER,
+            data_referencia DATE, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS p90_semanal (
+            estado TEXT, semana TEXT, ano INTEGER, cliente TEXT,
+            p50_dias DOUBLE PRECISION, p80_dias DOUBLE PRECISION, p90_dias DOUBLE PRECISION,
+            qtd_pedidos INTEGER, data_referencia DATE, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_status_semanal (
+            estado TEXT, status TEXT, semana TEXT, ano INTEGER, data_referencia DATE,
+            cliente TEXT, cliente_fantasia TEXT, qtd INTEGER,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_iatas_semanal (
+            ponto_operacao TEXT, estado TEXT, semana TEXT, ano INTEGER,
+            data_referencia DATE, cliente_fantasia TEXT, qtd INTEGER,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_sla_semanal (
+            estado TEXT, data_referencia DATE, cliente TEXT, cliente_fantasia TEXT,
+            qtd_total INTEGER, qtd_no_prazo INTEGER,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_motivos_semanal (
+            estado TEXT, motivo TEXT, cliente TEXT, cliente_fantasia TEXT,
+            data_referencia DATE, qtd INTEGER, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_dsp_sem3tent (
+            ponto_entrada TEXT, estado TEXT, motivo TEXT, cliente TEXT, cliente_fantasia TEXT,
+            data_referencia DATE, qtd INTEGER, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_shein_backlog (
+            waybill TEXT, segmento TEXT, is_d2d BOOLEAN, aging_day INTEGER,
+            aging_range TEXT, return_initiaded_data DATE, status_folha TEXT,
+            data_referencia DATE, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_shein_sla (
+            segmento TEXT, qtd_total INTEGER, qtd_concluido INTEGER, qtd_pendente INTEGER,
+            pct_sla DOUBLE PRECISION, data_referencia DATE,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_shein_motivos (
+            segmento TEXT, motivo TEXT, qtd INTEGER, data_referencia DATE,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS dev_shein_aging (
+            segmento TEXT, aging_range TEXT, qtd INTEGER, data_referencia DATE,
+            nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_dev_detalhado_data       ON dev_detalhado        (data_referencia)",
+        "CREATE INDEX IF NOT EXISTS idx_dev_detalhado_semana     ON dev_detalhado        (semana, ano)",
+        "CREATE INDEX IF NOT EXISTS idx_dev_detalhado_status     ON dev_detalhado        (status) WHERE status = 'Recebido de devolução'",
+        "CREATE INDEX IF NOT EXISTS idx_dev_detalhado_p90        ON dev_detalhado        (semana, ano, estado_dest, cliente) WHERE status = 'Recebido de devolução' AND dias_dev >= 0",
+        "CREATE INDEX IF NOT EXISTS idx_dev_resumo_semana        ON dev_resumo           (semana, ano)",
+        "CREATE INDEX IF NOT EXISTS idx_dev_status_semanal_semana ON dev_status_semanal  (semana, ano)",
+        "CREATE INDEX IF NOT EXISTS idx_dev_iatas_semanal_semana  ON dev_iatas_semanal   (semana, ano)",
+        "CREATE INDEX IF NOT EXISTS idx_dev_iatas_semanal_estado  ON dev_iatas_semanal   (semana, ano, estado)",
+        "CREATE INDEX IF NOT EXISTS idx_dev_sla_semanal_data      ON dev_sla_semanal     (data_referencia)",
+        "CREATE INDEX IF NOT EXISTS idx_dev_sla_semanal_cliente   ON dev_sla_semanal     (cliente_fantasia)",
+        "CREATE INDEX IF NOT EXISTS idx_dev_motivos_semanal_data  ON dev_motivos_semanal (data_referencia)",
+        "CREATE INDEX IF NOT EXISTS idx_dev_dsp_sem3tent_data     ON dev_dsp_sem3tent    (data_referencia)",
+        "CREATE INDEX IF NOT EXISTS idx_shein_backlog_data        ON dev_shein_backlog   (data_referencia)",
+        "CREATE INDEX IF NOT EXISTS idx_shein_backlog_seg         ON dev_shein_backlog   (data_referencia, segmento)",
+        "CREATE INDEX IF NOT EXISTS idx_shein_backlog_arq         ON dev_shein_backlog   (nome_arquivo)",
+        "CREATE INDEX IF NOT EXISTS idx_shein_sla_data            ON dev_shein_sla       (data_referencia)",
+        "CREATE INDEX IF NOT EXISTS idx_shein_sla_arq             ON dev_shein_sla       (nome_arquivo)",
+        "CREATE INDEX IF NOT EXISTS idx_shein_motivos_data        ON dev_shein_motivos   (data_referencia)",
+        "CREATE INDEX IF NOT EXISTS idx_shein_motivos_seg         ON dev_shein_motivos   (data_referencia, segmento)",
+        "CREATE INDEX IF NOT EXISTS idx_shein_aging_data          ON dev_shein_aging     (data_referencia)",
+        "CREATE INDEX IF NOT EXISTS idx_shein_aging_seg           ON dev_shein_aging     (data_referencia, segmento)",
+    )
 
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_detalhado (
-            waybill             TEXT,
-            status              TEXT,
-            tipo_operacao       TEXT,
-            cliente             TEXT,
-            data_operacao       TIMESTAMP,
-            ponto_operacao      TEXT,
-            estado_dest         TEXT,
-            cidade_dest         TEXT,
-            pre_entrega         TEXT,
-            ponto_entrada       TEXT,
-            motivo              TEXT,
-            data_criacao        TIMESTAMP,
-            dias_dev            INTEGER,
-            semana              TEXT,
-            ano                 INTEGER,
-            data_referencia     DATE,
-            nome_arquivo        TEXT,
-            data_importacao     TIMESTAMP
-        )
-    """)
-
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS p90_semanal (
-            estado          TEXT,
-            semana          TEXT,
-            ano             INTEGER,
-            cliente         TEXT,
-            p50_dias        DOUBLE PRECISION,
-            p80_dias        DOUBLE PRECISION,
-            p90_dias        DOUBLE PRECISION,
-            qtd_pedidos     INTEGER,
-            data_referencia DATE,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_status_semanal (
-            estado          TEXT,
-            status          TEXT,
-            semana          TEXT,
-            ano             INTEGER,
-            data_referencia DATE,
-            cliente         TEXT,
-            cliente_fantasia TEXT,
-            qtd             INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_iatas_semanal (
-            ponto_operacao  TEXT,
-            estado          TEXT,
-            semana          TEXT,
-            ano             INTEGER,
-            data_referencia DATE,
-            cliente_fantasia TEXT,
-            qtd             INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_sla_semanal (
-            estado          TEXT,
-            data_referencia DATE,
-            cliente         TEXT,
-            cliente_fantasia TEXT,
-            qtd_total       INTEGER,
-            qtd_no_prazo    INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_motivos_semanal (
-            estado          TEXT,
-            motivo          TEXT,
-            cliente         TEXT,
-            cliente_fantasia TEXT,
-            data_referencia DATE,
-            qtd             INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_dsp_sem3tent (
-            ponto_entrada   TEXT,
-            estado          TEXT,
-            motivo          TEXT,
-            cliente         TEXT,
-            cliente_fantasia TEXT,
-            data_referencia DATE,
-            qtd             INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    # ── SHEIN BACKLOG (mesmo banco de devoluções) ─────────────────────────
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_shein_backlog (
-            waybill                 TEXT,
-            segmento                TEXT,
-            is_d2d                  BOOLEAN,
-            aging_day               INTEGER,
-            aging_range             TEXT,
-            return_initiaded_data   DATE,
-            status_folha            TEXT,
-            data_referencia         DATE,
-            nome_arquivo            TEXT,
-            data_importacao         TIMESTAMP
-        )
-    """)
-
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_shein_sla (
-            segmento        TEXT,
-            qtd_total       INTEGER,
-            qtd_concluido   INTEGER,
-            qtd_pendente    INTEGER,
-            pct_sla         DOUBLE PRECISION,
-            data_referencia DATE,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_shein_motivos (
-            segmento        TEXT,
-            motivo          TEXT,
-            qtd             INTEGER,
-            data_referencia DATE,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    executar_devolucoes("""
-        CREATE TABLE IF NOT EXISTS dev_shein_aging (
-            segmento        TEXT,
-            aging_range     TEXT,
-            qtd             INTEGER,
-            data_referencia DATE,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    executar_processamento("""
-        CREATE TABLE IF NOT EXISTS percentis_operacao (
-            estado          TEXT,
-            cliente         TEXT,
-            data            DATE,
-            p50_horas       DOUBLE PRECISION,
-            p80_horas       DOUBLE PRECISION,
-            p90_horas       DOUBLE PRECISION,
-            qtd_pedidos     INTEGER,
-            nome_arquivo    TEXT,
-            data_importacao TIMESTAMP
-        )
-    """)
-
-    # ── ÍNDICES (performance de queries por data/semana) ─────────────────
-    executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_data ON pedidos_resumo (data_referencia)")
-    executar_backlog("CREATE INDEX IF NOT EXISTS idx_pedidos_nome_arquivo ON pedidos (nome_arquivo)")
-    executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_arq ON pedidos_resumo (nome_arquivo)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_data ON dev_detalhado (data_referencia)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_semana ON dev_detalhado (semana, ano)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_status ON dev_detalhado (status) WHERE status = 'Recebido de devolução'")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_p90 ON dev_detalhado (semana, ano, estado_dest, cliente) WHERE status = 'Recebido de devolução' AND dias_dev >= 0")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_resumo_semana ON dev_resumo (semana, ano)")
-    executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_data ON produtividade (data)")
-    executar_operacional("CREATE INDEX IF NOT EXISTS idx_produtividade_arq ON produtividade (nome_arquivo)")
-    executar_processamento("ALTER TABLE tempo_processamento ADD COLUMN IF NOT EXISTS qtd_miss_scanning INTEGER DEFAULT 0")
-    executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_data ON tempo_processamento (data)")
-    executar_processamento("CREATE INDEX IF NOT EXISTS idx_tempo_processamento_arq ON tempo_processamento (nome_arquivo)")
-    executar_processamento("CREATE INDEX IF NOT EXISTS idx_percentis_operacao_data ON percentis_operacao (data)")
-    executar_processamento("CREATE INDEX IF NOT EXISTS idx_percentis_operacao_arq ON percentis_operacao (nome_arquivo)")
-    executar_operacional("CREATE INDEX IF NOT EXISTS idx_pacotes_grandes_semana ON pacotes_grandes (semana, ano)")
-    executar_presenca("CREATE INDEX IF NOT EXISTS idx_presenca_turno_semana ON presenca_turno (semana, ano)")
-    executar_presenca("CREATE INDEX IF NOT EXISTS idx_presenca_diaria_semana ON presenca_diaria (semana, ano)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_status_semanal_semana ON dev_status_semanal (semana, ano)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_iatas_semanal_semana ON dev_iatas_semanal (semana, ano)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_sla_semanal_data ON dev_sla_semanal (data_referencia)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_sla_semanal_cliente ON dev_sla_semanal (cliente_fantasia)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_motivos_semanal_data ON dev_motivos_semanal (data_referencia)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_dsp_sem3tent_data ON dev_dsp_sem3tent (data_referencia)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_iatas_semanal_estado ON dev_iatas_semanal (semana, ano, estado)")
-
-    # ── SHEIN BACKLOG ─────────────────────────────────────────────────────
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_backlog_data   ON dev_shein_backlog  (data_referencia)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_backlog_seg    ON dev_shein_backlog  (data_referencia, segmento)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_backlog_arq    ON dev_shein_backlog  (nome_arquivo)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_sla_data       ON dev_shein_sla      (data_referencia)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_sla_arq        ON dev_shein_sla      (nome_arquivo)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_motivos_data   ON dev_shein_motivos  (data_referencia)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_motivos_seg    ON dev_shein_motivos  (data_referencia, segmento)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_aging_data     ON dev_shein_aging    (data_referencia)")
-    executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_shein_aging_seg      ON dev_shein_aging    (data_referencia, segmento)")
-
-    # ── COLETAS (banco separado) ───────────────────────────────────────────
-    executar_coletas("""
-        CREATE TABLE IF NOT EXISTS coletas (
-            num_registro            TEXT,
-            placa                   TEXT,
-            carregador              TEXT,
-            rede_carregador         TEXT,
-            tempo_carga             TIMESTAMP,
-            secao_destino           TEXT,
-            descarregador           TEXT,
-            rede_descarregador      TEXT,
-            tempo_descarga          TIMESTAMP,
-            sacos_carregados        INTEGER,
-            sacos_descarregados     INTEGER,
-            dif_sacos               INTEGER,
-            pacotes_carregados      INTEGER,
-            pacotes_descarregados   INTEGER,
-            dif_pacotes             INTEGER,
-            modo_operacao           TEXT,
-            tipo_veiculo            TEXT,
-            tipo                    TEXT,
-            data_referencia         DATE,
-            nome_arquivo            TEXT,
-            data_importacao         TIMESTAMP
-        )
-    """)
-    executar_coletas("CREATE INDEX IF NOT EXISTS idx_coletas_data ON coletas (data_referencia, tipo)")
-
-    executar_coletas("""
-        CREATE TABLE IF NOT EXISTS coletas_grandes (
-            tempo_coleta        TIMESTAMP,
-            cliente             TEXT,
-            waybill_anjun       TEXT,
-            waybill_escaneado   TEXT,
-            coletador           TEXT,
-            ponto_responsavel   TEXT,
-            estado_origem       TEXT,
-            num_registro_carro  TEXT,
-            placa               TEXT,
-            motorista           TEXT,
-            data_referencia     DATE,
-            nome_arquivo        TEXT,
-            data_importacao     TIMESTAMP
-        )
-    """)
-    executar_coletas("CREATE INDEX IF NOT EXISTS idx_coletas_grandes_data ON coletas_grandes (data_referencia)")
-
-    executar_coletas("""
-        CREATE TABLE IF NOT EXISTS coleta_final (
-            data                    DATE,
-            cliente                 TEXT,
-            pac_a_coletar           INTEGER,
-            pac_coletados           INTEGER,
-            taxa_coleta             DOUBLE PRECISION,
-            dif_coleta              INTEGER,
-            pedidos_nao_coletados   INTEGER,
-            falta_bipagem_coleta    INTEGER,
-            perda_coleta            INTEGER,
-            pac_carregados          INTEGER,
-            dif_carregamento        INTEGER,
-            falta_bipagem_carga     INTEGER,
-            perda_carga             INTEGER,
-            data_referencia         DATE,
-            nome_arquivo            TEXT,
-            data_importacao         TIMESTAMP
-        )
-    """)
-    executar_coletas("CREATE INDEX IF NOT EXISTS idx_coleta_final_data ON coleta_final (data_referencia)")
+    # ── COLETAS ───────────────────────────────────────────────────────────
+    _executar_ddl("DATABASE_URL_COLETAS",
+        """CREATE TABLE IF NOT EXISTS coletas (
+            num_registro TEXT, placa TEXT, carregador TEXT, rede_carregador TEXT,
+            tempo_carga TIMESTAMP, secao_destino TEXT, descarregador TEXT,
+            rede_descarregador TEXT, tempo_descarga TIMESTAMP,
+            sacos_carregados INTEGER, sacos_descarregados INTEGER, dif_sacos INTEGER,
+            pacotes_carregados INTEGER, pacotes_descarregados INTEGER, dif_pacotes INTEGER,
+            modo_operacao TEXT, tipo_veiculo TEXT, tipo TEXT,
+            data_referencia DATE, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_coletas_data ON coletas (data_referencia, tipo)",
+        """CREATE TABLE IF NOT EXISTS coletas_grandes (
+            tempo_coleta TIMESTAMP, cliente TEXT, waybill_anjun TEXT, waybill_escaneado TEXT,
+            coletador TEXT, ponto_responsavel TEXT, estado_origem TEXT,
+            num_registro_carro TEXT, placa TEXT, motorista TEXT,
+            data_referencia DATE, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_coletas_grandes_data ON coletas_grandes (data_referencia)",
+        """CREATE TABLE IF NOT EXISTS coleta_final (
+            data DATE, cliente TEXT, pac_a_coletar INTEGER, pac_coletados INTEGER,
+            taxa_coleta DOUBLE PRECISION, dif_coleta INTEGER, pedidos_nao_coletados INTEGER,
+            falta_bipagem_coleta INTEGER, perda_coleta INTEGER, pac_carregados INTEGER,
+            dif_carregamento INTEGER, falta_bipagem_carga INTEGER, perda_carga INTEGER,
+            data_referencia DATE, nome_arquivo TEXT, data_importacao TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_coleta_final_data ON coleta_final (data_referencia)",
+    )

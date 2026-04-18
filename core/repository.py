@@ -318,66 +318,9 @@ def buscar_tempo_processamento(data_inicio=None, data_fim=None):
 
     return consultar_processamento(query, params)
 
-# =========================
-# ⏱️ DEVOLUÇÕES
-# =========================
-def buscar_devolucoes(limit=1000):
-    return consultar_devolucoes("""
-        SELECT *
-        FROM devolucoes
-        ORDER BY data_devolucao DESC
-        LIMIT %s
-    """, [limit])
-
-
-# ================================
-# 📊 P90 DEVOLUÇÕES
-# ================================
-@st.cache_data(ttl=1800)
-def buscar_p90(ano=None, cliente=None):
-    """
-    Calcula P90 diretamente de dev_detalhado (fonte unificada).
-    Mantém a mesma assinatura de retorno: estado, semana, ano, cliente, p90_dias, qtd_pedidos.
-    """
-    query = """
-        SELECT
-            estado_dest AS estado,
-            semana,
-            ano,
-            cliente,
-            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dias_dev) AS p50_dias,
-            PERCENTILE_CONT(0.8) WITHIN GROUP (ORDER BY dias_dev) AS p80_dias,
-            PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY dias_dev) AS p90_dias,
-            COUNT(*)            AS qtd_pedidos
-        FROM dev_detalhado
-        WHERE status = 'Recebido de devolução'
-          AND dias_dev >= 0
-          AND estado_dest IS NOT NULL
-    """
-    params = []
-
-    if ano:
-        query += " AND ano = %s"
-        params.append(ano)
-
-    query, params = _filtro_cliente(query, params, cliente)
-    query += " GROUP BY estado_dest, semana, ano, cliente ORDER BY estado, ano, semana"
-
-    return consultar_devolucoes(query, params if params else None)
-
-
 # ================================
 # 📊 DASHBOARDS DEVOLUÇÃO
 # ================================
-
-@st.cache_data(ttl=1800)
-def buscar_semanas_disponiveis_dev():
-    """Retorna semana/ano disponíveis — lê de dev_detalhado (fonte unificada)."""
-    return consultar_devolucoes("""
-        SELECT DISTINCT semana, ano
-        FROM dev_detalhado
-        ORDER BY ano DESC, semana DESC
-    """)
 
 
 @st.cache_data(ttl=1800)
@@ -530,26 +473,6 @@ def buscar_semanas_dev_detalhado():
         ORDER BY ano DESC, semana DESC
     """)
 
-
-# =========================
-# ⏱️ CALCULO DE PACOTES H1
-# =========================
-@st.cache_data(ttl=600)
-def buscar_tempo_processamento_geral():
-
-    query = """
-        SELECT 
-            estado,
-            ponto_entrada,
-            entrada_hub1,
-            saida_hub1,
-            cliente,
-            hiata
-        FROM tempo_processamento
-        WHERE entrada_hub1 IS NOT NULL
-    """
-
-    return consultar_processamento(query)
 
 @st.cache_data(ttl=600)
 def buscar_hiata_por_dia(data_inicio=None, data_fim=None):
@@ -822,7 +745,11 @@ def buscar_semanas_presenca():
 @st.cache_data(ttl=600)
 def buscar_presenca_turno(semana, ano):
     return consultar_presenca("""
-        SELECT *
+        SELECT data, semana, ano, turno,
+               produzido_turno, presenca_turno, presenca_total,
+               anjun, temporarios, diaristas_presenciais,
+               faltas_anjun, faltas_temporarios, perc_falta,
+               custo_diaristas, custo_por_pedido
         FROM presenca_turno
         WHERE semana = %s AND ano = %s
         ORDER BY data, turno
@@ -832,7 +759,8 @@ def buscar_presenca_turno(semana, ano):
 @st.cache_data(ttl=600)
 def buscar_presenca_diaria(semana, ano):
     return consultar_presenca("""
-        SELECT *
+        SELECT data, semana, ano,
+               vol_tfk, vol_shein, vol_d2d, vol_kwai, vol_b2c
         FROM presenca_diaria
         WHERE semana = %s AND ano = %s
         ORDER BY data

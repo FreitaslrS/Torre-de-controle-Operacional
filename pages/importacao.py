@@ -27,7 +27,7 @@ from core.processar_arquivo import (
 load_dotenv()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def _carregar_historico():
     consultas = [
         (consultar_historico, """

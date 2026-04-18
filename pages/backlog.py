@@ -71,10 +71,10 @@ def render():
 
     # KPIs por faixa de dias
     _FAIXAS_DIAS = ["1 dia", "1-5 dias", "5-10 dias", "10-20 dias", "20-30 dias", "30+ dias"]
-    df_kpi_faixas = carregar_backlog_atual_completo()
+    df_completo = carregar_backlog_atual_completo()
     kpi_cols = st.columns(len(_FAIXAS_DIAS))
     for col, fx in zip(kpi_cols, _FAIXAS_DIAS):
-        qtd_fx = int(df_kpi_faixas.loc[df_kpi_faixas["faixa_backlog_snapshot"] == fx, "qtd"].sum())
+        qtd_fx = int(df_completo.loc[df_completo["faixa_backlog_snapshot"] == fx, "qtd"].sum())
         col.metric(fx, fmt_numero(qtd_fx))
 
     if perc > 30:
@@ -106,7 +106,7 @@ def render():
     # =========================
     # 📊 DADOS — 1 query com cache, filtros em Python
     # =========================
-    df_base = carregar_backlog_atual_completo()
+    df_base = df_completo
 
     if remover_estados:
         df_base = df_base[~df_base["estado"].isin(remover_estados)]
