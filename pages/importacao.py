@@ -43,17 +43,11 @@ def _carregar_historico():
                    MAX(data) as data_referencia, 'Tempo Processamento' as tipo
             FROM tempo_processamento GROUP BY nome_arquivo"""),
         (consultar_devolucoes, """
-            SELECT nome_arquivo, SUM(qtd) as registros, MAX(data_importacao) as data_importacao,
-                   MAX(data_referencia) as data_referencia, 'Devolução' as tipo
-            FROM dev_status_semanal GROUP BY nome_arquivo"""),
-        (consultar_devolucoes, """
-            SELECT nome_arquivo, SUM(qtd_pedidos) as registros, MAX(data_importacao) as data_importacao,
-                   MAX(data_referencia) as data_referencia, 'Devolução - P90' as tipo
-            FROM p90_semanal GROUP BY nome_arquivo"""),
-        (consultar_devolucoes, """
             SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, 'Devolução - Monitoramento' as tipo
-            FROM dev_sla_semanal GROUP BY nome_arquivo"""),
+            FROM dev_sla_semanal
+            WHERE nome_arquivo NOT LIKE '%+%'
+            GROUP BY nome_arquivo"""),
         (consultar_operacional, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Pacotes Grandes' as tipo
