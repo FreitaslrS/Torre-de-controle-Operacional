@@ -83,6 +83,9 @@ def consultar_historico(query, params=None):     return _consultar("DATABASE_URL
 def consultar_devolucoes(query, params=None):    return _consultar("DATABASE_URL_DEVOLUCOES",    query, params)
 def consultar_processamento(query, params=None): return _consultar("DATABASE_URL_PROCESSAMENTO", query, params)
 def consultar_coletas(query, params=None):       return _consultar("DATABASE_URL_COLETAS",       query, params)
+def consultar_presenca(query, params=None):     return _consultar("DATABASE_URL_PRESENCA",     query, params)
+def consultar_dev_shein(query, params=None):    return _consultar("DATABASE_URL_DEV_SHEIN",    query, params)
+def consultar_usuarios(query, params=None):     return _consultar("DATABASE_URL_USUARIOS",     query, params)
 
 
 # =========================
@@ -94,6 +97,9 @@ def executar_historico(query, params=None):     _executar("DATABASE_URL_HISTORIC
 def executar_devolucoes(query, params=None):    _executar("DATABASE_URL_DEVOLUCOES",    query, params)
 def executar_processamento(query, params=None): _executar("DATABASE_URL_PROCESSAMENTO", query, params)
 def executar_coletas(query, params=None):       _executar("DATABASE_URL_COLETAS",       query, params)
+def executar_presenca(query, params=None):      _executar("DATABASE_URL_PRESENCA",      query, params)
+def executar_dev_shein(query, params=None):     _executar("DATABASE_URL_DEV_SHEIN",     query, params)
+def executar_usuarios(query, params=None):      _executar("DATABASE_URL_USUARIOS",      query, params)
 
 
 # =========================
@@ -181,7 +187,7 @@ def inicializar_banco():
         )
     """)
 
-    executar_operacional("""
+    executar_presenca("""
         CREATE TABLE IF NOT EXISTS presenca_turno (
             data                    DATE,
             semana                  TEXT,
@@ -203,7 +209,7 @@ def inicializar_banco():
         )
     """)
 
-    executar_operacional("""
+    executar_presenca("""
         CREATE TABLE IF NOT EXISTS presenca_diaria (
             data            DATE,
             semana          TEXT,
@@ -327,8 +333,8 @@ def inicializar_banco():
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_percentis_operacao_data ON percentis_operacao (data)")
     executar_processamento("CREATE INDEX IF NOT EXISTS idx_percentis_operacao_arq ON percentis_operacao (nome_arquivo)")
     executar_operacional("CREATE INDEX IF NOT EXISTS idx_pacotes_grandes_semana ON pacotes_grandes (semana, ano)")
-    executar_operacional("CREATE INDEX IF NOT EXISTS idx_presenca_turno_semana ON presenca_turno (semana, ano)")
-    executar_operacional("CREATE INDEX IF NOT EXISTS idx_presenca_diaria_semana ON presenca_diaria (semana, ano)")
+    executar_presenca("CREATE INDEX IF NOT EXISTS idx_presenca_turno_semana ON presenca_turno (semana, ano)")
+    executar_presenca("CREATE INDEX IF NOT EXISTS idx_presenca_diaria_semana ON presenca_diaria (semana, ano)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_status_semanal_semana ON dev_status_semanal (semana, ano)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_iatas_semanal_semana ON dev_iatas_semanal (semana, ano)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_sla_semanal_data ON dev_sla_semanal (data_referencia)")

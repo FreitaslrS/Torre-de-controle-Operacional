@@ -1559,7 +1559,7 @@ def _parse_linha_presenca(row, data_atual, nome_arquivo, data_importacao):
 
 
 def _persistir_presenca(rows_turno, rows_diario, nome_arquivo):
-    with _conn("DATABASE_URL_OPERACIONAL") as conn:
+    with _conn("DATABASE_URL_PRESENCA") as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM presenca_turno  WHERE nome_arquivo = %s", [nome_arquivo])
         cur.execute("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
@@ -1621,3 +1621,102 @@ def importar_presenca(arquivo):
         return {"registros": 0, "detalhe": "Nenhuma linha de turno encontrada"}
     _persistir_presenca(rows_turno, rows_diario, nome_arquivo)
     return {"registros": len(rows_turno), "detalhe": f"{len(rows_turno):,} turnos | {len(rows_diario):,} registros diários"}
+
+
+# ================================
+# 📂 HISTÓRICO CSV DE PRESENÇA (legado Google Sheets)
+# ================================
+import re as _re
+
+
+def _converter_data_chinesa(valor, ano=2026):
+    """Converte '5月1日' → date(2026, 5, 1)"""
+    try:
+        m = _re.match(r'(\d+)月(\d+)日', str(valor).strip())
+        if m:
+            return pd.Timestamp(year=ano, month=int(m.group(1)), day=int(m.group(2))).date()
+    except Exception:
+        pass
+    return None
+
+
+def importar_presenca_historico_csv(arquivo) -> dict:
+    """
+    Importa CSV legado de presença (formato Google Sheets / chinês).
+    Extrai apenas dados por turno (T1/T2/T3).
+    Ignora linhas com produzido=0 E presença=0 e células #DIV/0!.
+    """
+    # Leitura bruta — pula 2 linhas de cabeçalho
+    df_raw = pd.read_csv(arquivo, header=None, skiprows=2, dtype=str)
+    df_raw[0] = df_raw[0].replace('', None).ffill()
+
+    # Filtra turnos
+    df = df_raw[df_raw[8].isin(['T1', 'T2', 'T3'])].copy()
+    df[9]  = pd.to_numeric(df[9],  errors='coerce')  # produzido_turno
+    df[10] = pd.to_numeric(df[10], errors='coerce')  # presenca_turno
+    df = df[(df[9] > 0) | (df[10] > 0)].copy()
+
+    if df.empty:
+        return {'registros': 0, 'detalhe': 'Nenhuma linha válida encontrada'}
+
+    df['data'] = df[0].apply(_converter_data_chinesa)
+    df = df[df['data'].notna()].copy()
+
+    nome_arquivo    = getattr(arquivo, 'name', str(arquivo))
+    data_importacao = datetime.now(timezone.utc)
+
+    registros = []
+    for _, row in df.iterrows():
+        d  = row['data']
+        ts = pd.Timestamp(d)
+        semana = ts.strftime('w%V')
+        ano    = int(ts.year)
+        registros.append((
+            d,
+            str(row[8]).strip(),   # turno
+            _safe_int(row[9]),     # produzido_turno
+            _safe_int(row[10]),    # presenca_turno
+            _safe_int(row[26]),    # presenca_total
+            _safe_int(row[13]),    # anjun
+            _safe_int(row[14]),    # temporarios
+            _safe_int(row[15]),    # diaristas_presenciais
+            _safe_int(row[16]),    # faltas_anjun
+            _safe_int(row[17]),    # faltas_temporarios
+            _safe_float(row[18]),  # perc_falta
+            _safe_float(row[31]),  # custo_diaristas
+            _safe_float(row[24]),  # custo_por_pedido
+            semana,
+            ano,
+            nome_arquivo,
+            data_importacao,
+        ))
+
+    with _conn('DATABASE_URL_PRESENCA') as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                'DELETE FROM presenca_turno WHERE nome_arquivo = %s',
+                [nome_arquivo]
+            )
+            execute_values(
+                cur,
+                '''INSERT INTO presenca_turno (
+                    data, turno, produzido_turno, presenca_turno,
+                    presenca_total, anjun, temporarios, diaristas_presenciais,
+                    faltas_anjun, faltas_temporarios, perc_falta,
+                    custo_diaristas, custo_por_pedido,
+                    semana, ano, nome_arquivo, data_importacao
+                ) VALUES %s''',
+                registros
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
+    return {
+        'registros': len(registros),
+        'detalhe':   f'{len(registros):,} turnos importados do histórico CSV'
+    }

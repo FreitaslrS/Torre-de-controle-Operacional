@@ -9,6 +9,8 @@ from core.database import (
     consultar_historico,
     consultar_devolucoes,
     consultar_coletas,
+    consultar_presenca,
+    consultar_dev_shein,
     executar_backlog,
     executar_historico,
     executar_operacional,
@@ -810,7 +812,7 @@ def buscar_coleta_final(data_ref):
 
 @st.cache_data(ttl=1800)
 def buscar_semanas_presenca():
-    return consultar_operacional("""
+    return consultar_presenca("""
         SELECT DISTINCT semana, ano
         FROM presenca_turno
         ORDER BY ano DESC, semana DESC
@@ -819,7 +821,7 @@ def buscar_semanas_presenca():
 
 @st.cache_data(ttl=600)
 def buscar_presenca_turno(semana, ano):
-    return consultar_operacional("""
+    return consultar_presenca("""
         SELECT *
         FROM presenca_turno
         WHERE semana = %s AND ano = %s
@@ -829,7 +831,7 @@ def buscar_presenca_turno(semana, ano):
 
 @st.cache_data(ttl=600)
 def buscar_presenca_diaria(semana, ano):
-    return consultar_operacional("""
+    return consultar_presenca("""
         SELECT *
         FROM presenca_diaria
         WHERE semana = %s AND ano = %s

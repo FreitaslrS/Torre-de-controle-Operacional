@@ -10,8 +10,9 @@ from utils.i18n import t
 from core.database import (
     executar_backlog, executar_historico, executar_operacional,
     consultar_historico, consultar_operacional, consultar_processamento,
-    consultar_devolucoes, consultar_coletas,
+    consultar_devolucoes, consultar_coletas, consultar_presenca,
     executar_processamento, executar_devolucoes, executar_coletas,
+    executar_presenca,
 )
 from core.repository import salvar_log_importacao
 from core.processar_arquivo import (
@@ -20,7 +21,7 @@ from core.processar_arquivo import (
     importar_devolucao_monitoramento, importar_devolucao_enriquecida,
     importar_coletas_auto,
     importar_pacotes_grandes, importar_presenca,
-    importar_shein_backlog,
+    importar_shein_backlog, importar_presenca_historico_csv,
 )
 
 load_dotenv()
@@ -78,7 +79,7 @@ def _carregar_historico():
             SELECT nome_arquivo, SUM(qtd_total) as registros, MAX(data_importacao) as data_importacao,
                    MAX(data_referencia) as data_referencia, 'Shein — Backlog Completo' as tipo
             FROM dev_shein_sla GROUP BY nome_arquivo"""),
-        (consultar_operacional, """
+        (consultar_presenca, """
             SELECT nome_arquivo, COUNT(*) as registros, MAX(data_importacao) as data_importacao,
                    CONCAT('Sem ', MAX(semana), '/', MAX(ano)) as data_referencia, 'Presença / Diário de Bordo' as tipo
             FROM presenca_turno GROUP BY nome_arquivo"""),
@@ -212,6 +213,9 @@ def processar_arquivo_individual(arquivo, data_ref, tipo_importacao, arquivo_sec
         elif tipo_importacao == "Presença / Diário de Bordo":
             resultado = importar_presenca(arquivo)
 
+        elif tipo_importacao == "Presença — Histórico CSV":
+            resultado = importar_presenca_historico_csv(arquivo)
+
         else:
             raise ValueError("Tipo de importação inválido")
 
@@ -246,8 +250,8 @@ def render():
 
     _LIMITE_MB = 200
     arquivos = st.file_uploader(
-        f"Selecione arquivos Excel (máx. {_LIMITE_MB} MB por arquivo)",
-        type=["xlsx", "xls"],
+        f"Selecione arquivos Excel ou CSV (máx. {_LIMITE_MB} MB por arquivo)",
+        type=["xlsx", "xls", "csv"],
         accept_multiple_files=True
     )
 
@@ -267,6 +271,7 @@ def render():
             "Coletas",
             "Pacotes Grandes",
             "Presença / Diário de Bordo",
+            "Presença — Histórico CSV",
         ]
     )
 
@@ -520,6 +525,6 @@ def excluir_arquivo(nome_arquivo):
     executar_coletas("DELETE FROM coletas WHERE nome_arquivo = %s", [nome_arquivo])
     executar_coletas("DELETE FROM coletas_grandes WHERE nome_arquivo = %s", [nome_arquivo])
     executar_coletas("DELETE FROM coleta_final WHERE nome_arquivo = %s", [nome_arquivo])
-    executar_operacional("DELETE FROM presenca_turno WHERE nome_arquivo = %s", [nome_arquivo])
-    executar_operacional("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_presenca("DELETE FROM presenca_turno WHERE nome_arquivo = %s", [nome_arquivo])
+    executar_presenca("DELETE FROM presenca_diaria WHERE nome_arquivo = %s", [nome_arquivo])
     st.cache_data.clear()
