@@ -145,8 +145,8 @@ def buscar_backlog_historico(data_inicio, data_fim):
             proximo_ponto,
             faixa_backlog_snapshot,
             qtd,
-            horas_min,
-            horas_max
+            NULL::double precision AS horas_min,
+            NULL::double precision AS horas_max
         FROM pedidos_resumo
         WHERE data_referencia BETWEEN %s AND %s
     """, [data_inicio, data_fim])

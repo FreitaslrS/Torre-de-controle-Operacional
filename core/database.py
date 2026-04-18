@@ -167,6 +167,7 @@ def inicializar_banco():
             data_importacao TIMESTAMP
         )
     """)
+    executar_operacional("ALTER TABLE produtividade ADD COLUMN IF NOT EXISTS hora INTEGER")
 
     executar_operacional("""
         CREATE TABLE IF NOT EXISTS pacotes_grandes (
@@ -302,6 +303,76 @@ def inicializar_banco():
     executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS p50_dias DOUBLE PRECISION")
     executar_devolucoes("ALTER TABLE p90_semanal ADD COLUMN IF NOT EXISTS p80_dias DOUBLE PRECISION")
 
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_status_semanal (
+            estado          TEXT,
+            status          TEXT,
+            semana          TEXT,
+            ano             INTEGER,
+            data_referencia DATE,
+            cliente         TEXT,
+            cliente_fantasia TEXT,
+            qtd             INTEGER,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_iatas_semanal (
+            ponto_operacao  TEXT,
+            estado          TEXT,
+            semana          TEXT,
+            ano             INTEGER,
+            data_referencia DATE,
+            cliente_fantasia TEXT,
+            qtd             INTEGER,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_sla_semanal (
+            estado          TEXT,
+            data_referencia DATE,
+            cliente         TEXT,
+            cliente_fantasia TEXT,
+            qtd_total       INTEGER,
+            qtd_no_prazo    INTEGER,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+    executar_devolucoes("ALTER TABLE dev_sla_semanal ADD COLUMN IF NOT EXISTS cliente TEXT")
+
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_motivos_semanal (
+            estado          TEXT,
+            motivo          TEXT,
+            cliente         TEXT,
+            cliente_fantasia TEXT,
+            data_referencia DATE,
+            qtd             INTEGER,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
+    executar_devolucoes("""
+        CREATE TABLE IF NOT EXISTS dev_dsp_sem3tent (
+            ponto_entrada   TEXT,
+            estado          TEXT,
+            motivo          TEXT,
+            cliente         TEXT,
+            cliente_fantasia TEXT,
+            data_referencia DATE,
+            qtd             INTEGER,
+            nome_arquivo    TEXT,
+            data_importacao TIMESTAMP
+        )
+    """)
+
     executar_processamento("""
         CREATE TABLE IF NOT EXISTS percentis_operacao (
             estado          TEXT,
@@ -318,7 +389,7 @@ def inicializar_banco():
 
     # ── ÍNDICES (performance de queries por data/semana) ─────────────────
     executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_data ON pedidos_resumo (data_referencia)")
-    executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_nome_arquivo ON pedidos (nome_arquivo)")
+    executar_backlog("CREATE INDEX IF NOT EXISTS idx_pedidos_nome_arquivo ON pedidos (nome_arquivo)")
     executar_historico("CREATE INDEX IF NOT EXISTS idx_pedidos_resumo_arq ON pedidos_resumo (nome_arquivo)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_data ON dev_detalhado (data_referencia)")
     executar_devolucoes("CREATE INDEX IF NOT EXISTS idx_dev_detalhado_semana ON dev_detalhado (semana, ano)")
